@@ -1,5 +1,16 @@
 import { expect } from '@playwright/test';
 
+export const LOCKED_VIEWPORTS = Object.freeze([
+  { name: 'desktop-xl', width: 1920, height: 1080 },
+  { name: 'desktop', width: 1440, height: 900 },
+  { name: 'notebook', width: 1366, height: 768 },
+  { name: 'tablet-landscape', width: 1024, height: 768 },
+  { name: 'tablet-portrait', width: 768, height: 1024 },
+  { name: 'mobile-wide', width: 440, height: 956 },
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'mobile-narrow', width: 360, height: 800 }
+]);
+
 export function collectRuntimeErrors(page) {
   const errors = [];
   page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));
@@ -7,6 +18,17 @@ export function collectRuntimeErrors(page) {
     if (message.type() === 'error') errors.push(`console.error: ${message.text()}`);
   });
   return errors;
+}
+
+export function collectForbiddenHttpMethods(page) {
+  const forbidden = [];
+  page.on('request', request => {
+    const method = request.method().toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      forbidden.push(`${method} ${request.url()}`);
+    }
+  });
+  return forbidden;
 }
 
 export async function openDashboard(page) {
@@ -45,6 +67,96 @@ export async function expectNoHorizontalPageOverflow(page) {
     clientWidth: document.documentElement.clientWidth
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+}
+
+export async function expectMapContained(page) {
+  const geometry = await page.evaluate(() => {
+    const map = document.getElementById('waterMap')?.getBoundingClientRect();
+    const stack = document.querySelector('.map-stack')?.getBoundingClientRect();
+    const panel = document.querySelector('.map-panel')?.getBoundingClientRect();
+    const header = document.getElementById('appHeader')?.getBoundingClientRect();
+    const filter = document.querySelector('.filter-shell')?.getBoundingClientRect();
+    const controls = [...document.querySelectorAll('#waterMap .leaflet-control')]
+      .filter(node => {
+        const style = getComputedStyle(node);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      })
+      .map(node => {
+        const rect = node.getBoundingClientRect();
+        return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+      });
+
+    if (!map || !stack || !panel || !header || !filter) return null;
+    return {
+      map: { top: map.top, right: map.right, bottom: map.bottom, left: map.left },
+      stack: { top: stack.top, right: stack.right, bottom: stack.bottom, left: stack.left },
+      panel: { top: panel.top, right: panel.right, bottom: panel.bottom, left: panel.left },
+      headerBottom: header.bottom,
+      filterBottom: filter.bottom,
+      controls
+    };
+  });
+
+  expect(geometry).not.toBeNull();
+  expect(geometry.map.top).toBeGreaterThanOrEqual(geometry.headerBottom - 1);
+  expect(geometry.map.top).toBeGreaterThanOrEqual(geometry.filterBottom - 1);
+  expect(geometry.map.top).toBeGreaterThanOrEqual(geometry.stack.top - 1);
+  expect(geometry.map.bottom).toBeLessThanOrEqual(geometry.stack.bottom + 1);
+  expect(geometry.map.left).toBeGreaterThanOrEqual(geometry.stack.left - 1);
+  expect(geometry.map.right).toBeLessThanOrEqual(geometry.stack.right + 1);
+  expect(geometry.map.top).toBeGreaterThan(geometry.panel.top);
+  expect(geometry.map.bottom).toBeLessThanOrEqual(geometry.panel.bottom + 1);
+
+  for (const control of geometry.controls) {
+    expect(control.top).toBeGreaterThanOrEqual(geometry.map.top - 1);
+    expect(control.bottom).toBeLessThanOrEqual(geometry.map.bottom + 1);
+    expect(control.left).toBeGreaterThanOrEqual(geometry.map.left - 1);
+    expect(control.right).toBeLessThanOrEqual(geometry.map.right + 1);
+  }
+}
+
+export async function expectHashAnchorSafe(page, targetId) {
+  await page.evaluate(id => {
+    window.location.hash = `#${id}`;
+  }, targetId);
+
+  await expect.poll(async () => page.evaluate(id => {
+    const target = document.getElementById(id);
+    const header = document.getElementById('appHeader');
+    const filter = document.getElementById('filters');
+    if (!target || !header) return null;
+
+    const headerBottom = header.getBoundingClientRect().bottom;
+    const filterSticky = filter && getComputedStyle(filter).position === 'sticky';
+    const filterHeight = filterSticky ? filter.getBoundingClientRect().height + 8 : 0;
+    const expectedTop = headerBottom + filterHeight;
+    const targetTop = target.getBoundingClientRect().top;
+    return {
+      hash: window.location.hash,
+      targetTop,
+      expectedTop,
+      delta: targetTop - expectedTop
+    };
+  }, targetId), { timeout: 5_000 }).toMatchObject({ hash: `#${targetId}` });
+
+  const geometry = await page.evaluate(id => {
+    const target = document.getElementById(id);
+    const header = document.getElementById('appHeader');
+    const filter = document.getElementById('filters');
+    const headerBottom = header?.getBoundingClientRect().bottom || 0;
+    const filterSticky = filter && getComputedStyle(filter).position === 'sticky';
+    const filterHeight = filterSticky ? filter.getBoundingClientRect().height + 8 : 0;
+    return {
+      targetTop: target?.getBoundingClientRect().top ?? -9999,
+      obstructionBottom: headerBottom + filterHeight,
+      viewportHeight: window.innerHeight
+    };
+  }, targetId);
+
+  expect(geometry.targetTop).toBeGreaterThanOrEqual(geometry.obstructionBottom - 2);
+  // Near the end of the document the browser may hit max scroll before the
+  // target can align exactly to scroll-margin-top. It still has to be visible.
+  expect(geometry.targetTop).toBeLessThan(geometry.viewportHeight);
 }
 
 export async function collectUserFacingTextAndAttributes(page, rootSelector) {

@@ -3,7 +3,7 @@ import { openDashboard, openMapPopupForSystem } from './helpers.js';
 
 const SYSTEM_WITH_DOCUMENT = 'PY-W-000001';
 
-test('map popup exposes shared detail action and preview-first document card', async ({ page }) => {
+test('map popup exposes shared detail action and preview-first document card', async ({ page }, testInfo) => {
   await openDashboard(page);
   await openMapPopupForSystem(page, SYSTEM_WITH_DOCUMENT);
 
@@ -11,6 +11,7 @@ test('map popup exposes shared detail action and preview-first document card', a
   const navigateButton = page.locator('[data-map-action="navigate"]');
   await expect(detailButton).toBeVisible();
   await expect(navigateButton).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('map-popup-actions.png'), fullPage: false });
 
   await detailButton.click();
   await expect(page.locator('#systemDrawer')).toHaveClass(/open/);
@@ -21,6 +22,7 @@ test('map popup exposes shared detail action and preview-first document card', a
   const href = await previewLink.getAttribute('href');
   expect(href).toContain('https://docs.google.com/gview');
   expect(await previewLink.getAttribute('download')).toBeNull();
+  await page.screenshot({ path: testInfo.outputPath('document-drawer.png'), fullPage: false });
 });
 
 test('desktop navigation opens Google Maps directions with marker coordinates', async ({ page }) => {
@@ -46,7 +48,7 @@ test('desktop navigation opens Google Maps directions with marker coordinates', 
   expect(opened[0]).toContain('destination=19.320000%2C100.170000');
 });
 
-test('mobile navigation shows an app chooser instead of forcing one provider', async ({ page }) => {
+test('mobile navigation shows an app chooser instead of forcing one provider', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openDashboard(page);
   await openMapPopupForSystem(page, SYSTEM_WITH_DOCUMENT);
@@ -56,4 +58,10 @@ test('mobile navigation shows an app chooser instead of forcing one provider', a
   await expect(page.locator('[data-navigation-target="google"]')).toContainText('Google Maps');
   await expect(page.locator('[data-navigation-target="other"]')).toBeVisible();
   await expect(page.locator('[data-navigation-target="web"]')).toContainText('Google Maps บนเว็บ');
+
+  const popupBox = await page.locator('.swal2-popup').boundingBox();
+  expect(popupBox).not.toBeNull();
+  expect(popupBox.width).toBeLessThanOrEqual(390);
+  expect(popupBox.height).toBeLessThanOrEqual(844);
+  await page.screenshot({ path: testInfo.outputPath('mobile-navigation-chooser.png'), fullPage: false });
 });

@@ -1,0 +1,85 @@
+Village Water Supply Dashboard — RC4 CI hardening patch
+Date: 2026-08-19
+Base: main after commit 4ebda2738a06e63c1af77d212757348348225f67
+
+Purpose
+-------
+Close QA coverage gaps against PROJECT_RULES.md §§19, 20, 25, 26 without changing production dashboard behavior.
+
+No production application code is changed by this patch.
+No assets/js/config.js is included.
+No API URL or secret is included.
+
+Added / strengthened coverage
+-----------------------------
+1. Responsive/layout gate at every locked viewport:
+   1920x1080, 1440x900, 1366x768, 1024x768, 768x1024, 440x956, 390x844, 360x800.
+   - horizontal page overflow
+   - map containment in .map-stack/.map-panel
+   - visible Leaflet controls remain inside the map
+   - critical hash anchors remain visible below sticky chrome
+   - mobile/desktop responsive mode assertions
+   - full-page screenshot evidence
+
+2. Section navigation:
+   - all 7 section links are exercised
+   - direct hash navigation is exercised
+   - sticky Header + sticky Filter obstruction is included in geometry checks
+
+3. Watchlist:
+   - synthetic 25-record fixture prevents a hidden 20-row truncation from passing
+   - all records must exist in desktop table and mobile cards
+   - desktop and mobile containers must be internally scrollable
+
+4. Drawer:
+   - close button
+   - Escape
+   - backdrop
+   - aria-hidden state
+   - focus restoration to trigger
+   - mobile full-viewport fit
+   - internal scrolling
+
+5. Charts:
+   - all 4 Chart.js instances must exist
+   - datasets must contain finite values only
+   - global district filter must change chart totals
+
+6. Filter:
+   - District → Local Authority cascading
+   - selected authority affects the scoped dashboard
+   - district change resets/rebuilds authority options
+   - clear restores province scope
+
+7. Error / empty states:
+   - mocked 503 data failure must produce visible error state
+   - fully empty datasets must render KPI=0, empty watchlist, empty charts, zero markers, no uncaught page errors
+
+8. Read-only runtime gate:
+   - browser request monitor fails if POST/PUT/PATCH/DELETE or any non GET/HEAD/OPTIONS method occurs
+
+9. Real API smoke hardening:
+   - nonzero real KPI data
+   - map markers present
+   - user-facing body/popup/drawer surfaces scanned for ALL_CAPS_WITH_UNDERSCORE and PY-... internal IDs
+   - runtime request methods remain read-only
+
+10. Visual evidence:
+   - Map popup actions screenshot
+   - Document Drawer screenshot
+   - Mobile navigation chooser screenshot
+   - full-page screenshot for each locked viewport
+   - test-results artifact is uploaded on successful CI runs as well as failures
+
+Validation performed before packaging
+-------------------------------------
+- JavaScript syntax check: PASS for assets/js, tools and all tests.
+- Static QA with CI-style absent config.js: PASS (16 production JS modules checked).
+- Unit tests: PASS 7/7.
+- GitHub Actions YAML parse: PASS for all workflow YAML files.
+- Production-source audit: no literal PY-* IDs found in user-facing production source; no POST/PUT/PATCH/DELETE method declarations found.
+- Full Chromium E2E cannot be truthfully claimed from this sandbox because browser navigation to localhost is blocked by environment policy. GitHub Actions remains the authoritative browser gate.
+
+Deferred by user
+----------------
+The local config.js/static-QA false positive is intentionally NOT addressed in this patch. It remains a separate follow-up item.

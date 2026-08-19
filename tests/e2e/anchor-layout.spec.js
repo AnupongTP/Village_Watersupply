@@ -1,69 +1,43 @@
 import { test, expect } from '@playwright/test';
-import { openDashboard } from './helpers.js';
+import { openDashboard, expectHashAnchorSafe, expectMapContained } from './helpers.js';
+
+const SECTION_IDS = [
+  'overview',
+  'map-section',
+  'areas',
+  'quality',
+  'system-structure',
+  'watchlist',
+  'data-completeness'
+];
 
 test('section navigation does not place target underneath sticky chrome', async ({ page }) => {
   await openDashboard(page);
 
-  for (const id of ['map-section', 'system-structure', 'watchlist', 'data-completeness']) {
+  for (const id of SECTION_IDS) {
     await page.locator(`.section-link[href="#${id}"]`).click();
-    await page.waitForTimeout(350);
+    await expect(page).toHaveURL(new RegExp(`#${id}$`));
 
-    const geometry = await page.evaluate(targetId => {
+    await expect.poll(() => page.evaluate(targetId => {
       const target = document.getElementById(targetId);
       const header = document.getElementById('appHeader');
-      if (!target) return null;
-      return {
-        targetTop: target.getBoundingClientRect().top,
-        headerBottom: header?.getBoundingClientRect().bottom || 0
-      };
-    }, id);
-
-    expect(geometry).not.toBeNull();
-    expect(geometry.targetTop).toBeGreaterThanOrEqual(geometry.headerBottom - 2);
+      const filter = document.getElementById('filters');
+      if (!target || !header) return false;
+      const filterSticky = filter && getComputedStyle(filter).position === 'sticky';
+      const obstructionBottom = header.getBoundingClientRect().bottom +
+        (filterSticky ? filter.getBoundingClientRect().height + 8 : 0);
+      const targetTop = target.getBoundingClientRect().top;
+      return targetTop >= obstructionBottom - 2 && targetTop < window.innerHeight;
+    }, id), { timeout: 5_000 }).toBe(true);
   }
 });
 
 test('Leaflet map remains contained below header/navigation/filter stacking', async ({ page }) => {
   await openDashboard(page);
+  await expectMapContained(page);
+});
 
-  const boxes = await page.evaluate(() => {
-    const rect = selector => document.querySelector(selector)?.getBoundingClientRect();
-    const map = document.getElementById('waterMap')?.getBoundingClientRect();
-    const header = document.getElementById('appHeader')?.getBoundingClientRect();
-    const filter = rect('.filter-shell');
-    const stack = rect('.map-stack');
-    const panel = rect('.map-panel');
-
-    if (!map || !header || !filter || !stack || !panel) return null;
-
-    return {
-      mapTop: map.top,
-      mapRight: map.right,
-      mapBottom: map.bottom,
-      mapLeft: map.left,
-      headerBottom: header.bottom,
-      filterBottom: filter.bottom,
-      stackTop: stack.top,
-      stackRight: stack.right,
-      stackBottom: stack.bottom,
-      stackLeft: stack.left,
-      panelTop: panel.top,
-      panelBottom: panel.bottom
-    };
-  });
-
-  expect(boxes).not.toBeNull();
-
-  // At initial load the map belongs to normal content flow below both sticky UI layers.
-  expect(boxes.mapTop).toBeGreaterThanOrEqual(boxes.headerBottom - 1);
-  expect(boxes.mapTop).toBeGreaterThanOrEqual(boxes.filterBottom - 1);
-
-  // Leaflet must remain clipped to its own map stack; this is the regression that
-  // prevents panes/controls from visually escaping over the header/filter chrome.
-  expect(boxes.mapTop).toBeGreaterThanOrEqual(boxes.stackTop - 1);
-  expect(boxes.mapBottom).toBeLessThanOrEqual(boxes.stackBottom + 1);
-  expect(boxes.mapLeft).toBeGreaterThanOrEqual(boxes.stackLeft - 1);
-  expect(boxes.mapRight).toBeLessThanOrEqual(boxes.stackRight + 1);
-  expect(boxes.mapTop).toBeGreaterThan(boxes.panelTop);
-  expect(boxes.mapBottom).toBeLessThanOrEqual(boxes.panelBottom + 1);
+test('direct hash navigation resolves without sticky collision', async ({ page }) => {
+  await openDashboard(page);
+  for (const id of SECTION_IDS) await expectHashAnchorSafe(page, id);
 });

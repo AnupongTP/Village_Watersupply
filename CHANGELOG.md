@@ -21,6 +21,16 @@
 - Watchlist and Map popup now share one Detail Drawer implementation to prevent UI divergence.
 - PROJECT_RULES now defines permanent rules for map actions, document preview, GitHub Actions, and real API smoke tests.
 
+### QA hardening
+- Added locked-viewport map containment and hash-anchor assertions across all 8 required viewport sizes.
+- Added Watchlist no-truncation regression with 25 synthetic matching records and internal-scroll verification on desktop/mobile.
+- Added Drawer close/focus/mobile-fit regression coverage.
+- Added Chart.js finite-data/filter-response regression coverage.
+- Added explicit API-error and empty-dataset UI-state regression coverage.
+- Expanded filter QA to verify District → Local Authority cascading.
+- Added runtime read-only request monitoring and real-data presentation-leak checks.
+- Playwright visual evidence is uploaded on successful CI runs as well as failures so screenshot review can actually occur before release.
+
 ### Security / Safety
 - Document URLs accept HTTP/HTTPS only.
 - Navigation is generated only from numeric coordinates already accepted by map validation.
