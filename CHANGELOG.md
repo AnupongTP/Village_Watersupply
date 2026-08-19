@@ -2,6 +2,12 @@
 
 ## Unreleased — 2026-08-19
 
+### QA — Playwright release-gate stabilization
+- E2E dashboard readiness now waits for the initial SweetAlert loading overlay to finish closing before scroll/hash assertions.
+- Direct-hash assertions now wait for the target section to reach a safe visible position instead of treating the hash string alone as completion.
+- SweetAlert Data Completeness geometry assertions wait for the popup opening animation to finish before measuring final layout.
+- Geolocation permission-denial coverage scopes Thai guidance to the active SweetAlert popup, avoiding a strict-locator collision with the container.
+
 ### Changed — Data Completeness modal layout
 - Reworked the Data Completeness detail modal into a fixed header / scrollable content / fixed footer structure.
 - Added a top-right `×` close action while retaining the bottom `ปิด` action.

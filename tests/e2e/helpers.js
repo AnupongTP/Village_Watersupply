@@ -75,6 +75,15 @@ export async function openDashboard(page) {
   await page.goto('/');
   await expect(page.locator('#kpiVillages')).not.toHaveText('-', { timeout: 20_000 });
   await expect(page.locator('#waterMap')).toBeVisible();
+
+  // The app closes its initial SweetAlert loading overlay after rendering. SweetAlert2
+  // restores document scrolling only after the close transition finishes, so tests that
+  // scroll or change hash must not race that teardown.
+  await expect(page.locator('.swal2-container')).toHaveCount(0, { timeout: 20_000 });
+  await expect.poll(() => page.evaluate(() => (
+    !document.documentElement.classList.contains('swal2-shown') &&
+    !document.body.classList.contains('swal2-shown')
+  )), { timeout: 5_000 }).toBe(true);
 }
 
 /**
@@ -164,20 +173,21 @@ export async function expectHashAnchorSafe(page, targetId) {
     const target = document.getElementById(id);
     const header = document.getElementById('appHeader');
     const filter = document.getElementById('filters');
-    if (!target || !header) return null;
+    if (!target || !header) return { hash: window.location.hash, safe: false };
 
     const headerBottom = header.getBoundingClientRect().bottom;
     const filterSticky = filter && getComputedStyle(filter).position === 'sticky';
     const filterHeight = filterSticky ? filter.getBoundingClientRect().height + 8 : 0;
-    const expectedTop = headerBottom + filterHeight;
+    const obstructionBottom = headerBottom + filterHeight;
     const targetTop = target.getBoundingClientRect().top;
     return {
       hash: window.location.hash,
-      targetTop,
-      expectedTop,
-      delta: targetTop - expectedTop
+      safe: targetTop >= obstructionBottom - 2 && targetTop < window.innerHeight
     };
-  }, targetId), { timeout: 5_000 }).toMatchObject({ hash: `#${targetId}` });
+  }, targetId), { timeout: 5_000 }).toMatchObject({
+    hash: `#${targetId}`,
+    safe: true
+  });
 
   const geometry = await page.evaluate(id => {
     const target = document.getElementById(id);

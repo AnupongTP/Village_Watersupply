@@ -41,7 +41,7 @@ test('permission denial shows actionable Thai guidance and leaves the dashboard 
   await page.locator('#btnUserLocation').click();
 
   await expect(page.locator('.swal2-title')).toHaveText('ไม่สามารถใช้ตำแหน่งปัจจุบันได้');
-  await expect(page.locator('.swal2-html-container, .swal2-container')).toContainText('อนุญาตสิทธิ์ตำแหน่ง');
+  await expect(page.locator('.swal2-popup')).toContainText('อนุญาตสิทธิ์ตำแหน่ง');
   await page.locator('.swal2-confirm').click();
   await expect(page.locator('#waterMap')).toBeVisible();
 });

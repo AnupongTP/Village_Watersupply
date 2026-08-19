@@ -46,6 +46,14 @@ function buildFixture(systemCount = 21, { firstCoordinateAt = 20 } = {}) {
 async function openIssues(page) {
   await page.locator('#btnOpenDataIssues').click();
   await expect(page.locator('.swal2-title')).toHaveText('รายละเอียดความครบถ้วนของข้อมูล');
+
+  // Real SweetAlert2 animates the popup with a scale transform. Geometry captured
+  // during that animation is intentionally smaller/moving, so wait for the popup's
+  // own animations before asserting its final responsive layout.
+  await page.locator('.data-completeness-popup').evaluate(async element => {
+    const animations = element.getAnimations();
+    await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
+  });
 }
 
 test('each issue section shows at most 20 rows and only sections above 20 expose show-more', async ({ page }) => {
