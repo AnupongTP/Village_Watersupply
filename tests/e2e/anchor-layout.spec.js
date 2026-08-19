@@ -32,6 +32,14 @@ test('section navigation does not place target underneath sticky chrome', async 
   }
 });
 
+
+test('global filter is part of normal document flow and never sticky', async ({ page }) => {
+  await openDashboard(page);
+  const position = await page.locator('#filters').evaluate(element => getComputedStyle(element).position);
+  expect(position).not.toBe('sticky');
+  expect(position).not.toBe('fixed');
+});
+
 test('Leaflet map remains contained below header/navigation/filter stacking', async ({ page }) => {
   await openDashboard(page);
   await expectMapContained(page);

@@ -220,6 +220,10 @@ def test_viewport(browser,name,w,h):
     summary=rect(page,'#overview > div:nth-of-type(2) > div:first-child'); mp=rect(page,'#map-section'); hdr=rect(page,'#appHeader'); fil=rect(page,'#filters')
     check('Layout',f'{name}: map does not overlap header',not overlap(mp,hdr),f'map={mp} header={hdr}')
     check('Layout',f'{name}: map does not overlap filter',not overlap(mp,fil),f'map={mp} filter={fil}')
+    filter_position=page.locator('#filters').evaluate('(e)=>getComputedStyle(e).position')
+    check('Layout',f'{name}: Global Filter is never sticky/fixed',filter_position not in ('sticky','fixed'),filter_position)
+    check('Map',f'{name}: Map toolbar exposes user location',page.locator('#btnUserLocation').count()==1)
+    check('Map',f'{name}: old Phayao toolbar button is removed',page.locator('#btnMapHome').count()==0)
     mh=rect(page,'.map-stack')['height']
     if w>=1200:
         check('Responsive',f'{name}: desktop summary and map are side-by-side',mp['x']>summary['x']+summary['width']-4 and abs(mp['y']-summary['y'])<8,f'summary={summary} map={mp}')
@@ -544,6 +548,33 @@ def test_map_actions_and_documents(browser):
     page.screenshot(path=str(SCREEN_DIR/'390x844_navigation_chooser.png'))
     page.close()
 
+def test_user_location_and_backtop(browser):
+    page,console_errors,page_errors,requests=setup_page(browser,1366,768); wait_loaded(page)
+    page.evaluate("""()=>{
+      try { Object.defineProperty(window,'isSecureContext',{configurable:true,value:true}); } catch (_) {}
+      Object.defineProperty(navigator,'geolocation',{configurable:true,value:{
+        getCurrentPosition(success){ success({coords:{latitude:19.171194,longitude:99.874972,accuracy:9},timestamp:Date.now()}); }
+      }});
+    }""")
+    page.locator('#btnUserLocation').click(); page.wait_for_timeout(100)
+    check('User location','User-location marker appears after explicit request',page.locator('.user-location-marker').count()==1)
+    popup=page.locator('.qa-popup')
+    check('User location','User-location popup explains local-only handling',popup.count()==1 and 'ตำแหน่งของคุณ' in popup.inner_text() and 'ไม่ได้ส่งไปบันทึกในระบบ' in popup.inner_text(),popup.inner_text() if popup.count() else '')
+    mutating=[(m,u) for m,u in requests if m.upper() not in ('GET','HEAD','OPTIONS')]
+    check('Read-only','Geolocation action does not issue mutating HTTP methods',not mutating,str(mutating))
+
+    page.emulate_media(reduced_motion='reduce')
+    page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)'); page.wait_for_timeout(80)
+    back=page.locator('#btnBackToTop')
+    check('Back-to-top','Back-to-top appears after substantial scroll',back.is_visible())
+    if back.is_visible(): back.click(); page.wait_for_timeout(80)
+    check('Back-to-top','Back-to-top returns to document top',page.evaluate('window.scrollY')<=2,str(page.evaluate('window.scrollY')))
+    check('Back-to-top','Back-to-top transfers focus to page header',page.evaluate('document.activeElement?.id')=='appHeader',str(page.evaluate('document.activeElement?.id')))
+    check('Runtime','Location/back-to-top flow has no page errors',not page_errors,'; '.join(page_errors))
+    check('Runtime','Location/back-to-top flow has no console errors',not console_errors,'; '.join(console_errors))
+    page.screenshot(path=str(SCREEN_DIR/'desktop_user_location.png'))
+    page.close()
+
 def test_completeness(browser):
     page,*_=setup_page(browser,1366,768); wait_loaded(page)
     systems=fixture['waterSystems']; villages=fixture['villages']
@@ -561,8 +592,50 @@ def test_completeness(browser):
     expected_issues=coord_missing+capacity_outlier+villages_without
     actual_issues=parse_thai_number(page.locator('.completeness-issues strong').inner_text())
     check('Completeness','Displayed source-data issue count excludes out-of-Phayao coordinate category and matches visible categories',actual_issues==expected_issues,f'actual={actual_issues} expected={expected_issues}')
-    page.locator('#btnOpenDataIssues').click(); page.wait_for_timeout(40)
-    text=page.locator('.swal2-popup').inner_text(); check('Completeness','Out-of-Phayao issue section is not shown','พิกัดอยู่นอกขอบเขตพะเยา' not in text,text[:300]); check('Completeness','Completeness detail remains read-only','แก้ไข' not in text and 'บันทึก' not in text and 'ยืนยัน' not in text,text[:300]); page.screenshot(path=str(SCREEN_DIR/'desktop_completeness_modal.png')); page.close()
+    page.locator('#btnOpenDataIssues').click(); page.wait_for_timeout(80)
+    text=page.locator('.swal2-popup').inner_text(); check('Completeness','Out-of-Phayao issue section is not shown','พิกัดอยู่นอกขอบเขตพะเยา' not in text,text[:300]); check('Completeness','Completeness detail remains read-only','แก้ไข' not in text and 'บันทึก' not in text and 'ยืนยัน' not in text,text[:300])
+    popup=page.locator('.data-completeness-popup'); title=page.locator('.data-completeness-title'); scroller=page.locator('.swal-data-issues'); actions=page.locator('.data-completeness-actions')
+    check('Completeness layout','Top-right close action is visible',page.locator('.data-completeness-x').is_visible())
+    tb=title.bounding_box(); sb=scroller.bounding_box(); ab=actions.bounding_box()
+    check('Completeness layout','Modal chrome surrounds the scrolling list',bool(tb and sb and ab and tb['y']+tb['height'] <= sb['y']+2 and sb['y']+sb['height'] <= ab['y']+2),f'title={tb} scroller={sb} actions={ab}')
+    first_row=page.locator('[data-issue-section="coordMissing"] .issue-modal-row').first
+    rb=first_row.bounding_box(); mb=first_row.locator('.issue-modal-row-main').bounding_box(); pb=first_row.locator('.issue-modal-row-problem').bounding_box(); xb=first_row.locator('.issue-modal-actions').bounding_box()
+    check('Completeness layout','Desktop issue row uses compact three-column order',bool(rb and mb and pb and xb and rb['height'] <= 82 and mb['x'] < pb['x'] < xb['x']),f'row={rb} main={mb} problem={pb} actions={xb}')
+    check('Completeness layout','Desktop column headings are visible',page.locator('[data-issue-section="coordMissing"] .issue-modal-columns').is_visible())
+    missing_section=page.locator('[data-issue-section="coordMissing"]')
+    footer=missing_section.locator('.issue-modal-footer')
+    check('Completeness layout','Large section keeps progressive-reveal footer',footer.count()==1 and 'แสดง 20 จาก 133 รายการ' in footer.inner_text(),footer.inner_text() if footer.count() else 'missing')
+    more=missing_section.locator('[data-issue-more]')
+    if more.count():
+        more.click(); page.wait_for_timeout(40)
+        check('Completeness','Show-more advances exactly one 20-row page',missing_section.get_attribute('data-visible-count')=='40' and 'แสดง 40 จาก 133 รายการ' in missing_section.locator('[data-issue-status]').inner_text())
+    detail=page.locator('[data-issue-action="detail"]').first
+    if detail.count():
+        detail.click(); page.wait_for_timeout(80)
+        check('Completeness','Completeness Detail opens shared Drawer','open' in (page.locator('#systemDrawer').get_attribute('class') or ''))
+        page.locator('#btnCloseDrawer').click(); page.wait_for_timeout(320)
+        check('Completeness','Closing Drawer restores completeness modal automatically',page.locator('.swal2-title').count()==1 and page.locator('.swal2-title').inner_text()=='รายละเอียดความครบถ้วนของข้อมูล')
+        restored=page.locator('[data-issue-section="coordMissing"]')
+        check('Completeness','Drawer return preserves progressive-reveal count',restored.get_attribute('data-visible-count')=='40' and 'แสดง 40 จาก 133 รายการ' in restored.locator('[data-issue-status]').inner_text())
+    page.screenshot(path=str(SCREEN_DIR/'desktop_completeness_modal.png')); page.close()
+
+    # Mobile density/overflow: actions should stay beside the record rather than
+    # becoming a full-width row, and modal chrome must remain within viewport.
+    mobile,*_=setup_page(browser,390,844); wait_loaded(mobile); mobile.locator('#btnOpenDataIssues').click(); mobile.wait_for_timeout(80)
+    mp=mobile.locator('.data-completeness-popup'); mr=mobile.locator('[data-issue-section="coordMissing"] .issue-modal-row').first
+    mpb=mp.bounding_box(); mrb=mr.bounding_box(); mmb=mr.locator('.issue-modal-row-main').bounding_box(); mab=mr.locator('.issue-modal-actions').bounding_box()
+    overflow=mp.evaluate('(el)=>({scrollWidth:el.scrollWidth,clientWidth:el.clientWidth})')
+    check('Completeness layout','390px modal uses near-full viewport width',bool(mpb and mpb['width'] >= 365 and mpb['width'] <= 390),str(mpb))
+    check('Completeness layout','390px row keeps actions beside content',bool(mrb and mmb and mab and mrb['height'] <= 92 and mab['x'] > mmb['x']),f'row={mrb} main={mmb} actions={mab}')
+    check('Completeness layout','390px completeness modal has no horizontal overflow',overflow['scrollWidth'] <= overflow['clientWidth']+1,str(overflow))
+    mobile.screenshot(path=str(SCREEN_DIR/'390x844_completeness_modal.png')); mobile.close()
+
+    narrow,*_=setup_page(browser,360,800); wait_loaded(narrow); narrow.locator('#btnOpenDataIssues').click(); narrow.wait_for_timeout(80)
+    np=narrow.locator('.data-completeness-popup'); nover=np.evaluate('(el)=>({scrollWidth:el.scrollWidth,clientWidth:el.clientWidth})')
+    detail_btn=narrow.locator('[data-issue-action="detail"]').first
+    check('Completeness layout','360px compact Detail action remains accessible',detail_btn.is_visible() and 'ดูรายละเอียด' in (detail_btn.get_attribute('aria-label') or ''))
+    check('Completeness layout','360px completeness modal has no horizontal overflow',nover['scrollWidth'] <= nover['clientWidth']+1,str(nover))
+    narrow.screenshot(path=str(SCREEN_DIR/'360x800_completeness_modal.png')); narrow.close()
 
 
 def test_errors(browser):
@@ -619,6 +692,7 @@ def main():
             print('RUN map/charts',flush=True); test_map_and_charts(browser)
             print('RUN presentation contract',flush=True); test_presentation_contract(browser)
             print('RUN map actions/documents',flush=True); test_map_actions_and_documents(browser)
+            print('RUN user location/back-to-top',flush=True); test_user_location_and_backtop(browser)
             print('RUN completeness',flush=True); test_completeness(browser)
             print('RUN errors',flush=True); test_errors(browser)
             print('RUN empty',flush=True); test_empty(browser)

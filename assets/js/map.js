@@ -12,11 +12,15 @@ import { scrollToSectionById } from './ui.js';
 import { openDrawer } from './drawer.js';
 import { buildSystemDetailHtml } from './system-detail.js';
 import { openNavigation } from './navigation.js';
+import { requestCurrentUserPosition, userLocationErrorMessage } from './user-location.js';
 
 let map;
 let markerLayer;
+let userLocationLayer;
+let userLocationMarker;
 let markerBySystemId = new Map();
 let mapActionsBound = false;
+let userLocationRequestInFlight = false;
 
 const HOME_VIEW = { center: [19.171194, 99.874972], zoom: 13 };
 
@@ -60,6 +64,7 @@ export function initMap() {
   ).addTo(map);
 
   markerLayer = L.layerGroup().addTo(map);
+  userLocationLayer = L.layerGroup().addTo(map);
   addLegend();
   bindMapActions();
 
@@ -114,6 +119,63 @@ export function renderMap() {
   window.requestAnimationFrame(() => map.invalidateSize({ pan: false }));
 }
 
+
+export async function locateUser() {
+  if (!map) initMap();
+  if (userLocationRequestInFlight) return false;
+
+  const button = document.getElementById('btnUserLocation');
+  userLocationRequestInFlight = true;
+  setUserLocationButtonBusy(button, true);
+
+  try {
+    const position = await requestCurrentUserPosition();
+    showUserLocation(position);
+    return true;
+  } catch (error) {
+    showUserLocationError(error);
+    return false;
+  } finally {
+    userLocationRequestInFlight = false;
+    setUserLocationButtonBusy(button, false);
+  }
+}
+
+export function showUserLocation(position) {
+  if (!map) initMap();
+  const lat = Number(position?.latitude);
+  const lng = Number(position?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+  userLocationLayer?.clearLayers();
+  userLocationMarker = L.circleMarker([lat, lng], {
+    radius: 8.5,
+    weight: 3,
+    color: '#ffffff',
+    opacity: 1,
+    fillColor: '#0284c7',
+    fillOpacity: 1,
+    className: 'user-location-marker'
+  });
+
+  const accuracy = Number(position?.accuracy);
+  const accuracyText = Number.isFinite(accuracy)
+    ? `<div class="popup-muted">ความแม่นยำโดยประมาณ ${formatDistance(accuracy)}</div>`
+    : '';
+
+  userLocationMarker.bindPopup(`
+    <div class="map-popup user-location-popup">
+      <strong>ตำแหน่งของคุณ</strong>
+      ${accuracyText}
+      <div class="popup-muted">ตำแหน่งนี้แสดงเฉพาะในเบราว์เซอร์และไม่ได้ส่งไปบันทึกในระบบ</div>
+    </div>`, { maxWidth: 310, minWidth: 240 });
+
+  userLocationMarker.addTo(userLocationLayer);
+  map.setView([lat, lng], 16, { animate: true });
+  userLocationMarker.openPopup();
+  return true;
+}
+
 export function goHome() {
   if (!map) return;
   map.setView(HOME_VIEW.center, HOME_VIEW.zoom, { animate: false });
@@ -143,11 +205,13 @@ export function focusSystem(systemId) {
   scrollToSectionById('map-section', true);
   const latLng = marker.getLatLng();
 
-  window.setTimeout(() => {
-    map.invalidateSize({ pan: false });
-    map.setView(latLng, 16, { animate: true });
-    marker.openPopup();
-  }, 450);
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      map.invalidateSize({ pan: false });
+      map.setView(latLng, 16, { animate: true });
+      marker.openPopup();
+    });
+  });
 
   return true;
 }
@@ -334,6 +398,37 @@ function formatNumber(value) {
   if (isBlank(value)) return '-';
   const n = Number(value);
   return Number.isFinite(n) ? n.toLocaleString('th-TH') : escapeHtml(value);
+}
+
+function formatDistance(meters) {
+  const value = Math.max(0, Number(meters) || 0);
+  if (value >= 1000) return `${(value / 1000).toLocaleString('th-TH', { maximumFractionDigits: 1 })} กม.`;
+  return `${Math.round(value).toLocaleString('th-TH')} ม.`;
+}
+
+function setUserLocationButtonBusy(button, busy) {
+  if (!button) return;
+  button.disabled = busy;
+  button.setAttribute('aria-busy', String(busy));
+  const icon = button.querySelector('i');
+  const label = button.querySelector('[data-user-location-label]');
+  icon?.classList.toggle('fa-spin', busy);
+  if (label) label.textContent = busy ? 'กำลังค้นหา...' : 'ตำแหน่งฉัน';
+}
+
+function showUserLocationError(error) {
+  const text = userLocationErrorMessage(error);
+  if (window.Swal) {
+    Swal.fire({
+      icon: 'info',
+      title: 'ไม่สามารถใช้ตำแหน่งปัจจุบันได้',
+      text,
+      confirmButtonText: 'ปิด',
+      confirmButtonColor: '#0369a1'
+    });
+    return;
+  }
+  window.alert(text);
 }
 
 function isBlank(value) {

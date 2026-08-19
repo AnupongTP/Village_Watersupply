@@ -2,7 +2,7 @@ import { loadData } from './api.js';
 import { AppState } from './state.js';
 import { applyFilters, bindFilterEvents, buildFilterOptions } from './filters.js';
 import { renderDashboard } from './dashboard.js';
-import { initMap, renderMap, goHome, fitVisiblePoints } from './map.js';
+import { initMap, renderMap, fitVisiblePoints, locateUser } from './map.js';
 import { bindChartFilterEvents, renderCharts } from './charts.js';
 import { renderProblemList } from './problem-list.js';
 import { renderDataCompleteness } from './data-quality.js';
@@ -15,7 +15,8 @@ import {
   initSectionNavigation,
   initStickyMetrics,
   refreshStickyMetrics,
-  syncHashNavigation
+  syncHashNavigation,
+  initBackToTop
 } from './ui.js';
 
 document.addEventListener('DOMContentLoaded', initApp);
@@ -25,11 +26,12 @@ async function initApp() {
   initMobileFilters();
   initSectionNavigation();
   initStickyMetrics();
+  initBackToTop();
   bindFilterEvents(renderAll);
   bindChartFilterEvents(renderAll);
 
   document.getElementById('btnRefresh')?.addEventListener('click', reloadData);
-  document.getElementById('btnMapHome')?.addEventListener('click', goHome);
+  document.getElementById('btnUserLocation')?.addEventListener('click', locateUser);
   document.getElementById('btnMapFit')?.addEventListener('click', fitVisiblePoints);
 
   await reloadData();

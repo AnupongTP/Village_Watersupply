@@ -1,8 +1,39 @@
 # Changelog
 
-## Unreleased
+## Unreleased — 2026-08-19
+
+### Changed — Data Completeness modal layout
+- Reworked the Data Completeness detail modal into a fixed header / scrollable content / fixed footer structure.
+- Added a top-right `×` close action while retaining the bottom `ปิด` action.
+- Desktop issue rows now use compact `ระบบ / พื้นที่`, `ประเด็น`, and `การทำงาน` columns.
+- Mobile issue rows keep compact actions beside the record instead of placing a full-width Detail button on a separate row.
+- Mobile modal width now uses nearly the full viewport while preventing horizontal overflow.
+- Progressive-reveal footer is omitted entirely when a section has 20 or fewer rows; sections above 20 retain `แสดง X จาก Y รายการ` + `แสดงเพิ่มเติม`.
+
+### Accessibility / QA — Data Completeness modal
+- Added explicit list/section semantics and accessible close/action labels without exposing internal IDs.
+- Added Playwright coverage for fixed modal chrome, compact desktop columns, 390px mobile density, 360px action accessibility, and overflow boundaries.
 
 ### Added
+- Map toolbar action `ตำแหน่งฉัน` using browser Geolocation API only on explicit user action.
+- Distinct user-location marker and privacy notice; user coordinates are not persisted or sent to the data backend.
+- Floating `กลับด้านบน` control with reduced-motion handling and Leaflet-control collision avoidance.
+- Unit and browser regression coverage for user-location success/error handling and back-to-top behavior.
+
+### Changed
+- Removed the visible `กว๊านพะเยา` button from the Map toolbar; the internal home view remains a default/fallback map state.
+- Global Filter is no longer sticky; sticky UI is limited to Header + Section Navigation.
+- Data Completeness `แผนที่` closes the modal, scrolls to the Map, focuses the system marker, and opens its popup.
+- Data Completeness `รายละเอียด` automatically restores the previous modal context after the shared Drawer closes, including progressive-reveal counts and scroll position.
+- System map focus no longer depends on a fixed timeout before opening the marker popup.
+
+### Accessibility / Safety
+- Geolocation errors are explained in Thai for denied permission, unavailable position, timeout, unsupported browser, and insecure context.
+- Back-to-top honors `prefers-reduced-motion` and transfers focus to the page header before scrolling.
+- Drawer/modal sequencing avoids simultaneous focus traps.
+- Dashboard remains read-only.
+
+### Added — Cross-filter / Data Completeness
 - Global Dashboard search for user-facing system, village, area, and agency text.
 - Shared `waterQuantity` filter dimension.
 - Cross-filter interactions from District, System Type, Drinking Quality, and Water Quantity charts.

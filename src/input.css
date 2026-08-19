@@ -5,6 +5,9 @@
 
 @layer base {
   html { @apply scroll-smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
   body { @apply m-0; }
   button, select { font: inherit; }
   button { -webkit-tap-highlight-color: transparent; }

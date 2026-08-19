@@ -4,47 +4,90 @@
 (() => {
   // SweetAlert2 compatibility mock
   let swalContainer = null;
+  let swalOptions = null;
+  function applyCustomClass(node, value) {
+    const tokens = Array.isArray(value) ? value : String(value || '').split(/\s+/);
+    tokens.filter(Boolean).forEach(token => node.classList.add(token));
+  }
+
   window.Swal = {
     fire(options = {}) {
       window.Swal.close();
+      swalOptions = options;
+      document.body.classList.add('swal2-shown');
       swalContainer = document.createElement('div');
       swalContainer.className = 'swal2-container';
       swalContainer.style.cssText = 'position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:12px;background:rgba(15,23,42,.45)';
+
       const popup = document.createElement('div');
       popup.className = 'swal2-popup';
-      popup.style.cssText = `width:min(${typeof options.width === 'number' ? options.width + 'px' : (options.width || '32em')},calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;background:white;padding:20px;border-radius:14px;box-shadow:0 20px 45px rgba(15,23,42,.22)`;
+      applyCustomClass(popup, options.customClass?.popup);
+      popup.style.cssText = `position:relative;width:min(${typeof options.width === 'number' ? options.width + 'px' : (options.width || '32em')},calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;background:white;padding:20px;border-radius:14px;box-shadow:0 20px 45px rgba(15,23,42,.22)`;
+
+      if (options.showCloseButton) {
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'swal2-close';
+        applyCustomClass(close, options.customClass?.closeButton);
+        close.setAttribute('aria-label', 'ปิดหน้าต่างนี้');
+        close.innerHTML = options.closeButtonHtml || '&times;';
+        close.style.cssText = 'position:absolute;top:8px;right:8px;z-index:2;border:0;background:transparent;cursor:pointer';
+        close.addEventListener('click', () => window.Swal.close());
+        popup.appendChild(close);
+      }
+
       const title = document.createElement('h2');
       title.className = 'swal2-title';
+      applyCustomClass(title, options.customClass?.title);
       title.textContent = options.title || '';
       title.style.margin = '0 0 12px';
       popup.appendChild(title);
+
       if (options.text) {
         const text = document.createElement('p');
         text.textContent = options.text;
         popup.appendChild(text);
       }
+
       if (options.html) {
         const html = document.createElement('div');
         html.className = 'swal2-html-container';
+        applyCustomClass(html, options.customClass?.htmlContainer);
         html.innerHTML = options.html;
         popup.appendChild(html);
       }
+
       if (options.showConfirmButton !== false) {
+        const actions = document.createElement('div');
+        actions.className = 'swal2-actions';
+        applyCustomClass(actions, options.customClass?.actions);
+
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'swal2-confirm';
+        applyCustomClass(btn, options.customClass?.confirmButton);
         btn.textContent = options.confirmButtonText || 'ตกลง';
-        btn.style.cssText = 'display:block;margin:16px auto 0;padding:9px 18px;border:0;border-radius:8px;background:#0369a1;color:#fff;font:inherit';
+        if (options.buttonsStyling !== false) {
+          btn.style.cssText = `display:block;margin:16px auto 0;padding:9px 18px;border:0;border-radius:8px;background:${options.confirmButtonColor || '#0369a1'};color:#fff;font:inherit`;
+        }
         btn.addEventListener('click', () => window.Swal.close());
-        popup.appendChild(btn);
+        actions.appendChild(btn);
+        popup.appendChild(actions);
       }
+
       swalContainer.appendChild(popup);
       document.body.appendChild(swalContainer);
       options.didOpen?.(popup);
       return Promise.resolve({ isConfirmed: true });
     },
     close() {
+      const options = swalOptions;
+      const hadContainer = Boolean(swalContainer);
       swalContainer?.remove();
       swalContainer = null;
+      swalOptions = null;
+      document.body.classList.remove('swal2-shown');
+      if (hadContainer) options?.didClose?.();
     },
     showLoading() {}
   };
@@ -175,7 +218,7 @@
     _attach(map) {
       this.map=map;
       const n=document.createElement('button');
-      n.type='button'; n.className='qa-leaflet-marker'; n.setAttribute('aria-label','จุดระบบประปา');
+      n.type='button'; n.className=`qa-leaflet-marker ${this.opts.className || ''}`.trim(); n.setAttribute('aria-label', this.opts.className === 'user-location-marker' ? 'ตำแหน่งของคุณ' : 'จุดระบบประปา');
       const minLat=18.70,maxLat=20.00,minLng=99.40,maxLng=100.70;
       const x=((this.latlng.lng-minLng)/(maxLng-minLng))*92+4;
       const y=(1-(this.latlng.lat-minLat)/(maxLat-minLat))*88+6;

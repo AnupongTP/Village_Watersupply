@@ -839,10 +839,10 @@ Data correct
 
 ลำดับงานปัจจุบัน:
 
-1. Global Search + unified filter engine
-2. Chart cross-filter: District / System Type / Drinking Quality / Water Quantity
-3. Active filter chips + deterministic clear semantics
-4. Data completeness progressive reveal + Detail/Map actions
+1. Global Filter non-sticky + anchor recalibration
+2. Map toolbar: ตำแหน่งฉัน + ดูทุกจุด (เอาปุ่มกว๊านพะเยาออก)
+3. Data completeness Map focus + Detail context restoration
+4. Floating Back-to-top
 5. Playwright functional/regression QA
 6. Responsive + visual screenshot QA ทุก breakpoint
 7. GitHub Actions + Real API smoke
@@ -1015,8 +1015,6 @@ Action:
 
 ---
 
-Last updated: 2026-08-19 (Global Search, unified cross-filter, interactive charts, data completeness progressive detail)
-
 ---
 
 ## 29) Deployment Path Safety — LOCKED
@@ -1031,4 +1029,89 @@ Dashboard ต้องทำงานได้ทั้งเมื่อ deploy
 
 ---
 
-Last updated: 2026-08-19 (deployment-path-safe mock data URLs)
+---
+
+## 30) Map User Location — LOCKED
+
+Map toolbar ต้องมี:
+- `ตำแหน่งฉัน`
+- `ดูทุกจุด`
+
+ปุ่ม `กว๊านพะเยา` ไม่แสดงใน Map toolbar แล้ว แต่ Home view ภายในยังใช้เป็น default/fallback ได้
+
+`ตำแหน่งฉัน`:
+- ขอ browser geolocation เฉพาะเมื่อผู้ใช้กด
+- แสดง marker ที่แตกต่างจาก marker ระบบประปา
+- zoom ไปตำแหน่งผู้ใช้
+- ไม่บันทึกพิกัดผู้ใช้ลง Google Sheet / Apps Script / storage
+- ไม่ส่งพิกัดผู้ใช้ไป backend
+- แยกข้อความ error สำหรับ permission denied / unavailable / timeout / insecure context
+- ต้องรองรับ secure-context requirement ของ browser (HTTPS หรือ localhost)
+
+---
+
+## 31) Sticky / Back-to-top Interaction — LOCKED
+
+Sticky UI:
+- Sticky เฉพาะ Header + Section Navigation
+- Global Filter ต้องอยู่ใน normal document flow และห้าม sticky/fixed
+- Anchor offset คำนวณจาก Header stack เท่านั้น
+
+Floating Back-to-top:
+- ซ่อนเมื่ออยู่ใกล้ด้านบน
+- แสดงเมื่อเลื่อนลงเกิน threshold ที่เหมาะสม
+- อยู่มุมขวาล่างและรองรับ mobile safe area
+- กดแล้วกลับด้านบน
+- เคารพ `prefers-reduced-motion`
+- ต้องอยู่ต่ำกว่า Drawer / SweetAlert layer
+- ต้องหลบ Leaflet bottom-right controls ถ้าพื้นที่ชนกัน
+
+---
+
+## 32) Data Completeness Context Continuity — LOCKED
+
+Action `แผนที่`:
+- ปิด Data Completeness modal
+- scroll ไป `#map-section`
+- focus ระบบ
+- zoom และเปิด Map Popup
+
+Action `รายละเอียด`:
+- ใช้ shared Detail Drawer
+- ผู้ใช้ไม่ต้องเปิด Data Completeness modal ใหม่เองหลังปิด Drawer
+- ต้อง restore modal เดิมอัตโนมัติ
+- ต้องคงจำนวนรายการที่กด `แสดงเพิ่มเติม` ของแต่ละหมวด
+- ต้องคง scroll position ของ modal เท่าที่ browser รองรับ
+- ต้องไม่สร้าง focus trap ซ้อนระหว่าง SweetAlert modal กับ Drawer
+
+---
+
+---
+
+## 33) Data Completeness Modal Layout — LOCKED
+
+Modal `รายละเอียดความครบถ้วนของข้อมูล` เป็น read-only inspection surface และต้องเน้น information density โดยไม่ลดความสามารถในการเข้าถึงข้อมูล
+
+โครงสร้าง:
+- Header/title อยู่เหนือพื้นที่ scroll และมีปุ่ม `×` มุมขวาบน
+- Content list เป็นพื้นที่ที่ scroll เอง
+- Footer ปุ่ม `ปิด` อยู่ล่างและไม่เลื่อนหายไปพร้อมรายการ
+- Desktop ใช้ compact 3-column layout: `ระบบ / พื้นที่` | `ประเด็น` | `การทำงาน`
+- Mobile ใช้ compact row/card โดย action อยู่ข้างเนื้อหา ไม่แยกเป็นปุ่มเต็มบรรทัดต่อรายการ
+- Mobile modal ใช้ความกว้างเกือบเต็ม viewport แต่ต้องไม่มี horizontal overflow
+
+Progressive reveal:
+- ถ้าหมวดมี `<= 20` รายการ ไม่แสดง footer `แสดงเพิ่มเติม`
+- ถ้ามี `> 20` รายการ แสดง `แสดง X จาก Y รายการ` และ `แสดงเพิ่มเติม`
+- เพิ่มครั้งละไม่เกิน 20 จนครบ แล้วซ่อนปุ่ม `แสดงเพิ่มเติม`
+
+Action:
+- `รายละเอียด` ต้องใช้ shared Drawer และกลับ modal context เดิมหลังปิด Drawer
+- `แผนที่` แสดงเฉพาะระบบที่มี usable coordinate และต้อง focus Map ตามกฎเดิม
+- Accessible name ห้ามมี internal ID หรือ database code
+
+QA ต้องตรวจอย่างน้อย desktop + mobile 390px + mobile 360px สำหรับ clipping, horizontal overflow, action placement, modal scroll boundary และ focus behavior
+
+---
+
+Last updated: 2026-08-19 (cross-filter, user location, non-sticky filters, data completeness context continuity + compact modal layout)

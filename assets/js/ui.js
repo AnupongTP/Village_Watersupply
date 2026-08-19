@@ -1,5 +1,6 @@
 let resizeObserver;
 let resizeRaf = 0;
+let backToTopRaf = 0;
 
 export function showLoading(message = 'กำลังโหลดข้อมูล...') {
   if (!window.Swal) return null;
@@ -96,13 +97,11 @@ export function initSectionNavigation() {
 
 export function initStickyMetrics() {
   const header = document.getElementById('appHeader');
-  const filter = document.getElementById('filters');
 
   resizeObserver?.disconnect();
   if ('ResizeObserver' in window) {
     resizeObserver = new ResizeObserver(scheduleMetricRefresh);
     if (header) resizeObserver.observe(header);
-    if (filter) resizeObserver.observe(filter);
   }
 
   window.addEventListener('resize', scheduleMetricRefresh, { passive: true });
@@ -112,14 +111,8 @@ export function initStickyMetrics() {
 export function refreshStickyMetrics() {
   const root = document.documentElement;
   const header = document.getElementById('appHeader');
-  const filter = document.getElementById('filters');
-
   const headerHeight = Math.ceil(header?.getBoundingClientRect().height || 0);
-  const filterIsSticky = filter && getComputedStyle(filter).position === 'sticky';
-  const filterHeight = filterIsSticky ? Math.ceil(filter.getBoundingClientRect().height + 8) : 0;
-
   root.style.setProperty('--app-header-height', `${headerHeight}px`);
-  root.style.setProperty('--filter-sticky-height', `${filterHeight}px`);
 }
 
 export function syncHashNavigation({ smooth = false } = {}) {
@@ -147,12 +140,73 @@ export function scrollToSectionById(id, smooth = true) {
   return true;
 }
 
+export function initBackToTop() {
+  const button = document.getElementById('btnBackToTop');
+  if (!button) return;
+
+  const update = () => {
+    backToTopRaf = 0;
+    const threshold = Math.max(480, window.innerHeight * 0.85);
+    const shouldShow = window.scrollY > threshold;
+    button.classList.toggle('hidden', !shouldShow);
+    button.classList.toggle('flex', shouldShow);
+    button.setAttribute('aria-hidden', String(!shouldShow));
+
+    if (shouldShow) {
+      window.requestAnimationFrame(() => avoidLeafletControlOverlap(button));
+    } else {
+      button.style.transform = '';
+    }
+  };
+
+  const schedule = () => {
+    if (backToTopRaf) return;
+    backToTopRaf = window.requestAnimationFrame(update);
+  };
+
+  button.addEventListener('click', () => {
+    const header = document.getElementById('appHeader');
+    header?.focus({ preventScroll: true });
+    window.scrollTo({
+      top: 0,
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth'
+    });
+  });
+
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule, { passive: true });
+  update();
+}
+
 function scrollToElement(target, smooth) {
   target.scrollIntoView({
-    behavior: smooth ? 'smooth' : 'auto',
+    behavior: smooth && !prefersReducedMotion() ? 'smooth' : 'auto',
     block: 'start',
     inline: 'nearest'
   });
+}
+
+function avoidLeafletControlOverlap(button) {
+  button.style.transform = '';
+  const buttonRect = button.getBoundingClientRect();
+  const controls = [...document.querySelectorAll('#waterMap .leaflet-bottom.leaflet-right')]
+    .filter(element => element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0);
+
+  let shift = 0;
+  for (const control of controls) {
+    const rect = control.getBoundingClientRect();
+    if (!rectanglesOverlap(buttonRect, rect)) continue;
+    shift = Math.max(shift, buttonRect.bottom - rect.top + 12);
+  }
+  if (shift > 0) button.style.transform = `translateY(-${Math.ceil(shift)}px)`;
+}
+
+function rectanglesOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function prefersReducedMotion() {
+  return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 }
 
 function scheduleMetricRefresh() {

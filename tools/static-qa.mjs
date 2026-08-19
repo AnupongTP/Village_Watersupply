@@ -27,6 +27,10 @@ assert(index.includes('assets/css/app.css'), 'app.css link is required');
 assert(index.includes('id="filterSearch"'), 'Global Dashboard search control is required');
 assert(index.includes('id="activeFilterChips"'), 'Active filter chips container is required');
 assert(index.includes('คุณภาพน้ำและปริมาณน้ำโดยรวม'), 'Overall water quality/quantity section heading is required');
+assert(index.includes('id="btnUserLocation"'), 'Map toolbar user-location action is required');
+assert(!index.includes('id="btnMapHome"'), 'Old Phayao home toolbar button must be removed');
+assert(index.includes('id="btnBackToTop"'), 'Floating back-to-top control is required');
+assert(!/id="filters"[^>]*xl:sticky/.test(index), 'Global Filter must remain in normal document flow, not sticky');
 
 const jsFiles = walk('assets/js').filter(f => f.endsWith('.js'));
 const allJs = jsFiles.map(f => read(f)).join('\n');
@@ -62,11 +66,26 @@ assert(completenessSource.includes('ISSUE_PAGE_SIZE'), 'Data completeness progre
 assert(completenessSource.includes('data-issue-more'), 'Data completeness show-more action is required');
 assert(completenessSource.includes('data-issue-action="detail"'), 'Data completeness Detail action is required');
 assert(completenessSource.includes('data-issue-action="map"'), 'Data completeness Map action is required');
+assert(completenessSource.includes('showCloseButton: true'), 'Data completeness modal must expose a top close action');
+assert(completenessSource.includes('issue-modal-columns'), 'Data completeness desktop column header is required');
+assert(completenessSource.includes('issue-modal-row-problem'), 'Data completeness compact issue column is required');
+assert(completenessSource.includes('issue-modal-actions'), 'Data completeness compact row actions are required');
 
 const mapSource = read('assets/js/map.js');
 assert(mapSource.includes('data-map-action="detail"'), 'Map popup must expose Details action');
 assert(mapSource.includes('data-map-action="navigate"'), 'Map popup must expose Navigate action');
 assert(mapSource.includes("buildSystemDetailHtml"), 'Map must use shared detail renderer');
+assert(mapSource.includes('requestCurrentUserPosition'), 'Map user-location action must use the geolocation helper');
+assert(mapSource.includes("className: 'user-location-marker'"), 'Map must render a distinct user-location marker');
+
+const uiSource = read('assets/js/ui.js');
+assert(uiSource.includes('initBackToTop'), 'Back-to-top initialization is required');
+assert(!uiSource.includes('--filter-sticky-height'), 'Sticky metrics must not depend on Global Filter height');
+
+const drawerSource = read('assets/js/drawer.js');
+assert(drawerSource.includes('drawerAfterClose'), 'Drawer close lifecycle hook is required for modal context restoration');
+assert(completenessSource.includes('captureIssueModalState'), 'Data completeness must preserve progressive-reveal and scroll context');
+assert(completenessSource.includes('onClose: () => showIssueDetails'), 'Data completeness detail must restore its modal after the Drawer closes');
 
 const watchSource = read('assets/js/problem-list.js');
 assert(watchSource.includes("buildSystemDetailHtml"), 'Watchlist must use shared detail renderer');

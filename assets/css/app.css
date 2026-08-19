@@ -1,7 +1,6 @@
 /* Library and edge-case overrides only. Layout/responsive lives in Tailwind. */
 :root {
   --app-header-height: 108px;
-  --filter-sticky-height: 0px;
   --scroll-gap: 14px;
 }
 
@@ -13,12 +12,8 @@ body.drawer-open { overflow: hidden; }
 }
 .section-nav-scroll::-webkit-scrollbar { display: none; }
 
-.filter-shell {
-  top: calc(var(--app-header-height) + 8px);
-}
-
 .scroll-target {
-  scroll-margin-top: calc(var(--app-header-height) + var(--filter-sticky-height) + var(--scroll-gap));
+  scroll-margin-top: calc(var(--app-header-height) + var(--scroll-gap));
 }
 
 /* Explicit stacking context prevents Leaflet panes/controls from escaping over sticky UI. */
@@ -116,28 +111,245 @@ body.drawer-open { overflow: hidden; }
 
 .swal2-popup { font-family: "Sarabun", sans-serif !important; border-radius: 14px !important; }
 .swal2-title { color: #1e293b !important; font-size: clamp(1.2rem, 3vw, 1.65rem) !important; }
-.swal-data-issues { max-height: min(64vh, 620px); overflow-y: auto; padding-right: 3px; text-align: left; }
-.issue-modal-section + .issue-modal-section { margin-top: 14px; }
-.issue-modal-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; color: #334155; font-size: 12px; font-weight: 700; }
-.issue-modal-title span { min-width: 30px; padding: 2px 7px; border-radius: 999px; background: #f1f5f9; color: #475569; text-align: center; font-size: 10px; }
-.issue-modal-list { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 9px; }
-.issue-modal-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #f1f5f9; color: #475569; font-size: 10px; }
+
+/* Data Completeness modal: SweetAlert-specific layout. Header/footer stay visible;
+   only the issue list scrolls. This keeps long read-only lists usable on mobile. */
+.data-completeness-popup {
+  width: min(1040px, calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+  max-height: min(92vh, 820px) !important;
+  max-height: min(92dvh, 820px) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.data-completeness-title {
+  flex: 0 0 auto;
+  margin: 0 !important;
+  padding: 20px 64px 14px 20px !important;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+  text-align: left !important;
+  font-size: clamp(1.05rem, 2vw, 1.35rem) !important;
+  line-height: 1.35 !important;
+}
+.data-completeness-html {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 !important;
+  padding: 0 20px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.data-completeness-actions {
+  flex: 0 0 auto;
+  width: 100%;
+  margin: 0 !important;
+  padding: 12px 20px 18px !important;
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+.data-completeness-close { min-width: 72px; }
+.data-completeness-x {
+  top: 10px !important;
+  right: 10px !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 10px !important;
+  color: #64748b !important;
+  font-size: 30px !important;
+  line-height: 1 !important;
+}
+.data-completeness-x:hover { background: #f1f5f9 !important; color: #0f172a !important; }
+.data-completeness-x:focus-visible { outline: 2px solid #0ea5e9 !important; outline-offset: 2px; }
+
+.swal-data-issues {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow-y: auto;
+  padding: 14px 4px 18px 0;
+  text-align: left;
+}
+.issue-modal-section + .issue-modal-section { margin-top: 18px; }
+.issue-modal-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 7px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+.issue-modal-title strong { min-width: 0; line-height: 1.45; }
+.issue-modal-title span {
+  min-width: 32px;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  text-align: center;
+  font-size: 10px;
+}
+.issue-modal-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px) auto;
+  gap: 12px;
+  padding: 0 10px 6px;
+  color: #94a3b8;
+  font-size: 9px;
+  font-weight: 600;
+}
+.issue-modal-columns span:last-child { text-align: right; }
+.issue-modal-list {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.issue-modal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px) auto;
+  grid-template-areas: "main problem actions";
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #475569;
+  font-size: 10px;
+}
 .issue-modal-row:last-child { border-bottom: 0; }
-.issue-modal-row small { color: #94a3b8; }
-.issue-modal-row-main { min-width: 0; flex: 1 1 280px; }
-.issue-modal-row-side { min-width: 180px; display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-end; gap: 7px; text-align: right; }
-.issue-modal-row-side .row-actions { flex-wrap: wrap; }
+.issue-modal-row-main { grid-area: main; min-width: 0; }
+.issue-modal-row-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.issue-modal-row-main small {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: #94a3b8;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.issue-modal-row-problem { grid-area: problem; min-width: 0; }
+.issue-modal-row-problem span {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 4px 8px;
+  color: #64748b;
+  font-size: 9px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.issue-modal-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  white-space: nowrap;
+}
+.issue-modal-actions .action-button { min-height: 34px; padding-inline: 9px; }
+.issue-modal-empty {
+  padding: 18px 12px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 10px;
+}
+.issue-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 7px;
+  padding-inline: 2px;
+}
 .issue-modal-more { margin: 0; color: #94a3b8; font-size: 9px; }
-.issue-modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 5px; }
+.issue-modal-more-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #0369a1;
+  font: 700 10px/1.2 "Sarabun", sans-serif;
+  cursor: pointer;
+}
+.issue-modal-more-button:hover { background: #f0f9ff; }
+.issue-modal-more-button:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
 
 @media (max-width: 767px) {
-  :root { --filter-sticky-height: 0px !important; }
   .leaflet-control-attribution { max-width: 88vw; font-size: 8px !important; }
   .map-legend { display: none; }
-  .issue-modal-row { flex-wrap: wrap; }
-  .issue-modal-row-side { width: 100%; min-width: 0; align-items: flex-start; text-align: left; }
-  .issue-modal-footer { align-items: flex-start; }
+
+  .data-completeness-popup {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100vh - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    border-radius: 12px !important;
+  }
+  .data-completeness-title {
+    padding: 15px 50px 11px 12px !important;
+    font-size: 1rem !important;
+  }
+  .data-completeness-html { padding: 0 10px !important; }
+  .data-completeness-actions { padding: 9px 12px 11px !important; }
+  .data-completeness-x {
+    top: 5px !important;
+    right: 5px !important;
+    width: 38px !important;
+    height: 38px !important;
+  }
+  .swal-data-issues { padding: 10px 2px 14px 0; }
+  .issue-modal-section + .issue-modal-section { margin-top: 14px; }
+  .issue-modal-title { margin-bottom: 6px; font-size: 11px; }
+  .issue-modal-columns { display: none; }
+  .issue-modal-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "main actions"
+      "problem actions";
+    align-items: start;
+    gap: 4px 8px;
+    min-height: 0;
+    padding: 8px;
+  }
+  .issue-modal-row-main strong { font-size: 10.5px; }
+  .issue-modal-row-main small { font-size: 8.5px; }
+  .issue-modal-row-problem span { padding: 3px 7px; font-size: 8.5px; }
+  .issue-modal-actions {
+    align-self: center;
+    gap: 5px;
+  }
+  .issue-modal-actions .action-button {
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: 9px;
+  }
+  .issue-modal-footer { margin-top: 6px; }
+  .issue-modal-more { font-size: 8.5px; }
+  .issue-modal-more-button { min-height: 32px; font-size: 9px; }
 }
+
 
 /* Leaflet popup actions: library-specific interaction styling. */
 .map-popup-actions {
@@ -225,4 +437,18 @@ body.drawer-open { overflow: hidden; }
 @media (max-width: 420px) {
   .detail-document-card-layout { flex-direction: column; }
   .detail-document-button { width: 100%; }
+}
+
+
+/* User geolocation marker is Map/Leaflet-specific and never persisted server-side. */
+.user-location-marker {
+  filter: drop-shadow(0 2px 4px rgba(2, 132, 199, .45));
+}
+.user-location-popup strong { color: #0369a1; }
+
+/* Floating back-to-top stays below modal/drawer layers and disappears while overlays are active. */
+body.drawer-open #btnBackToTop,
+body.swal2-shown #btnBackToTop {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
