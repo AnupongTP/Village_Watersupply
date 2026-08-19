@@ -9,10 +9,14 @@ import {
   safeDisplayText
 } from './labels.js';
 import { scrollToSectionById } from './ui.js';
+import { openDrawer } from './drawer.js';
+import { buildSystemDetailHtml } from './system-detail.js';
+import { openNavigation } from './navigation.js';
 
 let map;
 let markerLayer;
 let markerBySystemId = new Map();
+let mapActionsBound = false;
 
 const HOME_VIEW = { center: [19.171194, 99.874972], zoom: 13 };
 
@@ -57,10 +61,12 @@ export function initMap() {
 
   markerLayer = L.layerGroup().addTo(map);
   addLegend();
+  bindMapActions();
 
   const resizeObserver = new ResizeObserver(() => {
     window.requestAnimationFrame(() => map?.invalidateSize({ pan: false }));
   });
+
   const mapEl = document.getElementById('waterMap');
   if (mapEl) resizeObserver.observe(mapEl);
 }
@@ -88,7 +94,12 @@ export function renderMap() {
       className: 'water-system-marker'
     });
 
-    marker.bindPopup(buildPopup(system), { maxWidth: 315, autoPanPadding: [24, 24] });
+    marker.bindPopup(buildPopup(system), {
+      maxWidth: 350,
+      minWidth: 260,
+      autoPanPadding: [24, 24]
+    });
+
     marker.addTo(markerLayer);
     markerBySystemId.set(String(system.system_id), marker);
     bounds.push([lat, lng]);
@@ -110,6 +121,7 @@ export function goHome() {
 
 export function fitVisiblePoints() {
   if (!map) return;
+
   const bounds = AppState.filtered.waterSystems
     .filter(hasUsableCoordinate)
     .map(system => [Number(system.latitude), Number(system.longitude)]);
@@ -118,11 +130,13 @@ export function fitVisiblePoints() {
     goHome();
     return;
   }
+
   fitBoundsFromArray(bounds);
 }
 
 export function focusSystem(systemId) {
   if (!map) return false;
+
   const marker = markerBySystemId.get(String(systemId));
   if (!marker) return false;
 
@@ -134,6 +148,7 @@ export function focusSystem(systemId) {
     map.setView(latLng, 16, { animate: true });
     marker.openPopup();
   }, 450);
+
   return true;
 }
 
@@ -143,34 +158,93 @@ export function isCoordinatePresent(system) {
 
 export function isCoordinateNumeric(system) {
   if (!isCoordinatePresent(system)) return false;
+
   const lat = Number(system.latitude);
   const lng = Number(system.longitude);
-  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+
+  return Number.isFinite(lat) &&
+         Number.isFinite(lng) &&
+         lat >= -90 && lat <= 90 &&
+         lng >= -180 && lng <= 180;
 }
 
 export function isCoordinateInPhayao(system) {
   if (!isCoordinateNumeric(system)) return false;
+
   const lat = Number(system.latitude);
   const lng = Number(system.longitude);
-  return lat >= PHAYAO_BOUNDS.minLat && lat <= PHAYAO_BOUNDS.maxLat && lng >= PHAYAO_BOUNDS.minLng && lng <= PHAYAO_BOUNDS.maxLng;
+
+  return lat >= PHAYAO_BOUNDS.minLat &&
+         lat <= PHAYAO_BOUNDS.maxLat &&
+         lng >= PHAYAO_BOUNDS.minLng &&
+         lng <= PHAYAO_BOUNDS.maxLng;
 }
 
 export function hasUsableCoordinate(system) {
   return isCoordinateInPhayao(system);
 }
 
+function bindMapActions() {
+  if (mapActionsBound) return;
+
+  const mapEl = document.getElementById('waterMap');
+  if (!mapEl) return;
+
+  mapActionsBound = true;
+
+  mapEl.addEventListener('click', event => {
+    const button = event.target.closest('[data-map-action]');
+    if (!button || !mapEl.contains(button) || button.disabled) return;
+
+    const system = findSystem(button.dataset.systemId);
+    if (!system) return;
+
+    const village = AppState.data.villages.find(v => v.village_id === system.village_id);
+
+    if (button.dataset.mapAction === 'detail') {
+      map?.closePopup();
+      openDrawer(buildSystemDetailHtml(system, village));
+      return;
+    }
+
+    if (button.dataset.mapAction === 'navigate') {
+      openNavigation({
+        latitude: system.latitude,
+        longitude: system.longitude,
+        label: systemDisplayName(system, village)
+      });
+    }
+  });
+}
+
+function findSystem(systemId) {
+  return AppState.data.waterSystems.find(system => String(system.system_id) === String(systemId));
+}
+
 function fitBoundsFromArray(bounds) {
   if (!map || !bounds.length) return;
+
   if (bounds.length === 1) {
     map.setView(bounds[0], 15, { animate: false });
     return;
   }
-  map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14, animate: false });
+
+  map.fitBounds(bounds, {
+    padding: [28, 28],
+    maxZoom: 14,
+    animate: false
+  });
 }
 
 function hasActiveMapFilter() {
   const f = AppState.filters || {};
-  return Boolean(f.district || f.localAuthority || f.systemType || f.operationalStatus || f.drinkingWaterQuality);
+  return Boolean(
+    f.district ||
+    f.localAuthority ||
+    f.systemType ||
+    f.operationalStatus ||
+    f.drinkingWaterQuality
+  );
 }
 
 function getMarkerColor(system) {
@@ -183,9 +257,12 @@ function getMarkerColor(system) {
 
 function buildPopup(system) {
   const village = AppState.data.villages.find(v => v.village_id === system.village_id);
+  const displayName = systemDisplayName(system, village);
+  const usableCoordinate = hasUsableCoordinate(system);
+
   return `
     <div class="map-popup">
-      <strong>${escapeHtml(systemDisplayName(system, village))}</strong>
+      <strong>${escapeHtml(displayName)}</strong>
       <div class="popup-muted">${escapeHtml(villageDisplayName(village))}</div>
       <div class="popup-muted">${escapeHtml(areaLabel(village))}</div>
       <hr>
@@ -194,12 +271,36 @@ function buildPopup(system) {
       <div>คุณภาพน้ำดื่ม: ${escapeHtml(qualityLabel(system.drinking_water_quality))}</div>
       <div>ปริมาณน้ำ: ${escapeHtml(quantityLabel(system.water_quantity))}</div>
       <div>ครัวเรือนรับน้ำ: ${formatNumber(system.households_served)}</div>
+      <div class="map-popup-actions">
+        <button
+          type="button"
+          class="map-popup-action map-popup-action-secondary"
+          data-map-action="detail"
+          data-system-id="${escapeHtml(system.system_id)}"
+          aria-label="ดูรายละเอียด ${escapeHtml(displayName)}"
+        >
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          รายละเอียด
+        </button>
+        <button
+          type="button"
+          class="map-popup-action map-popup-action-primary"
+          data-map-action="navigate"
+          data-system-id="${escapeHtml(system.system_id)}"
+          ${usableCoordinate ? '' : 'disabled'}
+          aria-label="นำทางไปยัง ${escapeHtml(displayName)}"
+        >
+          <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i>
+          นำทาง
+        </button>
+      </div>
     </div>`;
 }
 
 function addLegend() {
   const Legend = L.Control.extend({
     options: { position: 'bottomright' },
+
     onAdd() {
       const div = L.DomUtil.create('div', 'map-legend');
       div.innerHTML = `
@@ -212,6 +313,7 @@ function addLegend() {
       return div;
     }
   });
+
   map.addControl(new Legend());
 }
 
@@ -232,7 +334,10 @@ function formatNumber(value) {
   return Number.isFinite(n) ? n.toLocaleString('th-TH') : escapeHtml(value);
 }
 
-function isBlank(value) { return value === '' || value === null || value === undefined; }
+function isBlank(value) {
+  return value === '' || value === null || value === undefined;
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')

@@ -131,3 +131,91 @@ body.drawer-open { overflow: hidden; }
   .leaflet-control-attribution { max-width: 88vw; font-size: 8px !important; }
   .map-legend { display: none; }
 }
+
+/* Leaflet popup actions: library-specific interaction styling. */
+.map-popup-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+.map-popup-action {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font: 700 12px/1 "Sarabun", sans-serif;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.map-popup-action:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+.map-popup-action-secondary { background: #fff; color: #334155; }
+.map-popup-action-secondary:hover { border-color: #7dd3fc; background: #f0f9ff; }
+.map-popup-action-primary { border-color: #0284c7; background: #0369a1; color: #fff; }
+.map-popup-action-primary:hover { background: #075985; }
+.map-popup-action:disabled { cursor: not-allowed; opacity: .5; }
+
+/* Drawer document preview card. It is intentionally component-specific; page layout remains Tailwind-first. */
+.detail-document-card {
+  padding: 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  background: rgba(240, 249, 255, .72);
+}
+.detail-document-card-layout { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.detail-document-card-copy { min-width: 0; }
+.detail-document-eyebrow { margin: 0; color: #0369a1; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.detail-document-title { margin: 4px 0 0; color: #1e293b; font-size: 14px; font-weight: 700; }
+.detail-document-note { margin: 4px 0 0; color: #64748b; font-size: 10px; line-height: 1.5; }
+.detail-document-button {
+  min-height: 40px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid #0284c7;
+  border-radius: 8px;
+  background: #fff;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.detail-document-button:hover { background: #e0f2fe; }
+.detail-document-button:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
+
+/* SweetAlert navigation chooser: external-library-specific styling. */
+.navigation-chooser { display: grid; gap: 8px; text-align: left; }
+.navigation-choice {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  text-align: left;
+  font: 600 14px/1.35 "Sarabun", sans-serif;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.navigation-choice:hover { border-color: #7dd3fc; background: #f0f9ff; }
+.navigation-choice:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
+.navigation-choice-icon { width: 18px; margin-right: 8px; color: #475569; text-align: center; }
+.navigation-choice-icon-google { color: #0369a1; }
+
+@media (max-width: 420px) {
+  .detail-document-card-layout { flex-direction: column; }
+  .detail-document-button { width: 100%; }
+}

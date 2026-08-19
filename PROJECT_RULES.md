@@ -769,12 +769,12 @@ Data correct
 
 ลำดับงานปัจจุบัน:
 
-1. Production Tailwind build
-2. Desktop stacking / Map overlap bug
-3. Sticky offsets / anchor behavior
-4. Responsive architecture Desktop / Tablet / Mobile
-5. Visual UX polish
-6. Playwright QA ใหม่ทั้งหมด
+1. Map Popup actions: รายละเอียด + นำทาง
+2. Shared system-detail module
+3. Document preview-first behavior
+4. GitHub Actions + Playwright E2E บน browser จริง
+5. Real API smoke test ผ่าน GitHub Secret
+6. Responsive / Visual regression ทุก breakpoint
 7. Release Candidate ใหม่
 
 ห้ามรื้อ:
@@ -786,4 +786,115 @@ Data correct
 
 ---
 
-Last updated: 2026-08-19 (RC3 presentation-layer hardening)
+## 23) Map Popup Actions — LOCKED
+
+Map Popup เป็นข้อมูลสรุป ไม่ใช่ Detail View เต็มรูปแบบ
+
+ต้องมี action เมื่อระบบมีพิกัดใช้งานได้:
+- `รายละเอียด` → เปิด Detail Drawer ตัวเดียวกับ Watchlist
+- `นำทาง` → เปิด navigation flow
+
+กฎ:
+- Watchlist และ Map Popup ต้องใช้ shared detail renderer เดียวกัน
+- ห้าม copy markup ของ Drawer แยกหลาย component
+- Shared renderer อยู่ใน `assets/js/system-detail.js`
+- ปุ่มนำทางห้ามสร้าง URL จาก blank/invalid coordinate
+- internal ID ห้ามแสดงใน popup หรือ accessible name
+
+Desktop navigation:
+- กด `นำทาง` แล้วเปิด Google Maps Directions ใน tab ใหม่
+- destination ต้องเป็น latitude/longitude ของระบบนั้น
+
+Mobile navigation:
+- กด `นำทาง` แล้วแสดงตัวเลือก navigation ก่อน
+- ต้องมี Google Maps
+- ต้องมีตัวเลือกแอปแผนที่ของระบบ/แพลตฟอร์มเมื่อรองรับ
+- ต้องมี Google Maps บนเว็บเป็น fallback
+- ห้ามอ้างว่า browser สามารถตรวจ installed navigation apps ได้ครบทุกแอป
+
+---
+
+## 24) Document Reference / Preview — LOCKED
+
+ถ้าระบบมี `transfer_document_url` หรือ document URL ที่ปลอดภัย:
+- แสดง `เอกสารอ้างอิง` ใกล้ด้านบนของ Detail Drawer หลัง title/status
+- ไม่มีเอกสาร → ไม่ render document card
+- CTA ใช้ข้อความ `ดูเอกสาร`
+- เปิดใน tab ใหม่
+- ไม่มี `download` attribute
+- ทุก URL ต้องผ่าน HTTP/HTTPS allowlist validation
+
+หลักการคือ **Preview-first ไม่ใช่ Download-first**
+
+ข้อมูลปัจจุบันมี public PDF จาก `info.dla.go.th` ซึ่ง server ต้นทางอาจบังคับ download
+Frontend จึง normalize public PDF ไปยัง browser-based document viewer สำหรับ preview ก่อน
+และต้องมี regression test สำหรับ URL normalization
+
+Google Drive / Google Docs URLs:
+- normalize ไป `/preview` เมื่อทำได้
+
+ห้าม:
+- execute javascript/data URI
+- auto download เมื่อเปิด Drawer
+- embed URL ที่ไม่ผ่าน validation
+
+---
+
+## 25) GitHub Actions / CI — LOCKED
+
+Production Candidate ต้องผ่าน GitHub Actions เพิ่มจาก local/sandbox QA
+
+CI หลักต้อง:
+1. Checkout repository
+2. Setup Node LTS
+3. Install dependencies แบบ reproducible (`npm ci` เมื่อมี lockfile)
+4. Build Tailwind production CSS
+5. Run unit/static tests
+6. Install Chromium + system dependencies
+7. Start local HTTP server ผ่าน Playwright `webServer`
+8. Run Playwright E2E
+9. Upload Playwright report / screenshots / traces เมื่อ fail หรือเพื่อ review
+
+Playwright CI ต้องใช้ Chromium จริงบน GitHub-hosted runner และ workers=1 เพื่อความเสถียร
+
+ต้องมี test สำหรับ:
+- Initial load
+- Console/page errors
+- Filter + cascading + reset
+- Responsiveทุก viewport ที่ล็อกไว้
+- Map/Leaflet stacking
+- Popup รายละเอียด
+- Popup navigation
+- Mobile navigation chooser
+- Watchlist scroll
+- Drawer
+- Document preview card
+- Presentation code/internal-ID leakage
+- Anchors / sticky offsets / horizontal overflow
+
+ถ้า GitHub Actions fail:
+- ห้ามเรียก Candidate ว่า QA ผ่าน
+- แก้แล้วต้องรัน regression ใหม่
+
+---
+
+## 26) Real API Smoke Test — LOCKED
+
+Google Apps Script URL จริงต้องเก็บใน GitHub Actions Secret:
+
+`APPS_SCRIPT_API_URL`
+
+ห้าม commit URL จริงลง repository config สำหรับ CI
+
+Real API smoke workflow ต้อง:
+- ใช้ `GET` เท่านั้น
+- ไม่แก้ข้อมูล
+- ตรวจ HTTP success
+- ตรวจ JSON schema: `villages`, `waterSystems`, `waterSources` ต้องเป็น arrays
+- ตรวจ `success !== false`
+- ไม่ print secret URL ลง logs
+- แยกจาก deterministic mock-data regression เพื่อไม่ให้ external service ทำ CI หลัก flaky โดยไม่จำเป็น
+
+---
+
+Last updated: 2026-08-19 (RC4 map actions, document preview, GitHub Actions)

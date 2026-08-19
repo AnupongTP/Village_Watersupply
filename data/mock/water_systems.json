@@ -8,7 +8,22 @@
     "operational_status": "WORKING",
     "drinking_water_quality": "FAIL",
     "water_quantity": "SUFFICIENT",
-    "households_served": 100
+    "households_served": 100,
+    "owner_type": "LOCAL_AUTHORITY",
+    "responsible_agency": "เทศบาลตำบลจุน",
+    "system_type": "GROUNDWATER_SMALL",
+    "water_source_type": "GROUNDWATER",
+    "capacity_m3_hr": 5,
+    "usage_type": "DOMESTIC",
+    "construction_year_be": 2560,
+    "utility_water_quality": "USABLE",
+    "shared_with_other_village": "NO",
+    "establishment_type": "TRANSFERRED",
+    "establishment_agency": "กรมทรัพยากรน้ำบาดาล",
+    "transfer_year_be": 2561,
+    "transfer_agency": "กรมทรัพยากรน้ำบาดาล",
+    "transfer_document_status": "AVAILABLE",
+    "transfer_document_url": "http://info.dla.go.th/download/WaterSupply/20230724/76927E3D-BF09-EEF1-E5B6-A9A2ED30F490_test.pdf"
   },
   {
     "system_id": "PY-W-000002",
@@ -19,6 +34,17 @@
     "operational_status": "NOT_WORKING",
     "drinking_water_quality": "NO_DATA",
     "water_quantity": "INSUFFICIENT",
-    "households_served": 80
+    "households_served": 80,
+    "owner_type": "VILLAGE_OR_OTHER",
+    "responsible_agency": "คณะกรรมการหมู่บ้าน",
+    "system_type": "SURFACE_SMALL",
+    "water_source_type": "SURFACE_WATER",
+    "capacity_m3_hr": 3,
+    "usage_type": "DOMESTIC",
+    "construction_year_be": 2555,
+    "utility_water_quality": "NOT_USABLE",
+    "shared_with_other_village": "NO",
+    "establishment_type": "LOCAL_CREATED",
+    "transfer_document_status": "NO_DATA"
   }
 ]

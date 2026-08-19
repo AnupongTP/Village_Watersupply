@@ -39,7 +39,7 @@
       }
       swalContainer.appendChild(popup);
       document.body.appendChild(swalContainer);
-      options.didOpen?.();
+      options.didOpen?.(popup);
       return Promise.resolve({ isConfirmed: true });
     },
     close() {
@@ -150,6 +150,7 @@
       fitBounds(bounds) { this._bounds=bounds; return this; },
       invalidateSize() { return this; },
       addLayer(layer) { layer.addTo?.(this); return this; },
+      closePopup() { this._popupPane.innerHTML=''; return this; },
       addControl(control) {
         const node = control.onAdd?.(this);
         if (node) this._bottomRight.appendChild(node);

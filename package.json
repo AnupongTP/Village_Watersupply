@@ -1,11 +1,24 @@
 {
   "name": "village-watersupply-dashboard",
   "private": true,
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
+  "type": "module",
   "scripts": {
-    "build:css": "node tools/build-tailwind.mjs"
+    "build:css": "node tools/build-tailwind.mjs",
+    "prepare:test:mock": "node tools/write-ci-config.mjs mock",
+    "prepare:test:real": "node tools/write-ci-config.mjs real",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:real": "REAL_API=1 playwright test tests/e2e/real-api.spec.js --project=chromium-desktop",
+    "test": "npm run test:unit && npm run test:e2e",
+    "api:smoke": "node tools/api-smoke.mjs",
+    "qa:static": "node tools/static-qa.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "tailwindcss": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22 <23"
   }
 }

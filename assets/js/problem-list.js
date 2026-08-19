@@ -1,20 +1,10 @@
 import { AppState } from './state.js';
 import { focusSystem, hasUsableCoordinate } from './map.js';
 import { openDrawer } from './drawer.js';
+import { buildSystemDetailHtml } from './system-detail.js';
 import {
   systemDisplayName,
   villageDisplayName,
-  systemTypeLabel,
-  waterSourceTypeLabel,
-  operationalStatusLabel,
-  qualityLabel,
-  quantityLabel,
-  ownerTypeLabel,
-  establishmentTypeLabel,
-  utilityWaterQualityLabel,
-  transferDocumentStatusLabel,
-  usageTypeLabel,
-  sharedWithOtherVillageLabel,
   safeDisplayText
 } from './labels.js';
 
@@ -128,12 +118,13 @@ function bindActionsOnce(root, villageById) {
   root.addEventListener('click', event => {
     const button = event.target.closest('[data-action]');
     if (!button || !root.contains(button) || button.disabled) return;
+
     const system = findSystem(button.dataset.systemId);
     if (!system) return;
 
     if (button.dataset.action === 'detail') {
       const village = root._villageById?.get(system.village_id);
-      openDrawer(buildDetail(system, village));
+      openDrawer(buildSystemDetailHtml(system, village));
       return;
     }
 
@@ -175,154 +166,24 @@ function watchBadges(system) {
   return badges.join('');
 }
 
-function buildDetail(system, village) {
-  const documentUrl = safeHttpUrl(system.transfer_document_url || system.document_url || '');
-  const systemName = systemDisplayName(system, village);
-  const villageName = villageDisplayName(village);
-  const owner = system.owner_type
-    ? ownerTypeLabel(system.owner_type)
-    : safeDisplayText(system.owner, 'ไม่ระบุกรรมสิทธิ์');
-
-  const transferItems = [
-    ['ปีที่ถ่ายโอน', formatYear(system.transfer_year_be || system.transfer_year)],
-    ['หน่วยงานที่ถ่ายโอน', safeDisplayText(system.transfer_agency)],
-    ['สถานะเอกสารการถ่ายโอน', transferDocumentStatusLabel(system.transfer_document_status)],
-    ['ข้อมูลการถ่ายโอนอื่น', safeDisplayText(system.transfer_other)]
-  ];
-
-  return `
-    <div class="detail-stack">
-      <div>
-        <h3 class="detail-title">${escapeHtml(systemName)}</h3>
-        <p class="detail-subtitle">${escapeHtml(villageName)}${village?.district ? ` • อ.${escapeHtml(safeDisplayText(village.district))}` : ''}</p>
-      </div>
-
-      <div class="detail-status-row">
-        ${statusBadge(system.operational_status)}
-        ${quantityBadge(system.water_quantity)}
-        ${qualityBadge(system.drinking_water_quality)}
-      </div>
-
-      ${detailSection('ข้อมูลพื้นที่', [
-        ['หมู่บ้าน', villageName],
-        ['อำเภอ', safeDisplayText(village?.district)],
-        ['อปท.', safeDisplayText(village?.local_authority)],
-        ['พิกัด', coordinateText(system)]
-      ])}
-
-      ${detailSection('ข้อมูลระบบประปา', [
-        ['ประเภทระบบ', systemTypeLabel(system.system_type)],
-        ['แหล่งน้ำของระบบ', waterSourceTypeLabel(system.water_source_type)],
-        ['กำลังผลิต', valueWithUnit(system.capacity_m3_hr, 'ลบ.ม./ชม.')],
-        ['ครัวเรือนรับน้ำ', valueWithUnit(system.households_served, 'ครัวเรือน')],
-        ['ปีที่ก่อสร้าง', formatYear(system.construction_year_be)],
-        ['อายุระบบโดยประมาณ', calculatedAge(system.construction_year_be)]
-      ])}
-
-      ${detailSection('สถานะและการใช้งาน', [
-        ['สถานะการใช้งาน', operationalStatusLabel(system.operational_status)],
-        ['ความเพียงพอของน้ำ', quantityLabel(system.water_quantity)],
-        ['คุณภาพน้ำดื่ม', qualityLabel(system.drinking_water_quality)],
-        ['คุณภาพน้ำเพื่อการอุปโภค', utilityWaterQualityLabel(system.utility_water_quality)],
-        ['ลักษณะการใช้น้ำ', usageTypeLabel(system.usage_type)],
-        ['การใช้ร่วมกับหมู่บ้านอื่น', sharedWithOtherVillageLabel(system.shared_with_other_village)]
-      ])}
-
-      ${detailSection('กรรมสิทธิ์และการบริหารจัดการ', [
-        ['กรรมสิทธิ์', owner],
-        ['หน่วยงาน/ผู้รับผิดชอบ', safeDisplayText(system.responsible_agency)],
-        ['รูปแบบการจัดตั้ง', establishmentTypeLabel(system.establishment_type)],
-        ['หน่วยงานที่จัดตั้ง', safeDisplayText(system.establishment_agency)]
-      ])}
-
-      ${shouldShowTransferSection(system) ? detailSection('ข้อมูลการถ่ายโอน', transferItems) : ''}
-
-      ${documentUrl ? `<div><p class="detail-section-title">เอกสารอ้างอิง</p><a class="detail-document" href="${escapeHtml(documentUrl)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>เปิดเอกสารการถ่ายโอน</a></div>` : ''}
-    </div>`;
-}
-
-function shouldShowTransferSection(system) {
-  return system.establishment_type === 'TRANSFERRED' ||
-         !isBlank(system.transfer_year_be) ||
-         !isBlank(system.transfer_year) ||
-         !isBlank(system.transfer_agency) ||
-         system.transfer_document_status === 'AVAILABLE';
-}
-
-function detailSection(title, items) {
-  return `<div><p class="detail-section-title">${escapeHtml(title)}</p><div class="detail-grid">${items.map(([label, value]) => detailItem(label, value)).join('')}</div></div>`;
-}
-
-function detailItem(label, value) {
-  return `<div class="detail-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(isBlank(value) ? '-' : value)}</strong></div>`;
-}
-
-function statusBadge(value) {
-  if (value === 'NOT_WORKING') return '<span class="badge badge-danger">ใช้การไม่ได้</span>';
-  if (value === 'WORKING') return '<span class="badge badge-success">ใช้การได้</span>';
-  return '<span class="badge badge-muted">สถานะไม่มีข้อมูล</span>';
-}
-
-function quantityBadge(value) {
-  if (value === 'INSUFFICIENT') return '<span class="badge badge-warning">น้ำไม่เพียงพอ</span>';
-  if (value === 'SUFFICIENT') return '<span class="badge badge-success">น้ำเพียงพอ</span>';
-  return '<span class="badge badge-muted">ปริมาณน้ำไม่มีข้อมูล</span>';
-}
-
-function qualityBadge(value) {
-  if (value === 'FAIL') return '<span class="badge badge-rose">น้ำดื่มไม่ผ่านเกณฑ์</span>';
-  if (value === 'PASS') return '<span class="badge badge-success">น้ำดื่มผ่านเกณฑ์</span>';
-  return '<span class="badge badge-muted">คุณภาพน้ำไม่มีข้อมูล</span>';
-}
-
-function coordinateText(system) {
-  if (!hasUsableCoordinate(system)) return '-';
-  return `${Number(system.latitude).toFixed(6)}, ${Number(system.longitude).toFixed(6)}`;
-}
-
-function calculatedAge(yearBE) {
-  const year = Number(yearBE);
-  if (!Number.isFinite(year)) return '-';
-  const age = new Date().getFullYear() + 543 - year;
-  return age >= 0 && age <= 150 ? `${age.toLocaleString('th-TH')} ปี` : '-';
-}
-
-function formatYear(value) {
-  if (isBlank(value)) return '-';
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n).toLocaleString('th-TH', { useGrouping: false }) : safeDisplayText(value);
-}
-
-function valueWithUnit(value, unit) {
-  return isBlank(value) ? '-' : `${formatNumber(value)} ${unit}`;
-}
-
 function formatNumber(value) {
-  if (isBlank(value)) return '-';
+  if (value === '' || value === null || value === undefined) return '-';
   const n = Number(value);
   return Number.isFinite(n) ? n.toLocaleString('th-TH') : safeDisplayText(value);
 }
 
-function safeHttpUrl(value) {
-  if (!value) return '';
-  try {
-    const url = new URL(String(value));
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
-  } catch (_) {
-    return '';
-  }
-}
-
 function showInfo(title, text) {
   if (window.Swal) {
-    Swal.fire({ icon: 'info', title, text, confirmButtonText: 'ปิด', confirmButtonColor: '#0369a1' });
+    Swal.fire({
+      icon: 'info',
+      title,
+      text,
+      confirmButtonText: 'ปิด',
+      confirmButtonColor: '#0369a1'
+    });
   } else {
     window.alert(`${title}\n${text}`);
   }
-}
-
-function isBlank(value) {
-  return value === '' || value === null || value === undefined;
 }
 
 function escapeHtml(value) {

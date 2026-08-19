@@ -1,0 +1,82 @@
+name: Dashboard Playwright QA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-playwright-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Chromium functional + responsive QA
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Verify production source hygiene
+        run: npm run qa:static
+
+      - name: Install locked project dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f package-lock.json || { echo "package-lock.json is required. Run the Generate npm lockfile workflow once and commit the artifact."; exit 1; }
+          npm ci --no-audit --no-fund
+
+      - name: JavaScript syntax check
+        shell: bash
+        run: |
+          set -euo pipefail
+          find assets/js tools tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+            | xargs -0 -n1 node --check
+
+      - name: Build Tailwind production CSS
+        run: npm run build:css
+
+      - name: Prepare deterministic mock-data config
+        run: npm run prepare:test:mock
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Install Chromium and Linux dependencies
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Playwright E2E suite
+        run: npm run test:e2e -- --project=chromium-desktop
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload failure screenshots and traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results-${{ github.run_id }}
+          path: test-results/
+          retention-days: 30
+          if-no-files-found: ignore
