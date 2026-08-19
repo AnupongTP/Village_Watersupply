@@ -21,6 +21,7 @@ const FILTER_KEYS = Object.freeze([
 ]);
 
 const SEARCH_INPUT_DEBOUNCE_MS = 180;
+const FILTER_TOGGLE_SELECTOR = '[data-filter-toggle-key][data-filter-toggle-value]';
 let searchTimer = 0;
 
 export function applyFilters() {
@@ -112,6 +113,7 @@ export function bindFilterEvents(onChange) {
   const waterQuantity = document.getElementById('filterWaterQuantity');
   const clearButton = typeof document !== 'undefined' ? document.getElementById('btnClearFilters') : null;
   const chips = document.getElementById('activeFilterChips');
+  const monitoringFilters = document.getElementById('alerts');
 
   search?.addEventListener('input', () => {
     window.clearTimeout(searchTimer);
@@ -165,6 +167,18 @@ export function bindFilterEvents(onChange) {
     const key = button.dataset.filterRemove;
     if (!FILTER_KEYS.includes(key)) return;
     setFilterValue(key, '');
+    onChange();
+  });
+
+  monitoringFilters?.addEventListener('click', event => {
+    const button = event.target.closest(FILTER_TOGGLE_SELECTOR);
+    if (!button || !monitoringFilters.contains(button) || button.disabled) return;
+
+    const key = button.dataset.filterToggleKey;
+    const value = String(button.dataset.filterToggleValue || '');
+    if (!FILTER_KEYS.includes(key) || !value) return;
+
+    setFilterValue(key, value, { toggle: true });
     onChange();
   });
 }
@@ -333,6 +347,18 @@ function updateFilterUi() {
   }
 
   renderActiveFilterChips();
+  syncDeclarativeFilterToggles();
+}
+
+function syncDeclarativeFilterToggles() {
+  if (typeof document === 'undefined') return;
+
+  document.querySelectorAll(FILTER_TOGGLE_SELECTOR).forEach(control => {
+    const key = control.dataset.filterToggleKey;
+    const value = String(control.dataset.filterToggleValue || '');
+    const pressed = FILTER_KEYS.includes(key) && value && String(AppState.filters[key] || '') === value;
+    control.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  });
 }
 
 function renderActiveFilterChips() {

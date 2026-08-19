@@ -8,9 +8,13 @@
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
       "Courier New", monospace;
     --color-red-50: oklch(97.1% 0.013 17.38);
+    --color-red-100: oklch(93.6% 0.032 17.717);
+    --color-red-200: oklch(88.5% 0.062 18.334);
     --color-red-600: oklch(57.7% 0.245 27.325);
     --color-red-700: oklch(50.5% 0.213 27.518);
     --color-amber-50: oklch(98.7% 0.022 95.277);
+    --color-amber-100: oklch(96.2% 0.059 95.617);
+    --color-amber-200: oklch(92.4% 0.12 95.746);
     --color-amber-600: oklch(66.6% 0.179 58.318);
     --color-amber-700: oklch(55.5% 0.163 48.998);
     --color-emerald-50: oklch(97.9% 0.021 166.113);
@@ -27,6 +31,8 @@
     --color-sky-700: oklch(50% 0.134 242.749);
     --color-sky-800: oklch(44.3% 0.11 240.79);
     --color-rose-50: oklch(96.9% 0.015 12.422);
+    --color-rose-100: oklch(94.1% 0.03 12.58);
+    --color-rose-200: oklch(89.2% 0.058 10.001);
     --color-rose-600: oklch(58.6% 0.253 17.585);
     --color-rose-700: oklch(51.4% 0.222 16.935);
     --color-slate-50: oklch(98.4% 0.003 247.858);
@@ -1198,9 +1204,63 @@
       background-color: color-mix(in oklab, var(--color-slate-50) 70%, transparent);
     }
     padding: calc(var(--spacing) * 2.5);
+    text-align: left;
     @media (width >= 40rem) {
       padding: calc(var(--spacing) * 3);
     }
+  }
+  button.watch-mini {
+    width: 100%;
+    cursor: pointer;
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, visibility, content-visibility, overlay, pointer-events;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+    &:hover {
+      @media (hover: hover) {
+        border-color: var(--color-slate-300);
+      }
+    }
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-slate-50);
+      }
+    }
+    &:focus-visible {
+      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+    &:focus-visible {
+      --tw-ring-color: var(--color-sky-500);
+    }
+    &:focus-visible {
+      --tw-ring-offset-width: 2px;
+      --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+    }
+    &:focus-visible {
+      --tw-outline-style: none;
+      outline-style: none;
+    }
+  }
+  button.watch-mini[aria-pressed="true"] {
+    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  button.watch-mini[data-monitoring-filter="not-working"][aria-pressed="true"] {
+    border-color: var(--color-red-200);
+    background-color: var(--color-red-50);
+    --tw-ring-color: var(--color-red-100);
+  }
+  button.watch-mini[data-monitoring-filter="insufficient"][aria-pressed="true"] {
+    border-color: var(--color-amber-200);
+    background-color: var(--color-amber-50);
+    --tw-ring-color: var(--color-amber-100);
+  }
+  button.watch-mini[data-monitoring-filter="quality-fail"][aria-pressed="true"] {
+    border-color: var(--color-rose-200);
+    background-color: var(--color-rose-50);
+    --tw-ring-color: var(--color-rose-100);
   }
   .watch-icon {
     display: grid;
@@ -1212,8 +1272,7 @@
     font-size: var(--text-sm);
     line-height: var(--tw-leading, var(--text-sm--line-height));
   }
-  .watch-mini p {
-    margin: calc(var(--spacing) * 0);
+  .watch-mini-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1232,7 +1291,7 @@
     font-weight: var(--font-weight-extrabold);
     color: var(--color-slate-900);
   }
-  .watch-mini span {
+  .watch-mini-unit {
     margin-left: calc(var(--spacing) * 1);
     font-size: 10px;
     color: var(--color-slate-400);

@@ -2,6 +2,26 @@
 
 ## Unreleased — 2026-08-19
 
+### Fixed — Data Completeness modal header
+- Moved the visible `รายละเอียดความครบถ้วนของข้อมูล` heading into the modal's own non-scrolling flex header so it cannot be clipped by SweetAlert title layout or escape the popup top edge.
+- SweetAlert's native title remains visually hidden as the dialog's accessible label; the top-right close control is absolutely contained inside the popup.
+- Added geometry regression checks for popup/title/close/scroller/footer containment.
+
+### Changed — Data Completeness issue criteria
+- Removed the `กำลังผลิตสูงผิดปกติ (> 200 ลบ.ม./ชม.)` heuristic from calculation, issue totals, and the detail modal.
+- `กำลังผลิต` remains a completeness metric that checks only whether a value is present; the Dashboard does not auto-correct or classify high capacity values as erroneous.
+
+### Added — Monitoring Summary quick filters
+- Converted the three `สถานการณ์เฝ้าระวัง / ประเด็นสำคัญ` summary rows into native toggle buttons that filter the whole Dashboard through the existing `AppState.filters` engine.
+- `ใช้การไม่ได้`, `น้ำไม่เพียงพอ`, and `น้ำดื่มไม่ผ่านเกณฑ์` map to the existing Operational Status, Water Quantity, and Drinking Water Quality dimensions.
+- Repeated clicks clear only the selected dimension; independent monitoring filters combine with AND semantics and preserve area/search/system-type filters.
+- Monitoring counts now use own-dimension self-exclusion so each card continues to show the candidate result count while honoring all other active filters.
+- Quick-filter pressed state synchronizes bidirectionally with dropdowns, chart cross-filters, active-filter chips, and Clear all.
+
+### Accessibility / QA — Monitoring Summary quick filters
+- Added `aria-pressed` toggle semantics, native Enter/Space activation, visible focus treatment, semantic selected colors, and mobile-safe layout.
+- Added unit, Playwright E2E, static, and Python/Chromium regression coverage for toggle behavior, AND semantics, state synchronization, faceted counts, keyboard focus, and 390px selected-state overflow.
+
 ### QA — Playwright release-gate stabilization
 - E2E dashboard readiness now waits for the initial SweetAlert loading overlay to finish closing before scroll/hash assertions.
 - Direct-hash assertions now wait for the target section to reach a safe visible position instead of treating the hash string alone as completion.

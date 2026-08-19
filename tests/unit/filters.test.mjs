@@ -1,6 +1,7 @@
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { AppState } from '../../assets/js/state.js';
+import { getMonitoringIssueCounts } from '../../assets/js/dashboard.js';
 import {
   buildFilteredSnapshot,
   normalizeSearchTerm,
@@ -109,3 +110,38 @@ test('normalizes Thai search whitespace and case-compatible text deterministical
   assert.equal(normalizeSearchTerm('  บ้านจุน   หลวง  '), 'บ้านจุน หลวง');
   assert.equal(normalizeSearchTerm('LOCAL Authority'), 'local authority');
 });
+
+test('toggle mutation clears only the selected monitoring dimension on a repeated value', () => {
+  AppState.filters.district = 'เมืองพะเยา';
+  AppState.filters.waterQuantity = 'INSUFFICIENT';
+
+  const selected = setFilterValue('operationalStatus', 'NOT_WORKING', { toggle: true });
+  assert.equal(selected, 'NOT_WORKING');
+  assert.equal(AppState.filters.district, 'เมืองพะเยา');
+  assert.equal(AppState.filters.waterQuantity, 'INSUFFICIENT');
+
+  const cleared = setFilterValue('operationalStatus', 'NOT_WORKING', { toggle: true });
+  assert.equal(cleared, '');
+  assert.equal(AppState.filters.district, 'เมืองพะเยา');
+  assert.equal(AppState.filters.waterQuantity, 'INSUFFICIENT');
+});
+
+test('monitoring quick-filter counts self-exclude only their own dimension', () => {
+  AppState.filters.operationalStatus = 'WORKING';
+
+  let counts = getMonitoringIssueCounts();
+  assert.deepEqual(counts, {
+    notWorking: 1,
+    insufficient: 1,
+    qualityFail: 0
+  });
+
+  AppState.filters.waterQuantity = 'INSUFFICIENT';
+  counts = getMonitoringIssueCounts();
+  assert.deepEqual(counts, {
+    notWorking: 1,
+    insufficient: 1,
+    qualityFail: 0
+  });
+});
+

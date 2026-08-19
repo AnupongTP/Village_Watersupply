@@ -576,8 +576,9 @@ Action ในรายละเอียด:
 - System row ที่ไม่มี usable coordinate → ไม่ render ปุ่มแผนที่
 - Village-only issue → เปิดรายละเอียดพื้นที่แบบ read-only และห้ามสร้าง system record ปลอม
 
-ไม่แสดง:
+ไม่แสดง / ไม่จัดเป็น issue:
 - `พิกัดอยู่นอกขอบเขตพะเยา`
+- ห้ามใช้ heuristic `กำลังผลิต > 200 ลบ.ม./ชม.` เพื่อสรุปว่าเป็นข้อมูลผิดปกติหรือรวมใน issue count; ค่า `กำลังผลิต` ใน Data Completeness ตรวจเฉพาะความมี/ไม่มีข้อมูล
 
 ไม่ทำ:
 - Edit
@@ -1093,7 +1094,7 @@ Action `รายละเอียด`:
 Modal `รายละเอียดความครบถ้วนของข้อมูล` เป็น read-only inspection surface และต้องเน้น information density โดยไม่ลดความสามารถในการเข้าถึงข้อมูล
 
 โครงสร้าง:
-- Header/title อยู่เหนือพื้นที่ scroll และมีปุ่ม `×` มุมขวาบน
+- Header/title อยู่เหนือพื้นที่ scroll และมีปุ่ม `×` มุมขวาบน; visible title ต้องอยู่ภายใน popup bounds เสมอ ห้ามถูก clip/ลอยพ้นขอบบน
 - Content list เป็นพื้นที่ที่ scroll เอง
 - Footer ปุ่ม `ปิด` อยู่ล่างและไม่เลื่อนหายไปพร้อมรายการ
 - Desktop ใช้ compact 3-column layout: `ระบบ / พื้นที่` | `ประเด็น` | `การทำงาน`
@@ -1110,8 +1111,49 @@ Action:
 - `แผนที่` แสดงเฉพาะระบบที่มี usable coordinate และต้อง focus Map ตามกฎเดิม
 - Accessible name ห้ามมี internal ID หรือ database code
 
-QA ต้องตรวจอย่างน้อย desktop + mobile 390px + mobile 360px สำหรับ clipping, horizontal overflow, action placement, modal scroll boundary และ focus behavior
+QA ต้องตรวจอย่างน้อย desktop + mobile 390px + mobile 360px สำหรับ title/popup geometry, clipping, horizontal overflow, action placement, modal scroll boundary และ focus behavior
 
 ---
 
-Last updated: 2026-08-19 (cross-filter, user location, non-sticky filters, data completeness context continuity + compact modal layout)
+## 34) Monitoring Summary Quick Filters — LOCKED
+
+การ์ด `สถานการณ์เฝ้าระวัง / ประเด็นสำคัญ` ทั้ง 3 รายการเป็น Quick Filter ของ Global Filter เดิม:
+- `ใช้การไม่ได้` → `operationalStatus = NOT_WORKING`
+- `น้ำไม่เพียงพอ` → `waterQuantity = INSUFFICIENT`
+- `น้ำดื่มไม่ผ่านเกณฑ์` → `drinkingWaterQuality = FAIL`
+
+Interaction:
+- ต้องใช้ `AppState.filters` + filter engine กลางชุดเดียวกับ Search / Dropdown / Chart / Chip
+- กดการ์ด → ตั้งค่ามิตินั้นและ render ทั้ง Dashboard
+- กดการ์ดเดิมซ้ำ → clear เฉพาะมิตินั้น
+- Quick Filter คนละมิติใช้ AND semantics
+- District / Local Authority / System Type / Search และ filter อิสระอื่นต้องไม่ถูกล้างเมื่อกด Quick Filter
+- Dropdown / Chart / Active chip / Clear all ต้อง synchronize `aria-pressed` ของการ์ดกลับมาด้วย
+- ห้ามสร้าง state/filter engine แยกเฉพาะ Monitoring Summary
+
+Count semantics:
+- การ์ดแต่ละใบต้อง self-exclude เฉพาะ filter dimension ของตัวเองขณะคำนวณจำนวน เช่นเดียวกับ cross-filter chart
+- ต้องยัง honor filter อื่นทั้งหมด
+- จำนวนบนการ์ดจึงสื่อจำนวนผลลัพธ์ที่ผู้ใช้จะได้เมื่อเลือกการ์ดนั้น และไม่ collapse เป็น 0 เพียงเพราะ dropdown มิติเดียวกันกำลังเลือกค่าคนละค่า
+
+Accessibility / UI:
+- ใช้ native `<button type="button">`
+- ใช้ `aria-pressed="true|false"` เป็น toggle state
+- Mouse / touch / Enter / Space ต้องทำงาน
+- Focus-visible ต้องชัดเจนและ focus ต้องไม่หายจากการ render
+- Selected state ใช้สี semantic เดิมของแต่ละประเด็น
+- ห้ามแสดง database enum/internal ID ใน visible text, title หรือ accessible name
+- Mobile ต้องไม่มี horizontal overflow และ tap target ต้องคงขนาดอ่าน/กดได้จริง
+
+QA ต้องตรวจอย่างน้อย:
+- toggle on/off ของทั้ง 3 มิติ
+- AND semantics เมื่อเลือกหลายใบ
+- preservation ของ filter อิสระ
+- synchronization สองทางกับ Dropdown / Chart / Chip / Clear all
+- faceted count self-exclusion
+- KPI / Map / Charts / Watchlist / Data Completeness ใช้ scope เดียวกัน
+- keyboard accessibility
+- selected layout ที่ desktop + 390px + 360px
+
+
+Last updated: 2026-08-19 (monitoring quick filters + cross-filter, user location, non-sticky filters, data completeness context continuity + compact modal layout)

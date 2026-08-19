@@ -30,6 +30,16 @@ assert(index.includes('คุณภาพน้ำและปริมาณน
 assert(index.includes('id="btnUserLocation"'), 'Map toolbar user-location action is required');
 assert(!index.includes('id="btnMapHome"'), 'Old Phayao home toolbar button must be removed');
 assert(index.includes('id="btnBackToTop"'), 'Floating back-to-top control is required');
+for (const [key, value, label] of [
+  ['operationalStatus', 'NOT_WORKING', 'ใช้การไม่ได้'],
+  ['waterQuantity', 'INSUFFICIENT', 'น้ำไม่เพียงพอ'],
+  ['drinkingWaterQuality', 'FAIL', 'น้ำดื่มไม่ผ่านเกณฑ์']
+]) {
+  assert(index.includes(`data-filter-toggle-key="${key}"`), `Monitoring quick filter missing ${key}`);
+  assert(index.includes(`data-filter-toggle-value="${value}"`), `Monitoring quick filter missing ${label} target`);
+}
+assert((index.match(/data-monitoring-filter=/g) || []).length === 3, 'Exactly three monitoring quick-filter controls are required');
+assert((index.match(/aria-pressed="false"/g) || []).length >= 3, 'Monitoring quick filters require toggle-button semantics');
 assert(!/id="filters"[^>]*xl:sticky/.test(index), 'Global Filter must remain in normal document flow, not sticky');
 
 const jsFiles = walk('assets/js').filter(f => f.endsWith('.js'));
@@ -55,6 +65,8 @@ const filterSource = read('assets/js/filters.js');
 assert(filterSource.includes('buildFilteredSnapshot'), 'Unified filter engine snapshot helper is required');
 assert(filterSource.includes('waterQuantity'), 'Water Quantity filter dimension is required');
 assert(filterSource.includes('data-filter-remove'), 'Active filter chip removal action is required');
+assert(filterSource.includes('FILTER_TOGGLE_SELECTOR'), 'Monitoring quick filters must use the centralized filter binding');
+assert(filterSource.includes('syncDeclarativeFilterToggles'), 'Monitoring quick-filter pressed state must synchronize from AppState.filters');
 
 const chartSource = read('assets/js/charts.js');
 for (const filterKey of ['district', 'systemType', 'drinkingWaterQuality', 'waterQuantity']) {
@@ -70,6 +82,9 @@ assert(completenessSource.includes('showCloseButton: true'), 'Data completeness 
 assert(completenessSource.includes('issue-modal-columns'), 'Data completeness desktop column header is required');
 assert(completenessSource.includes('issue-modal-row-problem'), 'Data completeness compact issue column is required');
 assert(completenessSource.includes('issue-modal-actions'), 'Data completeness compact row actions are required');
+assert(completenessSource.includes('data-completeness-visible-header'), 'Data completeness visible header must be rendered inside the modal content layout');
+assert(!completenessSource.includes('capacityOutlier'), 'Data completeness must not classify high capacity as an issue');
+assert(!completenessSource.includes('กำลังผลิตสูงผิดปกติ'), 'Removed high-capacity heuristic label must not return');
 
 const mapSource = read('assets/js/map.js');
 assert(mapSource.includes('data-map-action="detail"'), 'Map popup must expose Details action');

@@ -38,11 +38,16 @@
   .kpi-label { @apply m-0 text-[10px] leading-snug text-slate-500 sm:text-[11px]; }
   .kpi-value { @apply mt-1 text-2xl font-extrabold leading-none tracking-tight text-slate-900 sm:text-[28px]; }
 
-  .watch-mini { @apply flex min-h-[68px] min-w-0 items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 sm:p-3; }
+  .watch-mini { @apply flex min-h-[68px] min-w-0 items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 text-left sm:p-3; }
+  button.watch-mini { @apply w-full cursor-pointer transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2; }
+  button.watch-mini[aria-pressed="true"] { @apply shadow-sm ring-1; }
+  button.watch-mini[data-monitoring-filter="not-working"][aria-pressed="true"] { @apply border-red-200 bg-red-50 ring-red-100; }
+  button.watch-mini[data-monitoring-filter="insufficient"][aria-pressed="true"] { @apply border-amber-200 bg-amber-50 ring-amber-100; }
+  button.watch-mini[data-monitoring-filter="quality-fail"][aria-pressed="true"] { @apply border-rose-200 bg-rose-50 ring-rose-100; }
   .watch-icon { @apply grid size-9 shrink-0 place-items-center rounded-lg text-sm; }
-  .watch-mini p { @apply m-0 truncate text-[10px] text-slate-500 sm:text-[11px]; }
+  .watch-mini-label { @apply truncate text-[10px] text-slate-500 sm:text-[11px]; }
   .watch-mini strong { @apply text-xl font-extrabold leading-none text-slate-900; }
-  .watch-mini span { @apply ml-1 text-[10px] text-slate-400; }
+  .watch-mini-unit { @apply ml-1 text-[10px] text-slate-400; }
 
   .chart-card { @apply min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4; }
   .chart-canvas-wrap { @apply relative min-w-0 w-full; }

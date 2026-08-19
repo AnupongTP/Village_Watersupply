@@ -54,12 +54,6 @@ function calculateDetails(systems, villages) {
   const capacityComplete = countPresent(systems, 'capacity_m3_hr');
   const constructionComplete = countPresent(systems, 'construction_year_be');
   const drinkingQualityComplete = systems.filter(system => system.drinking_water_quality && system.drinking_water_quality !== 'NO_DATA' && system.drinking_water_quality !== '-').length;
-  const capacityOutlier = systems.filter(system => {
-    if (isBlank(system.capacity_m3_hr)) return false;
-    const n = Number(system.capacity_m3_hr);
-    return Number.isFinite(n) && n > 200;
-  });
-
   // A village is considered source-incomplete only when the source dataset really
   // has no linked system at all. A system being excluded by another filter must
   // never create a false "ไม่มีรายละเอียดระบบ" issue.
@@ -68,7 +62,7 @@ function calculateDetails(systems, villages) {
 
   // Out-of-bounds coordinates remain excluded from Map internally, but the UI
   // intentionally does not expose an "outside Phayao" issue category.
-  const issueCount = coordMissing.length + capacityOutlier.length + villagesWithoutSystem.length;
+  const issueCount = coordMissing.length + villagesWithoutSystem.length;
 
   return {
     coordValid,
@@ -76,7 +70,6 @@ function calculateDetails(systems, villages) {
     capacityComplete,
     constructionComplete,
     drinkingQualityComplete,
-    capacityOutlier,
     villagesWithoutSystem,
     issueCount
   };
@@ -100,10 +93,6 @@ function showIssueDetails(details, restoreState = null) {
       title: 'ระบบไม่มีพิกัด',
       rows: details.coordMissing.map(system => issueSystemRow(system, 'ไม่มีพิกัด'))
     },
-    capacityOutlier: {
-      title: 'กำลังผลิตสูงผิดปกติ (> 200 ลบ.ม./ชม.)',
-      rows: details.capacityOutlier.map(system => issueSystemRow(system, `${formatNumber(system.capacity_m3_hr)} ลบ.ม./ชม.`))
-    },
     villagesWithoutSystem: {
       title: 'หมู่บ้านระบุว่ามีประปา แต่ไม่มีรายละเอียดระบบ',
       rows: details.villagesWithoutSystem.map(village => issueVillageRow(village))
@@ -112,6 +101,9 @@ function showIssueDetails(details, restoreState = null) {
 
   const state = normalizeIssueModalState(sections, restoreState);
   const html = `
+    <div class="data-completeness-visible-header" aria-hidden="true">
+      <span>รายละเอียดความครบถ้วนของข้อมูล</span>
+    </div>
     <div class="swal-data-issues" role="region" aria-label="รายการประเด็นความครบถ้วนของข้อมูล">
       ${Object.entries(sections).map(([key, section]) => issueSection(key, section.title, section.rows, state.visibleCounts[key])).join('')}
     </div>`;
@@ -128,7 +120,7 @@ function showIssueDetails(details, restoreState = null) {
     buttonsStyling: false,
     customClass: {
       popup: 'data-completeness-popup',
-      title: 'data-completeness-title',
+      title: 'data-completeness-a11y-title',
       htmlContainer: 'data-completeness-html',
       actions: 'data-completeness-actions',
       closeButton: 'data-completeness-x',

@@ -6,7 +6,7 @@ Purpose
 - Intended to apply on top of the current cross-filter + deployment-path hotfix + user-location/non-sticky/back-to-top candidate.
 
 Production behavior changed
-1. Modal header remains visible and now includes top-right × close control.
+1. Modal visible header is rendered inside the modal content flex layout, remains fully inside popup bounds, and includes a top-right × close control; SweetAlert's native title is retained only as the accessible dialog label.
 2. Only the issue list scrolls; bottom ปิด action remains visible.
 3. Desktop rows use compact columns: ระบบ / พื้นที่ | ประเด็น | การทำงาน.
 4. Mobile rows keep actions beside record content instead of a separate full-width action row.
@@ -14,7 +14,8 @@ Production behavior changed
 6. Progressive reveal footer appears only when total > 20.
 7. Show-more remains +20 per click and disappears at the end.
 8. Detail Drawer return preserves expanded count and modal scroll context.
-9. Map action behavior is unchanged: only usable-coordinate systems expose it.
+9. Map action behavior remains generic: only usable-coordinate system issue rows may expose it.
+10. The former > 200 m³/h capacity-outlier heuristic is removed completely from Data Completeness issue calculation and modal sections; capacity completeness still checks whether the field is present.
 
 Files intentionally NOT included
 - assets/js/config.js

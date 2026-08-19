@@ -47,11 +47,14 @@ def expected_counts(filters=None):
             if (not filters.get('district') or v.get('district') == filters['district'])
             and (not filters.get('localAuthority') or v.get('local_authority') == filters['localAuthority'])]
     area_ids = {v.get('village_id') for v in area}
+    def normalized_bucket(value):
+        return 'NO_DATA' if value in (None, '', 'UNKNOWN') else value
     fs = [s for s in systems if s.get('village_id') in area_ids
           and (not filters.get('systemType') or s.get('system_type') == filters['systemType'])
           and (not filters.get('operationalStatus') or s.get('operational_status') == filters['operationalStatus'])
-          and (not filters.get('drinkingWaterQuality') or (s.get('drinking_water_quality') or 'NO_DATA') == filters['drinkingWaterQuality'])]
-    if filters.get('systemType') or filters.get('operationalStatus') or filters.get('drinkingWaterQuality'):
+          and (not filters.get('drinkingWaterQuality') or normalized_bucket(s.get('drinking_water_quality')) == filters['drinkingWaterQuality'])
+          and (not filters.get('waterQuantity') or normalized_bucket(s.get('water_quantity')) == filters['waterQuantity'])]
+    if filters.get('systemType') or filters.get('operationalStatus') or filters.get('drinkingWaterQuality') or filters.get('waterQuantity'):
         matched_ids = {s.get('village_id') for s in fs}
         area = [v for v in area if v.get('village_id') in matched_ids]
     def waterworks(v):
@@ -65,6 +68,34 @@ def expected_counts(filters=None):
         'fail': sum(s.get('drinking_water_quality') == 'FAIL' for s in fs),
         'watch': len(watch)
     }
+
+
+def expected_monitoring_count(filter_key: str, target_value: str, filters=None) -> int:
+    scoped = dict(filters or {})
+    scoped.pop(filter_key, None)
+    villages = fixture['villages']
+    systems = fixture['waterSystems']
+    area = [v for v in villages
+            if (not scoped.get('district') or v.get('district') == scoped['district'])
+            and (not scoped.get('localAuthority') or v.get('local_authority') == scoped['localAuthority'])]
+    area_ids = {v.get('village_id') for v in area}
+
+    def normalized_bucket(value):
+        return 'NO_DATA' if value in (None, '', 'UNKNOWN') else value
+
+    rows = [s for s in systems if s.get('village_id') in area_ids
+            and (not scoped.get('systemType') or s.get('system_type') == scoped['systemType'])
+            and (not scoped.get('operationalStatus') or s.get('operational_status') == scoped['operationalStatus'])
+            and (not scoped.get('drinkingWaterQuality') or normalized_bucket(s.get('drinking_water_quality')) == scoped['drinkingWaterQuality'])
+            and (not scoped.get('waterQuantity') or normalized_bucket(s.get('water_quantity')) == scoped['waterQuantity'])]
+
+    if filter_key == 'operationalStatus':
+        return sum(s.get('operational_status') == target_value for s in rows)
+    if filter_key == 'drinkingWaterQuality':
+        return sum(normalized_bucket(s.get('drinking_water_quality')) == target_value for s in rows)
+    if filter_key == 'waterQuantity':
+        return sum(normalized_bucket(s.get('water_quantity')) == target_value for s in rows)
+    raise ValueError(f'Unsupported monitoring filter key: {filter_key}')
 
 
 def parse_thai_number(text: str) -> int:
@@ -173,6 +204,8 @@ def run_static_checks():
     check('Static','Read-only: no write HTTP method declared',not re.search(r"method\s*:\s*['\"](?:POST|PUT|PATCH|DELETE)['\"]",js,re.I))
     check('Static','Sarabun Google Fonts URL present','family=Sarabun:wght@400;600;700;800' in html)
     check('Static','Runtime library versions are pinned','chart.js@4.4.7' in html and 'leaflet@1.9.4' in html and 'sweetalert2@11.26.25' in html)
+    check('Static','Monitoring summary exposes exactly three semantic quick-filter buttons',html.count('data-monitoring-filter=')==3 and html.count('data-filter-toggle-key=')>=3)
+    check('Static','Monitoring quick filters use aria-pressed state',html.count('aria-pressed="false"')>=3)
     check('Static','No font binaries bundled',not list(ROOT.rglob('*.woff*')) and not list(ROOT.rglob('*.ttf')))
     check('Static','Central presentation mapper exists','enumLabel' in labels_source and 'ownerTypeLabel' in labels_source and 'systemDisplayName' in labels_source)
     check('Static','User-facing fallbacks do not use system_id',not re.search(r'system_name\s*\|\|\s*system\.system_id', js))
@@ -303,6 +336,115 @@ def test_filters(browser):
     check('Filters','Combined filters synchronize KPI/watchlist',actual2==(exp2['villages'],exp2['systems'],exp2['watch']),f'actual={actual2} expected={(exp2["villages"],exp2["systems"],exp2["watch"])}')
     page.locator('#btnClearFilters').click(); page.wait_for_timeout(60); base=expected_counts(); reset=(parse_thai_number(page.locator('#kpiVillages').inner_text()),parse_thai_number(page.locator('#kpiSystems').inner_text()),page.input_value('#filterDistrict'),page.input_value('#filterOperationalStatus'))
     check('Filters','Clear filters restores province baseline',reset==(base['villages'],base['systems'],'',''),str(reset)); page.close()
+
+
+def test_monitoring_quick_filters(browser):
+    page,*_=setup_page(browser,1366,768); wait_loaded(page)
+    buttons = {
+        'notWorking': page.locator('[data-monitoring-filter="not-working"]'),
+        'insufficient': page.locator('[data-monitoring-filter="insufficient"]'),
+        'qualityFail': page.locator('[data-monitoring-filter="quality-fail"]'),
+    }
+    semantics = page.evaluate("""()=>[...document.querySelectorAll('[data-monitoring-filter]')].map(el=>({tag:el.tagName,type:el.getAttribute('type'),pressed:el.getAttribute('aria-pressed'),name:(el.innerText||'').trim(),title:el.getAttribute('title')||''}))""")
+    check('Quick filters','Monitoring controls are native buttons with toggle semantics',len(semantics)==3 and all(x['tag']=='BUTTON' and x['type']=='button' and x['pressed']=='false' for x in semantics),str(semantics))
+    leaked = [x for x in semantics if re.search(r'\b(?:NOT_WORKING|INSUFFICIENT|FAIL|PY-[A-Z]+-\d+)\b', x['name']+' '+x['title'])]
+    check('Quick filters','Monitoring accessible/visible copy exposes no database code or internal ID',not leaked,str(leaked))
+
+    base = {
+        'notWorking': expected_monitoring_count('operationalStatus','NOT_WORKING'),
+        'insufficient': expected_monitoring_count('waterQuantity','INSUFFICIENT'),
+        'qualityFail': expected_monitoring_count('drinkingWaterQuality','FAIL'),
+    }
+    actual_base = {
+        'notWorking': parse_thai_number(page.locator('#alertNotWorking').inner_text()),
+        'insufficient': parse_thai_number(page.locator('#alertInsufficient').inner_text()),
+        'qualityFail': parse_thai_number(page.locator('#alertQualityFail').inner_text()),
+    }
+    check('Quick filters','Monitoring baseline counts use filter-facet semantics',actual_base==base,f'actual={actual_base} expected={base}')
+
+    buttons['notWorking'].click(); page.wait_for_timeout(80)
+    exp_not_working = expected_counts({'operationalStatus':'NOT_WORKING'})
+    state1 = (
+        page.input_value('#filterOperationalStatus'),
+        buttons['notWorking'].get_attribute('aria-pressed'),
+        parse_thai_number(page.locator('#kpiSystems').inner_text()),
+        parse_thai_number(page.locator('#watchlistTotal').inner_text()),
+    )
+    check('Quick filters','Not-working card mutates shared filter and dashboard result',state1==('NOT_WORKING','true',exp_not_working['systems'],exp_not_working['watch']),f'actual={state1} expected systems/watch={(exp_not_working["systems"],exp_not_working["watch"])}')
+    check('Quick filters','Not-working quick filter creates Thai active chip','สถานะ: ใช้การไม่ได้' in page.locator('#activeFilterChips').inner_text())
+
+
+    def usable_coordinate(system):
+        try:
+            if system.get('latitude') in ('', None) or system.get('longitude') in ('', None):
+                return False
+            lat = float(system.get('latitude'))
+            lng = float(system.get('longitude'))
+            return 18.70 <= lat <= 20.00 and 99.40 <= lng <= 100.70
+        except Exception:
+            return False
+
+    expected_marker_count = sum(
+        1 for system in fixture['waterSystems']
+        if system.get('operational_status') == 'NOT_WORKING' and usable_coordinate(system)
+    )
+    actual_marker_count = page.locator('.qa-leaflet-marker').count()
+    check('Quick filters','Monitoring quick filter synchronizes map marker scope',actual_marker_count==expected_marker_count,f'actual={actual_marker_count} expected={expected_marker_count}')
+    chart_total = page.evaluate("""()=>{const c=document.getElementById('systemTypeChart').__chartConfig;return c.data.datasets.flatMap(d=>d.data).reduce((a,b)=>a+Number(b||0),0)}""")
+    check('Quick filters','Monitoring quick filter synchronizes chart scope',int(chart_total)==exp_not_working['systems'],f'actual={chart_total} expected={exp_not_working["systems"]}')
+    completeness_text = page.locator('#dataCompletenessSummary').inner_text()
+    check('Quick filters','Monitoring quick filter synchronizes Data Completeness scope',f'{exp_not_working["systems"]} ระบบ' in completeness_text,completeness_text)
+
+    buttons['insufficient'].click(); page.wait_for_timeout(80)
+    exp_and = expected_counts({'operationalStatus':'NOT_WORKING','waterQuantity':'INSUFFICIENT'})
+    state2 = (
+        page.input_value('#filterOperationalStatus'),
+        page.input_value('#filterWaterQuantity'),
+        buttons['notWorking'].get_attribute('aria-pressed'),
+        buttons['insufficient'].get_attribute('aria-pressed'),
+        parse_thai_number(page.locator('#kpiSystems').inner_text()),
+    )
+    check('Quick filters','Independent monitoring cards combine with AND semantics',state2==('NOT_WORKING','INSUFFICIENT','true','true',exp_and['systems']),f'actual={state2} expected systems={exp_and["systems"]}')
+
+    buttons['notWorking'].click(); page.wait_for_timeout(80)
+    exp_quantity_only = expected_counts({'waterQuantity':'INSUFFICIENT'})
+    state3 = (page.input_value('#filterOperationalStatus'),page.input_value('#filterWaterQuantity'),buttons['notWorking'].get_attribute('aria-pressed'),buttons['insufficient'].get_attribute('aria-pressed'),parse_thai_number(page.locator('#kpiSystems').inner_text()))
+    check('Quick filters','Repeated card click clears only its own dimension',state3==('','INSUFFICIENT','false','true',exp_quantity_only['systems']),f'actual={state3} expected systems={exp_quantity_only["systems"]}')
+
+    page.locator('#btnClearFilters').click(); page.wait_for_timeout(80)
+    page.select_option('#filterDistrict',label='จุน'); page.wait_for_timeout(80)
+    buttons['notWorking'].click(); page.wait_for_timeout(80)
+    district_preserved = (page.input_value('#filterDistrict'), page.input_value('#filterOperationalStatus'), buttons['notWorking'].get_attribute('aria-pressed'))
+    check('Quick filters','Monitoring quick filter preserves independent district scope',district_preserved==('จุน','NOT_WORKING','true'),str(district_preserved))
+    page.locator('#btnClearFilters').click(); page.wait_for_timeout(80)
+
+    page.select_option('#filterOperationalStatus',value='WORKING'); page.wait_for_timeout(80)
+    expected_alt = expected_monitoring_count('operationalStatus','NOT_WORKING',{'operationalStatus':'WORKING'})
+    actual_alt = parse_thai_number(page.locator('#alertNotWorking').inner_text())
+    check('Quick filters','Own-dimension self-exclusion keeps an alternate status count discoverable',actual_alt==expected_alt,f'actual={actual_alt} expected={expected_alt}')
+    check('Quick filters','Dropdown selection synchronizes quick-filter pressed state',buttons['notWorking'].get_attribute('aria-pressed')=='false')
+
+    page.select_option('#filterOperationalStatus',value='NOT_WORKING'); page.wait_for_timeout(80)
+    check('Quick filters','Matching dropdown value presses the monitoring card',buttons['notWorking'].get_attribute('aria-pressed')=='true')
+    page.locator('[data-filter-remove="operationalStatus"]').click(); page.wait_for_timeout(80)
+    check('Quick filters','Chip removal releases the monitoring card',buttons['notWorking'].get_attribute('aria-pressed')=='false' and page.input_value('#filterOperationalStatus')=='')
+
+    buttons['qualityFail'].focus(); page.keyboard.press('Space'); page.wait_for_timeout(80)
+    check('Quick filters','Native Space-key activation toggles quality quick filter',buttons['qualityFail'].get_attribute('aria-pressed')=='true' and page.input_value('#filterDrinkingWaterQuality')=='FAIL')
+    focused = page.evaluate("document.activeElement?.getAttribute('data-monitoring-filter')")
+    check('Quick filters','Quick-filter activation preserves keyboard focus',focused=='quality-fail',str(focused))
+
+    page.screenshot(path=str(SCREEN_DIR/'quick-filter_desktop-selected.png'))
+    page.close()
+
+    for width,height,label in [(390,844,'390px'),(360,800,'360px')]:
+        mobile,*_=setup_page(browser,width,height); wait_loaded(mobile)
+        mobile.locator('[data-monitoring-filter="insufficient"]').click(); mobile.wait_for_timeout(80)
+        clip = mobile.evaluate("""()=>[...document.querySelectorAll('.watch-mini')].filter(el=>el.scrollWidth>el.clientWidth+2).map(el=>({sw:el.scrollWidth,cw:el.clientWidth,text:(el.innerText||'').slice(0,60)}))""")
+        check('Quick filters',f'{label} selected monitoring cards do not clip horizontally',not clip,str(clip))
+        check('Quick filters',f'{label} quick-filter interaction creates no page overflow',overflow_x(mobile)<=1,f'{overflow_x(mobile)}px')
+        mobile.screenshot(path=str(SCREEN_DIR/f'quick-filter_mobile-{width}-selected.png'))
+        mobile.close()
 
 
 def test_hash_and_anchors(browser):
@@ -579,25 +721,19 @@ def test_completeness(browser):
     page,*_=setup_page(browser,1366,768); wait_loaded(page)
     systems=fixture['waterSystems']; villages=fixture['villages']
     coord_missing=sum(s.get('latitude') in ('',None) or s.get('longitude') in ('',None) for s in systems)
-    capacity_outlier=0
-    for s in systems:
-        try:
-            value=float(s.get('capacity_m3_hr'))
-            if value>200: capacity_outlier+=1
-        except (TypeError,ValueError):
-            pass
     system_village_ids={s.get('village_id') for s in systems}
     def has_waterworks(v): return v.get('has_village_waterworks') in (True,1,'1','YES','มีประปาหมู่บ้าน')
     villages_without=sum(has_waterworks(v) and v.get('village_id') not in system_village_ids for v in villages)
-    expected_issues=coord_missing+capacity_outlier+villages_without
+    expected_issues=coord_missing+villages_without
     actual_issues=parse_thai_number(page.locator('.completeness-issues strong').inner_text())
     check('Completeness','Displayed source-data issue count excludes out-of-Phayao coordinate category and matches visible categories',actual_issues==expected_issues,f'actual={actual_issues} expected={expected_issues}')
     page.locator('#btnOpenDataIssues').click(); page.wait_for_timeout(80)
-    text=page.locator('.swal2-popup').inner_text(); check('Completeness','Out-of-Phayao issue section is not shown','พิกัดอยู่นอกขอบเขตพะเยา' not in text,text[:300]); check('Completeness','Completeness detail remains read-only','แก้ไข' not in text and 'บันทึก' not in text and 'ยืนยัน' not in text,text[:300])
-    popup=page.locator('.data-completeness-popup'); title=page.locator('.data-completeness-title'); scroller=page.locator('.swal-data-issues'); actions=page.locator('.data-completeness-actions')
+    text=page.locator('.swal2-popup').inner_text(); check('Completeness','Out-of-Phayao issue section is not shown','พิกัดอยู่นอกขอบเขตพะเยา' not in text,text[:300]); check('Completeness','High-capacity heuristic is not shown or counted','กำลังผลิตสูงผิดปกติ' not in text and 'capacityOutlier' not in text,text[:300]); check('Completeness','Completeness detail remains read-only','แก้ไข' not in text and 'บันทึก' not in text and 'ยืนยัน' not in text,text[:300])
+    popup=page.locator('.data-completeness-popup'); title=page.locator('.data-completeness-visible-header'); scroller=page.locator('.swal-data-issues'); actions=page.locator('.data-completeness-actions'); close=page.locator('.data-completeness-x')
     check('Completeness layout','Top-right close action is visible',page.locator('.data-completeness-x').is_visible())
-    tb=title.bounding_box(); sb=scroller.bounding_box(); ab=actions.bounding_box()
-    check('Completeness layout','Modal chrome surrounds the scrolling list',bool(tb and sb and ab and tb['y']+tb['height'] <= sb['y']+2 and sb['y']+sb['height'] <= ab['y']+2),f'title={tb} scroller={sb} actions={ab}')
+    pp=popup.bounding_box(); tb=title.bounding_box(); sb=scroller.bounding_box(); ab=actions.bounding_box(); cb=close.bounding_box()
+    chrome_ok=bool(pp and tb and sb and ab and cb and tb['y'] >= pp['y']-1 and tb['y']+tb['height'] <= sb['y']+2 and sb['y']+sb['height'] <= ab['y']+2 and cb['x'] >= pp['x'] and cb['x']+cb['width'] <= pp['x']+pp['width']+1 and cb['y'] >= pp['y'] and cb['y']+cb['height'] <= tb['y']+tb['height']+1)
+    check('Completeness layout','Modal header is fully inside popup and chrome surrounds only the scrolling list',chrome_ok,f'popup={pp} title={tb} scroller={sb} actions={ab} close={cb}')
     first_row=page.locator('[data-issue-section="coordMissing"] .issue-modal-row').first
     rb=first_row.bounding_box(); mb=first_row.locator('.issue-modal-row-main').bounding_box(); pb=first_row.locator('.issue-modal-row-problem').bounding_box(); xb=first_row.locator('.issue-modal-actions').bounding_box()
     check('Completeness layout','Desktop issue row uses compact three-column order',bool(rb and mb and pb and xb and rb['height'] <= 82 and mb['x'] < pb['x'] < xb['x']),f'row={rb} main={mb} problem={pb} actions={xb}')
@@ -688,6 +824,7 @@ def main():
                 test_viewport(browser,name,w,h)
         if phase in ('all','functional'):
             print('RUN filters',flush=True); test_filters(browser)
+            print('RUN monitoring quick filters',flush=True); test_monitoring_quick_filters(browser)
             print('RUN anchors',flush=True); test_hash_and_anchors(browser)
             print('RUN map/charts',flush=True); test_map_and_charts(browser)
             print('RUN presentation contract',flush=True); test_presentation_contract(browser)

@@ -178,18 +178,42 @@
               <h3 id="alertsTitle" class="text-sm font-bold text-slate-800">ประเด็นสำคัญ</h3>
             </div>
             <div class="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-1">
-              <article class="watch-mini">
-                <div class="watch-icon bg-red-50 text-red-600"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>
-                <div class="min-w-0"><p>ใช้การไม่ได้</p><div><strong id="alertNotWorking">-</strong><span>ระบบ</span></div></div>
-              </article>
-              <article class="watch-mini">
-                <div class="watch-icon bg-amber-50 text-amber-600"><i class="fa-solid fa-droplet-slash" aria-hidden="true"></i></div>
-                <div class="min-w-0"><p>น้ำไม่เพียงพอ</p><div><strong id="alertInsufficient">-</strong><span>ระบบ</span></div></div>
-              </article>
-              <article class="watch-mini">
-                <div class="watch-icon bg-rose-50 text-rose-600"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i></div>
-                <div class="min-w-0"><p>น้ำดื่มไม่ผ่านเกณฑ์</p><div><strong id="alertQualityFail">-</strong><span>ระบบ</span></div></div>
-              </article>
+              <button
+                class="watch-mini"
+                type="button"
+                data-monitoring-filter="not-working"
+                data-filter-toggle-key="operationalStatus"
+                data-filter-toggle-value="NOT_WORKING"
+                aria-pressed="false"
+                title="กรองทั้ง Dashboard: ใช้การไม่ได้"
+              >
+                <span class="watch-icon bg-red-50 text-red-600"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
+                <span class="min-w-0"><span class="watch-mini-label block">ใช้การไม่ได้</span><span class="block"><strong id="alertNotWorking">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
+              </button>
+              <button
+                class="watch-mini"
+                type="button"
+                data-monitoring-filter="insufficient"
+                data-filter-toggle-key="waterQuantity"
+                data-filter-toggle-value="INSUFFICIENT"
+                aria-pressed="false"
+                title="กรองทั้ง Dashboard: น้ำไม่เพียงพอ"
+              >
+                <span class="watch-icon bg-amber-50 text-amber-600"><i class="fa-solid fa-droplet-slash" aria-hidden="true"></i></span>
+                <span class="min-w-0"><span class="watch-mini-label block">น้ำไม่เพียงพอ</span><span class="block"><strong id="alertInsufficient">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
+              </button>
+              <button
+                class="watch-mini"
+                type="button"
+                data-monitoring-filter="quality-fail"
+                data-filter-toggle-key="drinkingWaterQuality"
+                data-filter-toggle-value="FAIL"
+                aria-pressed="false"
+                title="กรองทั้ง Dashboard: น้ำดื่มไม่ผ่านเกณฑ์"
+              >
+                <span class="watch-icon bg-rose-50 text-rose-600"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i></span>
+                <span class="min-w-0"><span class="watch-mini-label block">น้ำดื่มไม่ผ่านเกณฑ์</span><span class="block"><strong id="alertQualityFail">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
+              </button>
             </div>
           </section>
         </div>
