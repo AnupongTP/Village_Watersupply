@@ -1,0 +1,24 @@
+[
+  {
+    "system_id": "PY-W-000001",
+    "village_id": "PY-V-0001",
+    "system_name": "ระบบประปาตัวอย่าง 1",
+    "latitude": 19.32,
+    "longitude": 100.17,
+    "operational_status": "WORKING",
+    "drinking_water_quality": "FAIL",
+    "water_quantity": "SUFFICIENT",
+    "households_served": 100
+  },
+  {
+    "system_id": "PY-W-000002",
+    "village_id": "PY-V-0002",
+    "system_name": "ระบบประปาตัวอย่าง 2",
+    "latitude": 19.17,
+    "longitude": 99.9,
+    "operational_status": "NOT_WORKING",
+    "drinking_water_quality": "NO_DATA",
+    "water_quantity": "INSUFFICIENT",
+    "households_served": 80
+  }
+]

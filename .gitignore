@@ -1,0 +1,25 @@
+# Machine-specific API config
+assets/js/config.js
+
+# Node dependencies
+node_modules/
+
+# Playwright output
+playwright-report/
+test-results/
+blob-report/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,0 +1,18 @@
+[
+  {
+    "village_id": "PY-V-0001",
+    "province": "พะเยา",
+    "district": "จุน",
+    "local_authority": "เทศบาลตำบลจุน",
+    "village_name": "บ้านตัวอย่าง หมู่ 1",
+    "has_village_waterworks": "YES"
+  },
+  {
+    "village_id": "PY-V-0002",
+    "province": "พะเยา",
+    "district": "เมืองพะเยา",
+    "local_authority": "เทศบาลเมืองพะเยา",
+    "village_name": "บ้านตัวอย่าง หมู่ 2",
+    "has_village_waterworks": "YES"
+  }
+]

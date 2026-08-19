@@ -1,0 +1,20 @@
+[
+  {
+    "source_id": "SRC-0001",
+    "village_id": "PY-V-0001",
+    "source_type": "PWA",
+    "households": 0
+  },
+  {
+    "source_id": "SRC-0002",
+    "village_id": "PY-V-0001",
+    "source_type": "SELF_SOURCE",
+    "households": 100
+  },
+  {
+    "source_id": "SRC-0003",
+    "village_id": "PY-V-0002",
+    "source_type": "PWA",
+    "households": 80
+  }
+]

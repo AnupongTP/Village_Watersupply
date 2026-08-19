@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f67b1">
+  <meta name="color-scheme" content="light">
+  <title>ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS production build -->
+  <link rel="stylesheet" href="assets/css/tailwind.css">
+
+  <!-- UI libraries -->
+  <script defer src="assets/vendor/fontawesome/js/fontawesome.min.js"></script>
+  <script defer src="assets/vendor/fontawesome/js/solid.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+  <!-- Library/edge-case overrides only -->
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+
+<body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
+  <a href="#overview" class="skip-link">ข้ามไปยังเนื้อหาหลัก</a>
+
+  <header id="appHeader" class="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md">
+    <div class="mx-auto flex min-h-16 max-w-[1600px] items-center justify-between gap-3 px-4 py-2.5 sm:px-5 xl:px-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-700 text-white shadow-sm sm:size-11" aria-hidden="true">
+          <i class="fa-solid fa-droplet text-base"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="truncate text-[15px] font-extrabold leading-tight text-slate-900 sm:text-lg">ระบบข้อมูลประปาหมู่บ้าน</h1>
+          <p class="mt-0.5 text-[11px] text-slate-500 sm:text-xs">จังหวัดพะเยา</p>
+        </div>
+      </div>
+
+      <div class="flex shrink-0 items-center gap-2">
+        <div class="hidden text-right sm:block">
+          <span class="block text-[10px] text-slate-400">โหลดข้อมูลล่าสุด</span>
+          <strong id="dataUpdatedAt" class="mt-0.5 block text-[11px] font-semibold text-slate-600">-</strong>
+        </div>
+        <button id="btnRefresh" class="btn btn-outline" type="button">
+          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+          <span class="hidden sm:inline">รีเฟรช</span>
+        </button>
+      </div>
+    </div>
+
+    <nav class="border-t border-slate-100" aria-label="เมนูส่วนต่าง ๆ ของ Dashboard">
+      <div class="section-nav-scroll mx-auto flex max-w-[1600px] gap-1 overflow-x-auto px-3 py-1.5 sm:px-5 xl:px-6">
+        <a href="#overview" class="section-link active">ภาพรวม</a>
+        <a href="#map-section" class="section-link">แผนที่</a>
+        <a href="#areas" class="section-link">รายพื้นที่</a>
+        <a href="#quality" class="section-link">คุณภาพน้ำ</a>
+        <a href="#system-structure" class="section-link">ระบบประปา</a>
+        <a href="#watchlist" class="section-link">เฝ้าระวัง</a>
+        <a href="#data-completeness" class="section-link">ความครบถ้วน</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="mx-auto max-w-[1600px] px-3 pb-10 pt-3 sm:px-5 sm:pt-4 xl:px-6">
+    <!-- Global Filter -->
+    <section id="filters" class="filter-shell z-40 mb-5 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:sticky" aria-label="ตัวกรองข้อมูล">
+      <div class="flex items-center justify-between gap-3 md:hidden">
+        <div class="min-w-0">
+          <p class="eyebrow">ตัวกรองข้อมูล</p>
+          <p id="scopeLabel" class="truncate text-xs font-semibold text-slate-700" aria-live="polite">จังหวัดพะเยา</p>
+        </div>
+        <button id="btnFilterToggle" class="btn btn-outline shrink-0" type="button" aria-expanded="false" aria-controls="filterPanel">
+          <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+          <span>ตัวกรอง</span>
+          <span id="filterCount" class="grid min-w-5 place-items-center rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">0</span>
+        </button>
+      </div>
+
+      <div id="filterPanel" class="hidden pt-3 md:block md:pt-0">
+        <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[0.85fr_1.15fr_1.15fr_0.95fr_1.05fr_auto] xl:items-end">
+          <label class="filter-field">
+            <span>อำเภอ</span>
+            <select id="filterDistrict" class="filter-select"><option value="">ทั้งหมด</option></select>
+          </label>
+          <label class="filter-field">
+            <span>อปท.</span>
+            <select id="filterLocalAuthority" class="filter-select"><option value="">ทั้งหมด</option></select>
+          </label>
+          <label class="filter-field">
+            <span>ประเภทระบบ</span>
+            <select id="filterSystemType" class="filter-select"><option value="">ทั้งหมด</option></select>
+          </label>
+          <label class="filter-field">
+            <span>สถานะระบบ</span>
+            <select id="filterOperationalStatus" class="filter-select">
+              <option value="">ทั้งหมด</option>
+              <option value="WORKING">ใช้การได้</option>
+              <option value="NOT_WORKING">ใช้การไม่ได้</option>
+              <option value="UNKNOWN">ไม่มีข้อมูล</option>
+            </select>
+          </label>
+          <label class="filter-field">
+            <span>คุณภาพน้ำดื่ม</span>
+            <select id="filterDrinkingWaterQuality" class="filter-select">
+              <option value="">ทั้งหมด</option>
+              <option value="PASS">ผ่านเกณฑ์</option>
+              <option value="FAIL">ไม่ผ่านเกณฑ์</option>
+              <option value="NO_DATA">ไม่มีข้อมูล</option>
+            </select>
+          </label>
+          <button id="btnClearFilters" class="btn btn-ghost w-full xl:w-auto" type="button">
+            <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
+            <span>ล้างตัวกรอง</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Overview -->
+    <section id="overview" class="dashboard-section scroll-target" data-scroll-target>
+      <div class="mb-3 flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="eyebrow">ภาพรวมพื้นที่</p>
+          <h2 class="section-title">ภาพรวมระบบประปาและสถานการณ์สำคัญ</h2>
+          <p class="section-description">สรุปตัวเลขสำคัญควบคู่กับตำแหน่งระบบประปาบนแผนที่</p>
+        </div>
+        <div class="flex items-baseline justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500 sm:justify-start">
+          <span>ระบบที่เข้าเงื่อนไขเฝ้าระวัง</span>
+          <strong id="watchlistTotal" class="text-lg font-extrabold leading-none text-rose-600" aria-live="polite">-</strong>
+          <span>ระบบ</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 xl:grid-cols-[26rem_minmax(0,1fr)] xl:items-stretch">
+        <div class="grid min-w-0 gap-3 md:grid-cols-1 xl:flex xl:flex-col">
+          <div class="grid grid-cols-2 gap-2.5">
+            <article class="kpi-card">
+              <div class="kpi-icon bg-sky-50 text-sky-700"><i class="fa-solid fa-house" aria-hidden="true"></i></div>
+              <div class="min-w-0"><p class="kpi-label">หมู่บ้านตามตัวกรอง</p><p id="kpiVillages" class="kpi-value">-</p></div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-icon bg-emerald-50 text-emerald-700"><i class="fa-solid fa-faucet-drip" aria-hidden="true"></i></div>
+              <div class="min-w-0"><p class="kpi-label">หมู่บ้านมีประปา</p><p id="kpiWithWaterworks" class="kpi-value">-</p></div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-icon bg-slate-100 text-slate-500"><i class="fa-solid fa-house-circle-xmark" aria-hidden="true"></i></div>
+              <div class="min-w-0"><p class="kpi-label">หมู่บ้านไม่มีประปา</p><p id="kpiWithoutWaterworks" class="kpi-value">-</p></div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-icon bg-cyan-50 text-cyan-700"><i class="fa-solid fa-water" aria-hidden="true"></i></div>
+              <div class="min-w-0"><p class="kpi-label">ระบบประปา</p><p id="kpiSystems" class="kpi-value">-</p></div>
+            </article>
+          </div>
+
+          <section id="alerts" class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-1" aria-labelledby="alertsTitle">
+            <div class="mb-2.5">
+              <p class="eyebrow">สถานการณ์เฝ้าระวัง</p>
+              <h3 id="alertsTitle" class="text-sm font-bold text-slate-800">ประเด็นสำคัญ</h3>
+            </div>
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-1">
+              <article class="watch-mini">
+                <div class="watch-icon bg-red-50 text-red-600"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>
+                <div class="min-w-0"><p>ใช้การไม่ได้</p><div><strong id="alertNotWorking">-</strong><span>ระบบ</span></div></div>
+              </article>
+              <article class="watch-mini">
+                <div class="watch-icon bg-amber-50 text-amber-600"><i class="fa-solid fa-droplet-slash" aria-hidden="true"></i></div>
+                <div class="min-w-0"><p>น้ำไม่เพียงพอ</p><div><strong id="alertInsufficient">-</strong><span>ระบบ</span></div></div>
+              </article>
+              <article class="watch-mini">
+                <div class="watch-icon bg-rose-50 text-rose-600"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i></div>
+                <div class="min-w-0"><p>น้ำดื่มไม่ผ่านเกณฑ์</p><div><strong id="alertQualityFail">-</strong><span>ระบบ</span></div></div>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <section id="map-section" class="map-panel scroll-target min-w-0 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3" data-scroll-target aria-labelledby="mapTitle">
+          <div class="mb-2.5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p class="eyebrow">GIS</p>
+              <h3 id="mapTitle" class="text-sm font-bold text-slate-800">ตำแหน่งระบบประปา</h3>
+              <p class="mt-0.5 text-[11px] text-slate-500">1 จุด = 1 ระบบที่มีพิกัดใช้งานได้</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+              <button id="btnMapHome" class="btn btn-outline" type="button"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span>กว๊านพะเยา</span></button>
+              <button id="btnMapFit" class="btn btn-primary" type="button"><i class="fa-solid fa-expand" aria-hidden="true"></i><span>ดูทุกจุด</span></button>
+            </div>
+          </div>
+          <div class="map-stack h-80 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 md:h-[26rem] xl:h-[29rem]">
+            <div id="waterMap" class="size-full" aria-label="แผนที่ระบบประปาหมู่บ้านจังหวัดพะเยา"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- Area Analysis -->
+    <section id="areas" class="dashboard-section scroll-target mt-7" data-scroll-target>
+      <div class="section-heading"><div><p class="eyebrow">พื้นที่</p><h2 class="section-title">สถานการณ์รายอำเภอ</h2><p class="section-description">เปรียบเทียบจำนวนหมู่บ้านและระบบประปาตามขอบเขตที่เลือก</p></div></div>
+      <article class="chart-card"><div class="chart-canvas-wrap h-[21rem] sm:h-[23rem]"><canvas id="districtChart"></canvas></div></article>
+    </section>
+
+    <!-- Quality -->
+    <section id="quality" class="dashboard-section scroll-target mt-7" data-scroll-target>
+      <div class="section-heading"><div><p class="eyebrow">คุณภาพและความมั่นคง</p><h2 class="section-title">คุณภาพน้ำและปริมาณน้ำ</h2></div></div>
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <article class="chart-card">
+          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">คุณภาพน้ำดื่ม</h3><p class="mt-0.5 text-[11px] text-slate-500">ผลการประเมินระบบตามข้อมูลต้นทาง</p></div>
+          <div class="chart-canvas-wrap h-[17rem] sm:h-[19rem]"><canvas id="qualityChart"></canvas></div>
+        </article>
+        <article class="chart-card">
+          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">ความเพียงพอของน้ำ</h3><p class="mt-0.5 text-[11px] text-slate-500">สัดส่วนระบบที่มีน้ำเพียงพอและไม่เพียงพอ</p></div>
+          <div class="chart-canvas-wrap h-[17rem] sm:h-[19rem]"><canvas id="quantityChart"></canvas></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- System Structure -->
+    <section id="system-structure" class="dashboard-section scroll-target mt-7" data-scroll-target>
+      <div class="section-heading"><div><p class="eyebrow">โครงสร้างระบบ</p><h2 class="section-title">ประเภทระบบประปา</h2><p class="section-description">จำนวนระบบตามประเภทที่บันทึกในฐานข้อมูล โดยแสดงชื่อประเภทเป็นภาษาไทย</p></div></div>
+      <article class="chart-card"><div class="chart-canvas-wrap h-[25rem] sm:h-[27rem]"><canvas id="systemTypeChart"></canvas></div></article>
+    </section>
+
+    <!-- Watchlist -->
+    <section id="watchlist" class="dashboard-section scroll-target mt-7" data-scroll-target>
+      <div class="section-heading"><div><p class="eyebrow">รายการเฝ้าระวัง</p><h2 class="section-title">ระบบที่ควรติดตามสถานการณ์</h2><p class="section-description">ระบบที่ใช้การไม่ได้ น้ำไม่เพียงพอ หรือคุณภาพน้ำดื่มไม่ผ่านเกณฑ์</p></div></div>
+      <div id="problemList" class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" aria-live="polite"><p class="text-sm text-slate-500">กำลังประมวลผลข้อมูล...</p></div>
+    </section>
+
+    <!-- Data Completeness -->
+    <section id="data-completeness" class="dashboard-section scroll-target mt-8" data-scroll-target>
+      <div class="section-heading"><div><p class="eyebrow">ข้อมูลประกอบ Dashboard</p><h2 class="section-title">ความครบถ้วนของข้อมูล</h2><p class="section-description">ใช้ประกอบการตีความ Dashboard เท่านั้น ไม่ใช่ระบบแก้ไขข้อมูล</p></div></div>
+      <div id="dataCompletenessSummary" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-sm text-slate-500">กำลังตรวจสอบความครบถ้วน...</p></div>
+    </section>
+
+    <footer class="mt-8 border-t border-slate-200 py-5 text-center text-[11px] text-slate-400">Dashboard แสดงข้อมูลแบบอ่านอย่างเดียว (Read-only)</footer>
+  </main>
+
+  <!-- Read-only detail drawer -->
+  <aside id="systemDrawer" class="drawer" aria-hidden="true" aria-label="รายละเอียดระบบประปา">
+    <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3.5">
+        <div><p class="eyebrow">ข้อมูลระบบประปา</p><h2 id="drawerTitle" class="text-base font-bold text-slate-900">รายละเอียดระบบ</h2></div>
+        <button id="btnCloseDrawer" class="btn btn-outline size-10 px-0" type="button" aria-label="ปิดรายละเอียด"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <div id="drawerContent" class="min-h-0 flex-1 overflow-y-auto p-4"></div>
+    </div>
+  </aside>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.26.25/dist/sweetalert2.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

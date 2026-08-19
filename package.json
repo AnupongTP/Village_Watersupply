@@ -1,0 +1,11 @@
+{
+  "name": "village-watersupply-dashboard",
+  "private": true,
+  "version": "1.0.0-rc.3",
+  "scripts": {
+    "build:css": "node tools/build-tailwind.mjs"
+  },
+  "devDependencies": {
+    "tailwindcss": "4.1.10"
+  }
+}
