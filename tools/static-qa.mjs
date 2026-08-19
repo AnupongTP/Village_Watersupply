@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +24,10 @@ assert(!index.includes('cdn.tailwindcss.com'), 'Tailwind Play CDN is forbidden')
 assert(index.includes('assets/css/tailwind.css'), 'Production Tailwind CSS link is required');
 assert(index.includes('assets/css/app.css'), 'app.css link is required');
 
+assert(index.includes('id="filterSearch"'), 'Global Dashboard search control is required');
+assert(index.includes('id="activeFilterChips"'), 'Active filter chips container is required');
+assert(index.includes('คุณภาพน้ำและปริมาณน้ำโดยรวม'), 'Overall water quality/quantity section heading is required');
+
 const jsFiles = walk('assets/js').filter(f => f.endsWith('.js'));
 const allJs = jsFiles.map(f => read(f)).join('\n');
 assert(!/method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i.test(allJs), 'Read-only frontend contains a write HTTP method');
@@ -42,6 +45,23 @@ for (const rel of jsFiles) {
 }
 
 assert(!/fa-(?:brands|regular)\b/.test(allJs), 'Only Font Awesome Solid is bundled; brands/regular icon classes are forbidden');
+
+
+const filterSource = read('assets/js/filters.js');
+assert(filterSource.includes('buildFilteredSnapshot'), 'Unified filter engine snapshot helper is required');
+assert(filterSource.includes('waterQuantity'), 'Water Quantity filter dimension is required');
+assert(filterSource.includes('data-filter-remove'), 'Active filter chip removal action is required');
+
+const chartSource = read('assets/js/charts.js');
+for (const filterKey of ['district', 'systemType', 'drinkingWaterQuality', 'waterQuantity']) {
+  assert(chartSource.includes(`toggleChartFilter('${filterKey}'`), `Chart cross-filter missing ${filterKey}`);
+}
+
+const completenessSource = read('assets/js/data-quality.js');
+assert(completenessSource.includes('ISSUE_PAGE_SIZE'), 'Data completeness progressive reveal page size is required');
+assert(completenessSource.includes('data-issue-more'), 'Data completeness show-more action is required');
+assert(completenessSource.includes('data-issue-action="detail"'), 'Data completeness Detail action is required');
+assert(completenessSource.includes('data-issue-action="map"'), 'Data completeness Map action is required');
 
 const mapSource = read('assets/js/map.js');
 assert(mapSource.includes('data-map-action="detail"'), 'Map popup must expose Details action');

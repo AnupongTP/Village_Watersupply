@@ -239,11 +239,13 @@ function fitBoundsFromArray(bounds) {
 function hasActiveMapFilter() {
   const f = AppState.filters || {};
   return Boolean(
+    f.search ||
     f.district ||
     f.localAuthority ||
     f.systemType ||
     f.operationalStatus ||
-    f.drinkingWaterQuality
+    f.drinkingWaterQuality ||
+    f.waterQuantity
   );
 }
 

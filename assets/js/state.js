@@ -16,10 +16,12 @@ export const AppState = {
   },
 
   filters: {
+    search: '',
     district: '',
     localAuthority: '',
     systemType: '',
     operationalStatus: '',
-    drinkingWaterQuality: ''
+    drinkingWaterQuality: '',
+    waterQuantity: ''
   }
 };

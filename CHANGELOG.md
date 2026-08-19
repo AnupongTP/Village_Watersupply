@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Global Dashboard search for user-facing system, village, area, and agency text.
+- Shared `waterQuantity` filter dimension.
+- Cross-filter interactions from District, System Type, Drinking Quality, and Water Quantity charts.
+- Active filter chips with per-filter removal.
+- Data Completeness progressive reveal: 20 rows initially, then 20 more per click until complete.
+- Read-only Detail actions inside Data Completeness issue rows.
+- Map actions inside Data Completeness only for systems with usable coordinates.
+- Read-only village detail rendering for village-only source issues.
+- Unit and browser regression coverage for unified filtering, chart toggles, search, pagination boundaries, and Data Completeness actions.
+
+### Changed
+- Section heading `คุณภาพน้ำและปริมาณน้ำ` is now `คุณภาพน้ำและปริมาณน้ำโดยรวม`.
+- District changes clear only dependent Local Authority; independent system/status/quality/quantity/search filters remain active.
+- Charts render their own dimension with self-exclusion so alternate bars/segments remain selectable while a chart filter is active.
+- Data Completeness now follows the same active filtered dataset as the rest of the Dashboard.
+- Detail Drawer metadata can switch between system detail and read-only village/area detail without duplicating the drawer shell.
+
+### Safety
+- Search deliberately excludes generated internal IDs from searchable user-facing fields.
+- Chart clicks mutate the same `AppState.filters` used by dropdowns instead of filtering DOM elements independently.
+- Dashboard remains read-only; no write HTTP methods or data-edit workflow were added.
+
 ## 1.0.0-rc.4 — 2026-08-19
 
 ### Added
@@ -21,18 +46,13 @@
 - Watchlist and Map popup now share one Detail Drawer implementation to prevent UI divergence.
 - PROJECT_RULES now defines permanent rules for map actions, document preview, GitHub Actions, and real API smoke tests.
 
-### QA hardening
-- Added locked-viewport map containment and hash-anchor assertions across all 8 required viewport sizes.
-- Added Watchlist no-truncation regression with 25 synthetic matching records and internal-scroll verification on desktop/mobile.
-- Added Drawer close/focus/mobile-fit regression coverage.
-- Added Chart.js finite-data/filter-response regression coverage.
-- Added explicit API-error and empty-dataset UI-state regression coverage.
-- Expanded filter QA to verify District → Local Authority cascading.
-- Added runtime read-only request monitoring and real-data presentation-leak checks.
-- Playwright visual evidence is uploaded on successful CI runs as well as failures so screenshot review can actually occur before release.
-
 ### Security / Safety
 - Document URLs accept HTTP/HTTPS only.
 - Navigation is generated only from numeric coordinates already accepted by map validation.
 - CI does not commit or print the Apps Script API secret.
 - Dashboard remains read-only.
+
+### Fixed — deployment path hotfix
+- Mock-data URLs are now resolved from the owning ES module URL instead of `document.baseURI`.
+- Apache subdirectory deployments such as `/Village_Watersupply/` no longer escape to `/data/mock/...` when mock mode is enabled.
+- Added regression tests for both domain-root and subdirectory URL resolution.

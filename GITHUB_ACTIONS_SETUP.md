@@ -34,12 +34,12 @@ npm run test:unit
 6. Commit source + generated `assets/css/tailwind.css` + `package-lock.json` พร้อมกัน แล้ว push.
 7. GitHub Actions `Dashboard Playwright QA` จะรัน Chromium จริงบน GitHub runner.
 8. เมื่อ workflow หลักผ่าน ให้รัน `Real Apps Script Smoke Test` แบบ manual หนึ่งครั้งเพื่อทดสอบ Secret/API จริง.
-9. ถ้า workflow fail ให้เปิด artifact `playwright-report-*` และ `playwright-test-results-*`; ห้าม merge/release จนกว่าการทดสอบจะผ่าน.
+9. เปิด artifact `playwright-report-*` และ `playwright-visual-evidence-*` เพื่ออ่านผลและตรวจ screenshot จริง; ถ้า workflow fail ห้าม merge/release จนกว่าการทดสอบจะผ่าน.
 
 ## Workflows
 
 ### Dashboard Playwright QA
-รันเมื่อ push/PR เข้า `main` และ manual dispatch. ตรวจ source hygiene, syntax, Tailwind production build, unit tests, Chromium E2E, responsive/layout, map actions, document preview, presentation-code leakage, screenshots/traces.
+รันเมื่อ push/PR เข้า `main` และ manual dispatch. ตรวจ source hygiene, syntax, Tailwind production build, unit tests, Chromium E2E, Global Search, filter/cascading, chart cross-filter, active chips, responsive/layout, map actions, document preview, Data Completeness progressive reveal/actions, presentation-code leakage, read-only request gate และ screenshots/traces. Visual evidence ถูก upload แม้ test ผ่านเพื่อใช้ manual review ก่อน release.
 
 ### Real Apps Script Smoke Test
 รัน manual และทุกวัน 08:00 ประเทศไทย (01:00 UTC). ใช้ `GET` เท่านั้น ตรวจ schema จริง แล้วเปิด Dashboard ด้วย API จริง.

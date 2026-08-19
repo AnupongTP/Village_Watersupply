@@ -79,6 +79,22 @@
       </div>
 
       <div id="filterPanel" class="hidden pt-3 md:block md:pt-0">
+        <div class="mb-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
+          <label class="filter-field">
+            <span>ค้นหาทั้ง Dashboard</span>
+            <input id="filterSearch" class="filter-select font-sans" type="search" autocomplete="off" placeholder="ค้นหาชื่อระบบ หมู่บ้าน อำเภอ อปท. หรือหน่วยงาน">
+          </label>
+          <label class="filter-field">
+            <span>ความเพียงพอของน้ำ</span>
+            <select id="filterWaterQuantity" class="filter-select">
+              <option value="">ทั้งหมด</option>
+              <option value="SUFFICIENT">เพียงพอ</option>
+              <option value="INSUFFICIENT">ไม่เพียงพอ</option>
+              <option value="NO_DATA">ไม่มีข้อมูล</option>
+            </select>
+          </label>
+        </div>
+
         <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[0.85fr_1.15fr_1.15fr_0.95fr_1.05fr_auto] xl:items-end">
           <label class="filter-field">
             <span>อำเภอ</span>
@@ -110,12 +126,14 @@
               <option value="NO_DATA">ไม่มีข้อมูล</option>
             </select>
           </label>
-          <button id="btnClearFilters" class="btn btn-ghost w-full xl:w-auto" type="button">
+          <button id="btnClearFilters" class="btn btn-ghost w-full xl:w-auto" type="button" disabled>
             <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
             <span>ล้างตัวกรอง</span>
           </button>
         </div>
       </div>
+
+      <div id="activeFilterChips" class="watch-badges mt-3 hidden items-center border-t border-slate-100 pt-3" aria-live="polite"></div>
     </section>
 
     <!-- Overview -->
@@ -197,20 +215,20 @@
 
     <!-- Area Analysis -->
     <section id="areas" class="dashboard-section scroll-target mt-7" data-scroll-target>
-      <div class="section-heading"><div><p class="eyebrow">พื้นที่</p><h2 class="section-title">สถานการณ์รายอำเภอ</h2><p class="section-description">เปรียบเทียบจำนวนหมู่บ้านและระบบประปาตามขอบเขตที่เลือก</p></div></div>
+      <div class="section-heading"><div><p class="eyebrow">พื้นที่</p><h2 class="section-title">สถานการณ์รายอำเภอ</h2><p class="section-description">เปรียบเทียบจำนวนหมู่บ้านและระบบประปาตามตัวกรองอื่น คลิกแท่งกราฟเพื่อกรองตามอำเภอ และคลิกแท่งเดิมซ้ำเพื่อยกเลิก</p></div></div>
       <article class="chart-card"><div class="chart-canvas-wrap h-[21rem] sm:h-[23rem]"><canvas id="districtChart"></canvas></div></article>
     </section>
 
     <!-- Quality -->
     <section id="quality" class="dashboard-section scroll-target mt-7" data-scroll-target>
-      <div class="section-heading"><div><p class="eyebrow">คุณภาพและความมั่นคง</p><h2 class="section-title">คุณภาพน้ำและปริมาณน้ำ</h2></div></div>
+      <div class="section-heading"><div><p class="eyebrow">คุณภาพและความมั่นคง</p><h2 class="section-title">คุณภาพน้ำและปริมาณน้ำโดยรวม</h2></div></div>
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <article class="chart-card">
-          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">คุณภาพน้ำดื่ม</h3><p class="mt-0.5 text-[11px] text-slate-500">ผลการประเมินระบบตามข้อมูลต้นทาง</p></div>
+          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">คุณภาพน้ำดื่ม</h3><p class="mt-0.5 text-[11px] text-slate-500">ผลการประเมินระบบตามข้อมูลต้นทาง คลิกส่วนของแผนภูมิเพื่อกรอง</p></div>
           <div class="chart-canvas-wrap h-[17rem] sm:h-[19rem]"><canvas id="qualityChart"></canvas></div>
         </article>
         <article class="chart-card">
-          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">ความเพียงพอของน้ำ</h3><p class="mt-0.5 text-[11px] text-slate-500">สัดส่วนระบบที่มีน้ำเพียงพอและไม่เพียงพอ</p></div>
+          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">ความเพียงพอของน้ำ</h3><p class="mt-0.5 text-[11px] text-slate-500">สัดส่วนระบบที่มีน้ำเพียงพอและไม่เพียงพอ คลิกส่วนของแผนภูมิเพื่อกรอง</p></div>
           <div class="chart-canvas-wrap h-[17rem] sm:h-[19rem]"><canvas id="quantityChart"></canvas></div>
         </article>
       </div>
@@ -218,7 +236,7 @@
 
     <!-- System Structure -->
     <section id="system-structure" class="dashboard-section scroll-target mt-7" data-scroll-target>
-      <div class="section-heading"><div><p class="eyebrow">โครงสร้างระบบ</p><h2 class="section-title">ประเภทระบบประปา</h2><p class="section-description">จำนวนระบบตามประเภทที่บันทึกในฐานข้อมูล โดยแสดงชื่อประเภทเป็นภาษาไทย</p></div></div>
+      <div class="section-heading"><div><p class="eyebrow">โครงสร้างระบบ</p><h2 class="section-title">ประเภทระบบประปา</h2><p class="section-description">จำนวนระบบตามประเภทที่บันทึกในฐานข้อมูล คลิกแท่งกราฟเพื่อกรองตามประเภทระบบ และคลิกแท่งเดิมซ้ำเพื่อยกเลิก</p></div></div>
       <article class="chart-card"><div class="chart-canvas-wrap h-[25rem] sm:h-[27rem]"><canvas id="systemTypeChart"></canvas></div></article>
     </section>
 
@@ -230,7 +248,7 @@
 
     <!-- Data Completeness -->
     <section id="data-completeness" class="dashboard-section scroll-target mt-8" data-scroll-target>
-      <div class="section-heading"><div><p class="eyebrow">ข้อมูลประกอบ Dashboard</p><h2 class="section-title">ความครบถ้วนของข้อมูล</h2><p class="section-description">ใช้ประกอบการตีความ Dashboard เท่านั้น ไม่ใช่ระบบแก้ไขข้อมูล</p></div></div>
+      <div class="section-heading"><div><p class="eyebrow">ข้อมูลประกอบ Dashboard</p><h2 class="section-title">ความครบถ้วนของข้อมูล</h2><p class="section-description">คำนวณจากชุดข้อมูลที่กำลังแสดงตามตัวกรองปัจจุบัน ใช้ประกอบการตีความ Dashboard เท่านั้น ไม่ใช่ระบบแก้ไขข้อมูล</p></div></div>
       <div id="dataCompletenessSummary" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-sm text-slate-500">กำลังตรวจสอบความครบถ้วน...</p></div>
     </section>
 
@@ -241,7 +259,7 @@
   <aside id="systemDrawer" class="drawer" aria-hidden="true" aria-label="รายละเอียดระบบประปา">
     <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
       <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3.5">
-        <div><p class="eyebrow">ข้อมูลระบบประปา</p><h2 id="drawerTitle" class="text-base font-bold text-slate-900">รายละเอียดระบบ</h2></div>
+        <div><p id="drawerEyebrow" class="eyebrow">ข้อมูลระบบประปา</p><h2 id="drawerTitle" class="text-base font-bold text-slate-900">รายละเอียดระบบ</h2></div>
         <button id="btnCloseDrawer" class="btn btn-outline size-10 px-0" type="button" aria-label="ปิดรายละเอียด"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
       </div>
       <div id="drawerContent" class="min-h-0 flex-1 overflow-y-auto p-4"></div>

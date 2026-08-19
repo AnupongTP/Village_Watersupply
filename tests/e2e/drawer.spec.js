@@ -62,5 +62,5 @@ test('mobile drawer fills the viewport, scrolls internally and keeps content rea
   }));
   expect(content.overflowY).toBe('auto');
   expect(content.scrollHeight).toBeGreaterThanOrEqual(content.clientHeight);
-  await expect(page.locator('#drawerContent')).toContainText('ข้อมูลระบบประปา');
+  await expect(page.locator('#drawerContent')).toContainText('ข้อมูลพื้นที่');
 });

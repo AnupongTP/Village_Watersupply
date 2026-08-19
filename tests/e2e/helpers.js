@@ -31,6 +31,46 @@ export function collectForbiddenHttpMethods(page) {
   return forbidden;
 }
 
+
+export async function installMockData(page, {
+  villages = [],
+  waterSystems = [],
+  waterSources = []
+} = {}) {
+  await page.route('**/data/mock/villages.json', route => route.fulfill({ json: villages }));
+  await page.route('**/data/mock/water_systems.json', route => route.fulfill({ json: waterSystems }));
+  await page.route('**/data/mock/village_water_sources.json', route => route.fulfill({ json: waterSources }));
+}
+
+export async function clickChartElement(page, canvasId, datasetIndex, index) {
+  const canvas = page.locator(`#${canvasId}`);
+  await canvas.scrollIntoViewIfNeeded();
+  await expect(canvas).toBeVisible();
+
+  const point = await page.evaluate(({ canvasId: id, datasetIndex: dataset, index: item }) => {
+    const element = document.getElementById(id);
+    const chart = window.Chart?.getChart?.(element);
+    const visual = chart?.getDatasetMeta(dataset)?.data?.[item];
+    if (!chart || !visual) return null;
+    const center = typeof visual.getCenterPoint === 'function'
+      ? visual.getCenterPoint()
+      : { x: visual.x, y: visual.y };
+    return { x: center.x, y: center.y };
+  }, { canvasId, datasetIndex, index });
+
+  expect(point, `Chart element ${canvasId}[${datasetIndex}][${index}] was not rendered`).not.toBeNull();
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box.x + point.x, box.y + point.y);
+}
+
+export async function chartLabelIndex(page, canvasId, label) {
+  return page.evaluate(({ canvasId: id, label: expected }) => {
+    const chart = window.Chart?.getChart?.(document.getElementById(id));
+    return chart?.data?.labels?.findIndex(value => String(value) === String(expected)) ?? -1;
+  }, { canvasId, label });
+}
+
 export async function openDashboard(page) {
   await page.goto('/');
   await expect(page.locator('#kpiVillages')).not.toHaveText('-', { timeout: 20_000 });

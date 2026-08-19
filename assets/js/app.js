@@ -3,7 +3,7 @@ import { AppState } from './state.js';
 import { applyFilters, bindFilterEvents, buildFilterOptions } from './filters.js';
 import { renderDashboard } from './dashboard.js';
 import { initMap, renderMap, goHome, fitVisiblePoints } from './map.js';
-import { renderCharts } from './charts.js';
+import { bindChartFilterEvents, renderCharts } from './charts.js';
 import { renderProblemList } from './problem-list.js';
 import { renderDataCompleteness } from './data-quality.js';
 import { initDrawer } from './drawer.js';
@@ -26,6 +26,7 @@ async function initApp() {
   initSectionNavigation();
   initStickyMetrics();
   bindFilterEvents(renderAll);
+  bindChartFilterEvents(renderAll);
 
   document.getElementById('btnRefresh')?.addEventListener('click', reloadData);
   document.getElementById('btnMapHome')?.addEventListener('click', goHome);

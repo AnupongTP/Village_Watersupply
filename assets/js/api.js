@@ -1,4 +1,5 @@
 import { CONFIG } from './config.js';
+import { resolveMockDataUrls } from './api-paths.js';
 
 const REQUEST_TIMEOUT_MS = 25000;
 
@@ -47,10 +48,11 @@ export async function loadData() {
 }
 
 async function loadMockData() {
+  const urls = resolveMockDataUrls(import.meta.url);
   const [villages, waterSystems, waterSources] = await Promise.all([
-    fetchJson('../../data/mock/villages.json'),
-    fetchJson('../../data/mock/water_systems.json'),
-    fetchJson('../../data/mock/village_water_sources.json')
+    fetchJson(urls.villages, 'villages.json'),
+    fetchJson(urls.waterSystems, 'water_systems.json'),
+    fetchJson(urls.waterSources, 'village_water_sources.json')
   ]);
 
   return {
@@ -62,9 +64,9 @@ async function loadMockData() {
   };
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, label) {
   const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`โหลดไฟล์ ${url} ไม่สำเร็จ`);
+  if (!response.ok) throw new Error(`โหลดไฟล์ข้อมูลตัวอย่าง ${label} ไม่สำเร็จ`);
   return response.json();
 }
 

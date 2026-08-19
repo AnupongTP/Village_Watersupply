@@ -1,9 +1,17 @@
 let previouslyFocused = null;
 
-export function openDrawer(html = '') {
+const DEFAULT_DRAWER_META = Object.freeze({
+  eyebrow: 'ข้อมูลระบบประปา',
+  title: 'รายละเอียดระบบ',
+  ariaLabel: 'รายละเอียดระบบประปา'
+});
+
+export function openDrawer(html = '', meta = {}) {
   const drawer = document.getElementById('systemDrawer');
   const content = document.getElementById('drawerContent');
   previouslyFocused = document.activeElement;
+
+  setDrawerMeta({ ...DEFAULT_DRAWER_META, ...meta });
 
   if (content) {
     content.innerHTML = html;
@@ -22,6 +30,7 @@ export function closeDrawer() {
   drawer.classList.remove('open');
   drawer.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('drawer-open');
+  setDrawerMeta(DEFAULT_DRAWER_META);
   if (previouslyFocused && typeof previouslyFocused.focus === 'function') previouslyFocused.focus();
   previouslyFocused = null;
 }
@@ -44,4 +53,14 @@ export function initDrawer() {
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
+}
+
+function setDrawerMeta(meta) {
+  const drawer = document.getElementById('systemDrawer');
+  const eyebrow = document.getElementById('drawerEyebrow');
+  const title = document.getElementById('drawerTitle');
+
+  if (eyebrow) eyebrow.textContent = meta.eyebrow || DEFAULT_DRAWER_META.eyebrow;
+  if (title) title.textContent = meta.title || DEFAULT_DRAWER_META.title;
+  if (drawer) drawer.setAttribute('aria-label', meta.ariaLabel || DEFAULT_DRAWER_META.ariaLabel);
 }

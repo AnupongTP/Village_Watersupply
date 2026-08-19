@@ -138,11 +138,15 @@ export const sharedWithOtherVillageLabel = value => enumLabel('sharedWithOtherVi
 export const villageWaterSourceTypeLabel = value => enumLabel('villageWaterSourceType', value);
 
 export function normalizeQuality(value) {
-  return isBlank(value) || value === '-' ? 'NO_DATA' : String(value).trim();
+  if (isBlank(value) || value === '-') return 'NO_DATA';
+  const normalized = String(value).trim();
+  return normalized === 'UNKNOWN' ? 'NO_DATA' : normalized;
 }
 
 export function normalizeQuantity(value) {
-  return isBlank(value) || value === '-' ? 'NO_DATA' : String(value).trim();
+  if (isBlank(value) || value === '-') return 'NO_DATA';
+  const normalized = String(value).trim();
+  return normalized === 'UNKNOWN' ? 'NO_DATA' : normalized;
 }
 
 export function normalizeOperationalStatus(value) {

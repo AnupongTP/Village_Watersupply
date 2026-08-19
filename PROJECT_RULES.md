@@ -379,16 +379,33 @@ QA ต้องตรวจทั้ง:
 
 ## 11) Global Filters — LOCKED
 
-Filters:
+Filters / filter dimensions:
 
+- ค้นหาทั้ง Dashboard
 - อำเภอ
 - อปท.
 - ประเภทระบบ
 - สถานะระบบ
 - คุณภาพน้ำดื่ม
+- ความเพียงพอของน้ำ
 
 Cascading:
 - District → Local Authority
+
+### Global Search
+
+Search ต้องค้นจากข้อมูลที่ผู้ใช้รู้จัก เช่น:
+- ชื่อระบบประปา
+- ชื่อหมู่บ้าน
+- อำเภอ / ตำบล / อปท.
+- หน่วยงานผู้รับผิดชอบ / หน่วยงานที่เกี่ยวข้อง
+- label ภาษาไทยของประเภทระบบ สถานะ คุณภาพน้ำ และความเพียงพอของน้ำ
+
+ห้ามใช้ generated internal ID เช่น `PY-W-...` / `PY-V-...` เป็น searchable user-facing concept
+
+Search ต้องทำงานร่วมกับ filter อื่นแบบ AND
+
+### Unified filter behavior
 
 ทุก Filter ต้องกระทบพร้อมกัน:
 - KPI
@@ -396,8 +413,20 @@ Cascading:
 - Map
 - Charts
 - Watchlist
+- Data completeness
 
-`ล้างตัวกรอง` ต้องกลับข้อมูลจังหวัดทั้งหมด
+การเปลี่ยนอำเภอต้องล้างเฉพาะ Local Authority ซึ่งเป็น dependent filter
+ห้ามล้าง System Type / Status / Drinking Quality / Water Quantity / Search โดยอัตโนมัติ
+
+ตัวกรองจาก Chart ต้องใช้ state กลางชุดเดียวกับ dropdown/search
+ห้ามมี filter logic แยกเฉพาะ DOM ของ Chart
+
+Active filter chips:
+- แสดง filter ที่กำลังใช้งานเป็นภาษาไทย
+- กด × ล้างเฉพาะมิตินั้น
+- internal code/ID ห้ามหลุดใน chip หรือ aria-label
+
+`ล้างตัวกรอง` ต้องล้าง Search + dropdown + chart cross-filter ทั้งหมดและกลับข้อมูลจังหวัดทั้งหมด
 
 ---
 
@@ -527,7 +556,25 @@ Mobile:
 - ปีที่ก่อสร้าง
 - ผลคุณภาพน้ำดื่ม
 
-อาจมี read-only detail
+Data completeness ต้องคำนวณจากชุดข้อมูลที่กำลังแสดงตาม active filter ปัจจุบัน เพื่อให้ denominator สอดคล้องกับ KPI / Map / Watchlist
+
+ข้อยกเว้น:
+- การตรวจ “หมู่บ้านระบุว่ามีประปา แต่ไม่มีรายละเอียดระบบ” ต้องอ้างอิง source dataset จริงทั้งหมด
+- ห้ามสร้าง issue เทียมเพียงเพราะ system ถูก filter ออกจากหน้าจอ
+
+Modal `รายละเอียดความครบถ้วนของข้อมูล` เป็น read-only และต้องเข้าถึงรายการทั้งหมดได้ด้วย progressive reveal:
+- ต่อหมวดแสดงเริ่มต้นสูงสุด 20 รายการ
+- จำนวนรายการ `<= 20` → ไม่มีปุ่ม `แสดงเพิ่มเติม`
+- จำนวนรายการ `> 20` → แสดง `แสดง X จาก Y รายการ` และปุ่ม `แสดงเพิ่มเติม`
+- กด `แสดงเพิ่มเติม` แต่ละครั้งเพิ่มไม่เกิน 20 รายการ
+- เมื่อแสดงครบ Y แล้วปุ่ม `แสดงเพิ่มเติม` ต้องหาย
+- progressive reveal แยก state ต่อหมวด ห้ามขยายทุกหมวดพร้อมกัน
+
+Action ในรายละเอียด:
+- System row → `รายละเอียด` ใช้ shared System Detail Drawer เดิม
+- System row ที่มี usable coordinate → `แผนที่`
+- System row ที่ไม่มี usable coordinate → ไม่ render ปุ่มแผนที่
+- Village-only issue → เปิดรายละเอียดพื้นที่แบบ read-only และห้ามสร้าง system record ปลอม
 
 ไม่แสดง:
 - `พิกัดอยู่นอกขอบเขตพะเยา`
@@ -550,7 +597,10 @@ Chart.js
 - ความเพียงพอของน้ำ
 - ประเภทระบบประปา
 
-กฎ:
+ชื่อ section คุณภาพ/ปริมาณ:
+- `คุณภาพน้ำและปริมาณน้ำโดยรวม`
+
+กฎพื้นฐาน:
 - Labels ภาษาไทย
 - ไม่มี database code หลุด
 - ไม่มี NaN / Infinity
@@ -558,6 +608,26 @@ Chart.js
 - Doughnut ห้ามใหญ่เกิน Card
 - Destroy instance ก่อน re-render
 - Filter ต้องกระทบข้อมูล chart
+
+### Chart Cross-filter
+
+Chart ที่ต้อง interactive:
+- District bar → filter `district`
+- System Type bar → filter `systemType`
+- Drinking Quality doughnut → filter `drinkingWaterQuality`
+- Water Quantity doughnut → filter `waterQuantity`
+
+Behavior:
+- คลิก bar/segment → กรอง Dashboard ทั้งหน้า
+- คลิกค่าที่เลือกอยู่ซ้ำ → ยกเลิกเฉพาะ filter มิตินั้น
+- filter อิสระมิติอื่นต้องคงอยู่
+- District เปลี่ยนแล้วล้างเฉพาะ Local Authority
+- selected chart element ต้องมี visual selected state ที่อ่านออก
+
+Chart distribution ต้องใช้ self-exclusion ของมิติตัวเอง:
+- Chart ต้องยังเห็นค่าทางเลือกอื่นของมิตินั้นหลังเลือก filter
+- แต่ยังต้องเคารพ filter อื่นทั้งหมด
+- ตัวอย่าง: เมื่อเลือก `คุณภาพน้ำดื่ม: ผ่านเกณฑ์` กราฟคุณภาพน้ำยังคำนวณ PASS/FAIL/NO_DATA ภายใต้ filter อื่น เพื่อให้สลับค่าได้โดยไม่ต้องล้างทั้งหมดก่อน
 
 ---
 
@@ -769,13 +839,14 @@ Data correct
 
 ลำดับงานปัจจุบัน:
 
-1. Map Popup actions: รายละเอียด + นำทาง
-2. Shared system-detail module
-3. Document preview-first behavior
-4. GitHub Actions + Playwright E2E บน browser จริง
-5. Real API smoke test ผ่าน GitHub Secret
-6. Responsive / Visual regression ทุก breakpoint
-7. Release Candidate ใหม่
+1. Global Search + unified filter engine
+2. Chart cross-filter: District / System Type / Drinking Quality / Water Quantity
+3. Active filter chips + deterministic clear semantics
+4. Data completeness progressive reveal + Detail/Map actions
+5. Playwright functional/regression QA
+6. Responsive + visual screenshot QA ทุก breakpoint
+7. GitHub Actions + Real API smoke
+8. Release Candidate ใหม่
 
 ห้ามรื้อ:
 - Database
@@ -860,17 +931,23 @@ Playwright CI ต้องใช้ Chromium จริงบน GitHub-hosted ru
 ต้องมี test สำหรับ:
 - Initial load
 - Console/page errors
-- Filter + cascading + reset
-- Responsiveทุก viewport ที่ล็อกไว้
+- Search + Filter + cascading + reset
+- Chart cross-filter + toggle + active chips
+- Responsive ทุก viewport ที่ล็อกไว้
 - Map/Leaflet stacking
 - Popup รายละเอียด
 - Popup navigation
 - Mobile navigation chooser
-- Watchlist scroll
+- Watchlist scroll / all rows reachable
 - Drawer
 - Document preview card
+- Data completeness progressive reveal + Detail/Map action
 - Presentation code/internal-ID leakage
 - Anchors / sticky offsets / horizontal overflow
+- Error / empty states
+- Read-only HTTP method gate
+
+Visual evidence สำหรับ responsive/interaction สำคัญต้อง upload แม้ automated assertions ผ่าน เพื่อให้ตรวจ screenshot จริงก่อน release
 
 ถ้า GitHub Actions fail:
 - ห้ามเรียก Candidate ว่า QA ผ่าน
@@ -897,4 +974,61 @@ Real API smoke workflow ต้อง:
 
 ---
 
-Last updated: 2026-08-19 (RC4 map actions, document preview, GitHub Actions)
+## 27) Unified Cross-filter Interaction — LOCKED
+
+ทุกช่องทางที่เปลี่ยน scope ของ Dashboard ต้องใช้ `AppState.filters` และ filter engine กลางชุดเดียวกัน:
+- Search
+- Dropdown filters
+- Chart click
+- Active filter chips
+- Clear all
+
+ห้ามให้ Chart กรอง DOM แยกจาก filter engine
+ห้ามมี Map / KPI / Charts / Watchlist / Data completeness คนละ filter state
+
+Filter combination ใช้ AND semantics ระหว่างมิติ
+
+การ clear มี 3 ระดับ:
+- คลิก selected bar/segment ซ้ำ → clear เฉพาะมิตินั้น
+- กด × บน active chip → clear เฉพาะมิตินั้น
+- `ล้างตัวกรอง` → clear ทุกมิติและ Search
+
+---
+
+## 28) Data Completeness Detail Interaction — LOCKED
+
+Modal `รายละเอียดความครบถ้วนของข้อมูล` ต้องเป็น progressive reveal ไม่ใช่ hard truncation
+
+ต่อหมวด:
+- แสดงเริ่มต้นสูงสุด 20 รายการ
+- `<= 20` รายการ: ไม่มีปุ่ม `แสดงเพิ่มเติม`
+- `> 20` รายการ: แสดง `แสดง X จาก Y รายการ` + ปุ่ม `แสดงเพิ่มเติม`
+- กดแต่ละครั้งเพิ่มไม่เกิน 20 รายการ
+- เมื่อครบ Y ปุ่มต้องหาย
+- แต่ละหมวดขยายแยกกัน
+
+Action:
+- System row → `รายละเอียด` ใช้ shared System Detail Drawer
+- System row ที่มี usable coordinate → `แผนที่`
+- System row ไม่มี usable coordinate → ห้ามแสดงปุ่มแผนที่
+- Village-only issue → `รายละเอียด` แบบ read-only ระดับพื้นที่ และห้ามสร้าง system record ปลอม
+
+---
+
+Last updated: 2026-08-19 (Global Search, unified cross-filter, interactive charts, data completeness progressive detail)
+
+---
+
+## 29) Deployment Path Safety — LOCKED
+
+Dashboard ต้องทำงานได้ทั้งเมื่อ deploy ที่ domain root และเมื่ออยู่ใต้ subdirectory เช่น `/Village_Watersupply/`
+
+สำหรับ static/test assets ที่อ้างจาก ES module:
+- ห้ามใช้ relative `fetch('../../...')` โดยสมมติว่า application อยู่ที่ web root เพราะ browser จะ resolve เทียบกับ `document.baseURI`
+- URL ของ asset ที่เป็นเจ้าของโดย module ต้อง resolve จาก `import.meta.url` หรือ application base URL ที่กำหนดชัดเจน
+- Mock-data regression ต้องมี test สำหรับ root deployment และ subdirectory deployment
+- ห้ามแก้ production `config.js` เพื่อกลบปัญหา path resolution
+
+---
+
+Last updated: 2026-08-19 (deployment-path-safe mock data URLs)

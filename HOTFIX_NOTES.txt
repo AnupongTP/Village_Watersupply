@@ -1,0 +1,19 @@
+RC4 mock-data deployment-path hotfix
+
+Root cause:
+The previous api.js called fetch('../../data/mock/...'). Browser fetch resolves that
+relative URL against document.baseURI, not against assets/js/api.js. When the
+Dashboard is hosted at http://host/Village_Watersupply/, the URL can escape the
+project directory and request /data/mock/... instead of
+/Village_Watersupply/data/mock/....
+
+Fix:
+- assets/js/api-paths.js resolves mock assets from import.meta.url.
+- assets/js/api.js uses those resolved URLs.
+- tests/unit/api-paths.test.mjs locks root + subdirectory behavior.
+- No assets/js/config.js is included or modified.
+
+Important:
+The screenshot proves the current local browser is in mock mode (USE_MOCK_DATA=true),
+because the failing request is for data/mock/villages.json. This hotfix fixes the
+path failure; it intentionally does not change the user's config mode.

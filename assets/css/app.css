@@ -124,12 +124,19 @@ body.drawer-open { overflow: hidden; }
 .issue-modal-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #f1f5f9; color: #475569; font-size: 10px; }
 .issue-modal-row:last-child { border-bottom: 0; }
 .issue-modal-row small { color: #94a3b8; }
-.issue-modal-more { margin: 5px 0 0; color: #94a3b8; font-size: 9px; }
+.issue-modal-row-main { min-width: 0; flex: 1 1 280px; }
+.issue-modal-row-side { min-width: 180px; display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-end; gap: 7px; text-align: right; }
+.issue-modal-row-side .row-actions { flex-wrap: wrap; }
+.issue-modal-more { margin: 0; color: #94a3b8; font-size: 9px; }
+.issue-modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 5px; }
 
 @media (max-width: 767px) {
   :root { --filter-sticky-height: 0px !important; }
   .leaflet-control-attribution { max-width: 88vw; font-size: 8px !important; }
   .map-legend { display: none; }
+  .issue-modal-row { flex-wrap: wrap; }
+  .issue-modal-row-side { width: 100%; min-width: 0; align-items: flex-start; text-align: left; }
+  .issue-modal-footer { align-items: flex-start; }
 }
 
 /* Leaflet popup actions: library-specific interaction styling. */
