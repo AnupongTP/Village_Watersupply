@@ -167,7 +167,6 @@ export function showUserLocation(position) {
     <div class="map-popup user-location-popup">
       <strong>ตำแหน่งของคุณ</strong>
       ${accuracyText}
-      <div class="popup-muted">ตำแหน่งนี้แสดงเฉพาะในเบราว์เซอร์และไม่ได้ส่งไปบันทึกในระบบ</div>
     </div>`, { maxWidth: 310, minWidth: 240 });
 
   userLocationMarker.addTo(userLocationLayer);
