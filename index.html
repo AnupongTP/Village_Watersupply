@@ -142,7 +142,6 @@
         <div>
           <p class="eyebrow">ภาพรวมพื้นที่</p>
           <h2 class="section-title">ภาพรวมระบบประปาและสถานการณ์สำคัญ</h2>
-          <p class="section-description">สรุปตัวเลขสำคัญควบคู่กับตำแหน่งระบบประปาบนแผนที่</p>
         </div>
         <div class="flex items-baseline justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500 sm:justify-start">
           <span>ระบบที่เข้าเงื่อนไขเฝ้าระวัง</span>
@@ -221,9 +220,7 @@
         <section id="map-section" class="map-panel scroll-target min-w-0 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3" data-scroll-target aria-labelledby="mapTitle">
           <div class="mb-2.5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p class="eyebrow">GIS</p>
-              <h3 id="mapTitle" class="text-sm font-bold text-slate-800">ตำแหน่งระบบประปา</h3>
-              <p class="mt-0.5 text-[11px] text-slate-500">1 จุด = 1 ระบบที่มีพิกัดใช้งานได้</p>
+              <h3 id="mapTitle" class="text-sm font-bold text-slate-800">แผนที่ตำแหน่งระบบประปา</h3>
             </div>
             <div class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
               <button id="btnUserLocation" class="btn btn-outline" type="button" aria-busy="false">
@@ -241,7 +238,7 @@
 
     <!-- Area Analysis -->
     <section id="areas" class="dashboard-section scroll-target mt-7" data-scroll-target>
-      <div class="section-heading"><div><p class="eyebrow">พื้นที่</p><h2 class="section-title">สถานการณ์รายอำเภอ</h2><p class="section-description">เปรียบเทียบจำนวนหมู่บ้านและระบบประปาตามตัวกรองอื่น คลิกแท่งกราฟเพื่อกรองตามอำเภอ และคลิกแท่งเดิมซ้ำเพื่อยกเลิก</p></div></div>
+      <div class="section-heading"><div><p class="eyebrow">พื้นที่</p><h2 class="section-title">สถานการณ์รายอำเภอ</h2><p class="section-description">เปรียบเทียบจำนวนหมู่บ้านและระบบประปาตามตัวกรองอื่น</p></div></div>
       <article class="chart-card"><div class="chart-canvas-wrap h-[21rem] sm:h-[23rem]"><canvas id="districtChart"></canvas></div></article>
     </section>
 
@@ -250,11 +247,11 @@
       <div class="section-heading"><div><p class="eyebrow">คุณภาพและความมั่นคง</p><h2 class="section-title">คุณภาพน้ำและปริมาณน้ำโดยรวม</h2></div></div>
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <article class="chart-card">
-          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">คุณภาพน้ำดื่ม</h3><p class="mt-0.5 text-[11px] text-slate-500">ผลการประเมินระบบตามข้อมูลต้นทาง คลิกส่วนของแผนภูมิเพื่อกรอง</p></div>
+          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">คุณภาพน้ำดื่ม</h3><p class="mt-0.5 text-[11px] text-slate-500">ผลการประเมินระบบตามข้อมูลต้นทาง</p></div>
           <div class="chart-canvas-wrap h-[17rem] sm:h-[19rem]"><canvas id="qualityChart"></canvas></div>
         </article>
         <article class="chart-card">
-          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">ความเพียงพอของน้ำ</h3><p class="mt-0.5 text-[11px] text-slate-500">สัดส่วนระบบที่มีน้ำเพียงพอและไม่เพียงพอ คลิกส่วนของแผนภูมิเพื่อกรอง</p></div>
+          <div class="mb-2"><h3 class="text-sm font-bold text-slate-800">ความเพียงพอของน้ำ</h3><p class="mt-0.5 text-[11px] text-slate-500">สัดส่วนระบบที่มีน้ำเพียงพอและไม่เพียงพอ</p></div>
           <div class="chart-canvas-wrap h-[17rem] sm:h-[19rem]"><canvas id="quantityChart"></canvas></div>
         </article>
       </div>
@@ -262,7 +259,7 @@
 
     <!-- System Structure -->
     <section id="system-structure" class="dashboard-section scroll-target mt-7" data-scroll-target>
-      <div class="section-heading"><div><p class="eyebrow">โครงสร้างระบบ</p><h2 class="section-title">ประเภทระบบประปา</h2><p class="section-description">จำนวนระบบตามประเภทที่บันทึกในฐานข้อมูล คลิกแท่งกราฟเพื่อกรองตามประเภทระบบ และคลิกแท่งเดิมซ้ำเพื่อยกเลิก</p></div></div>
+      <div class="section-heading"><div><p class="eyebrow">โครงสร้างระบบ</p><h2 class="section-title">ประเภทระบบประปา</h2><p class="section-description">จำนวนระบบตามประเภทที่บันทึกในฐานข้อมูล</p></div></div>
       <article class="chart-card"><div class="chart-canvas-wrap h-[25rem] sm:h-[27rem]"><canvas id="systemTypeChart"></canvas></div></article>
     </section>
 
@@ -278,7 +275,7 @@
       <div id="dataCompletenessSummary" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-sm text-slate-500">กำลังตรวจสอบความครบถ้วน...</p></div>
     </section>
 
-    <footer class="mt-8 border-t border-slate-200 py-5 text-center text-[11px] text-slate-400">Dashboard แสดงข้อมูลแบบอ่านอย่างเดียว (Read-only)</footer>
+    <footer class="mt-8 border-t border-slate-200 py-5 text-center text-[11px] text-slate-400">ระบบรายงานสถานการณ์ระบบประปา</footer>
   </main>
 
   <button
