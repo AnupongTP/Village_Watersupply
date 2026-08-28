@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CP-M4 Management Read Smoke</title>
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;max-width:900px;margin:32px auto;padding:0 16px;line-height:1.5;background:#f8fafc;color:#0f172a}
+    .card{background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:18px;margin-bottom:16px}
+    label{display:block;font-weight:700;margin:12px 0 6px}input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #94a3b8;border-radius:8px}
+    button{margin-top:16px;padding:10px 14px;border:0;border-radius:8px;background:#0369a1;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+    pre{white-space:pre-wrap;word-break:break-word;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;max-height:520px;overflow:auto}
+    .pass{color:#166534}.fail{color:#b91c1c}.muted{color:#475569;font-size:.92rem}
+  </style>
+</head>
+<body>
+  <h1>CP-M4 Management Read Smoke</h1>
+  <p class="muted">Temporary QA page. Do not commit credentials. Remove this file from GitHub Pages after CP-M4 browser evidence is captured.</p>
+
+  <div class="card">
+    <label for="endpoint">Apps Script deployed /exec URL</label>
+    <input id="endpoint" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+    <label for="username">ADMIN username</label>
+    <input id="username" autocomplete="username">
+    <label for="password">ADMIN password</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <button id="run" type="button">Run CP-M4 Browser Read Test</button>
+  </div>
+
+  <div class="card">
+    <div id="headline">ยังไม่ได้ทดสอบ</div>
+    <pre id="output"></pre>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+  const TOKEN_KEY = 'cp_m4_read_smoke_token';
+  const runButton = document.getElementById('run');
+  const output = document.getElementById('output');
+  const headline = document.getElementById('headline');
+  const checks = [];
+
+  function line(text) {
+    output.textContent += text + '\n';
+  }
+
+  function check(name, condition, detail = '') {
+    const pass = Boolean(condition);
+    checks.push({name, pass, detail});
+    line((pass ? 'PASS ' : 'FAIL ') + name + (detail ? ' — ' + detail : ''));
+    if (!pass) throw new Error(name + (detail ? ': ' + detail : ''));
+  }
+
+  function normalizeEndpoint(value) {
+    return String(value || '').trim();
+  }
+
+  async function post(endpoint, action, payload) {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=UTF-8'},
+      body: JSON.stringify({version: 1, action, payload: payload || {}}),
+      redirect: 'follow',
+      cache: 'no-store',
+      credentials: 'omit'
+    });
+    const text = await response.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (error) { throw new Error('Response is not JSON. HTTP ' + response.status); }
+    return {response, json};
+  }
+
+  function responseContainsSensitiveField(value) {
+    const text = JSON.stringify(value || {});
+    return text.includes('"password"') || text.includes('token_hash') || text.includes('raw_token');
+  }
+
+  runButton.addEventListener('click', async () => {
+    checks.length = 0;
+    output.textContent = '';
+    headline.textContent = 'กำลังทดสอบ...';
+    headline.className = '';
+    runButton.disabled = true;
+    sessionStorage.removeItem(TOKEN_KEY);
+
+    const endpoint = normalizeEndpoint(document.getElementById('endpoint').value);
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    let token = '';
+
+    try {
+      check('endpoint uses deployed /exec URL', /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(endpoint));
+      check('username present', Boolean(username));
+      check('password present for this run', Boolean(password));
+
+      line('\n1) transport.ping');
+      const ping = await post(endpoint, 'transport.ping', {});
+      check('browser can read ping JSON', ping.response.ok && ping.json.success === true,
+        'status=' + ping.response.status + ', type=' + ping.response.type + ', redirected=' + ping.response.redirected + ', finalHost=' + new URL(ping.response.url).host);
+      check('management read version = 1', ping.json.data && ping.json.data.managementReadVersion === 1);
+
+      line('\n2) auth.login');
+      const login = await post(endpoint, 'auth.login', {
+        username,
+        password,
+        clientInfo: 'CP-M4 browser read smoke'
+      });
+      check('login success', login.json.success === true, login.json.error && login.json.error.code);
+      token = String(login.json.data && login.json.data.token || '');
+      check('login returned opaque session token', /^MGT-[0-9a-f]{64}$/.test(token));
+      sessionStorage.setItem(TOKEN_KEY, token);
+
+      line('\n3) data.bootstrap');
+      const bootstrap = await post(endpoint, 'data.bootstrap', {token});
+      check('bootstrap success', bootstrap.json.success === true, bootstrap.json.error && bootstrap.json.error.code);
+      check('bootstrap managementRead feature enabled', bootstrap.json.data && bootstrap.json.data.featureFlags && bootstrap.json.data.featureFlags.managementRead === true);
+      check('bootstrap has no sensitive auth fields', !responseContainsSensitiveField(bootstrap.json));
+
+      line('\n4) data.dashboard');
+      const dashboard = await post(endpoint, 'data.dashboard', {token, filters: {}});
+      check('dashboard success', dashboard.json.success === true, dashboard.json.error && dashboard.json.error.code);
+      const data = dashboard.json.data || {};
+      const systems = Array.isArray(data.waterSystems) ? data.waterSystems : [];
+      check('dashboard returns villages array', Array.isArray(data.villages) && data.villages.length > 0, 'count=' + (data.villages || []).length);
+      check('dashboard returns systems array', systems.length > 0, 'count=' + systems.length);
+      check('dashboard returns water sources array', Array.isArray(data.waterSources) && data.waterSources.length > 0, 'count=' + (data.waterSources || []).length);
+      check('default dashboard returns ACTIVE systems only', systems.every(s => s.recordStatus === 'ACTIVE'));
+      check('system records include recordVersion/public/processor metadata', systems.every(s =>
+        /^[0-9a-f]{64}$/.test(String(s.recordVersion || '')) &&
+        typeof s.publicVisible === 'boolean' &&
+        Array.isArray(s.publicSuppressionReasons) &&
+        s.processingGuard && typeof s.processingGuard.mutable === 'boolean'
+      ));
+      check('dashboard has no sensitive auth fields', !responseContainsSensitiveField(dashboard.json));
+      check('dashboard reports no orphan raw links', data.summary && data.summary.orphanRawLinkCount === 0,
+        JSON.stringify(data.summary || {}));
+      line('Observed summary: ' + JSON.stringify(data.summary || {}));
+
+      line('\n5) data.waterSystem');
+      const selectedId = String(systems[0] && systems[0].system_id || '');
+      check('selected system id present for detail smoke', Boolean(selectedId));
+      const detail = await post(endpoint, 'data.waterSystem', {token, systemId: selectedId});
+      check('water system detail success', detail.json.success === true, detail.json.error && detail.json.error.code);
+      check('detail id matches requested id', detail.json.data && detail.json.data.system && detail.json.data.system.system_id === selectedId);
+      check('detail has opaque recordVersion', detail.json.data && detail.json.data.system && /^[0-9a-f]{64}$/.test(String(detail.json.data.system.recordVersion || '')));
+      check('detail has no sensitive auth fields', !responseContainsSensitiveField(detail.json));
+
+      line('\n6) auth.logout + revoked token');
+      const logout = await post(endpoint, 'auth.logout', {token});
+      check('logout success', logout.json.success === true);
+      const revoked = await post(endpoint, 'data.bootstrap', {token});
+      check('revoked token rejected by management read', revoked.json.success === false && revoked.json.error && revoked.json.error.code === 'SESSION_REVOKED', revoked.json.error && revoked.json.error.code);
+      sessionStorage.removeItem(TOKEN_KEY);
+      check('sessionStorage token cleared after smoke', !sessionStorage.getItem(TOKEN_KEY));
+      token = '';
+
+      const passed = checks.filter(c => c.pass).length;
+      headline.textContent = 'CP-M4 BROWSER PASS — ' + passed + '/' + checks.length + ' checks ผ่าน';
+      headline.className = 'pass';
+    } catch (error) {
+      if (token) {
+        try { await post(endpoint, 'auth.logout', {token}); } catch (_) {}
+      }
+      sessionStorage.removeItem(TOKEN_KEY);
+      const passed = checks.filter(c => c.pass).length;
+      headline.textContent = 'CP-M4 BROWSER FAIL — ' + passed + '/' + checks.length + ' checks ผ่าน';
+      headline.className = 'fail';
+      line('\nERROR: ' + (error && error.message ? error.message : String(error)));
+    } finally {
+      // Never retain the password in the DOM after the run.
+      document.getElementById('password').value = '';
+      runButton.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
