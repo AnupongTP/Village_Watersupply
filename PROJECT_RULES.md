@@ -47,8 +47,7 @@ Dashboard สำหรับแสดงและวิเคราะห์ข�
 6. คุณภาพน้ำ / ปริมาณน้ำ
 7. ประเภทระบบประปา
 8. ระบบที่ต้องเฝ้าระวัง
-9. ความครบถ้วนของข้อมูล
-10. Footer
+9. Footer
 
 ไม่ทำ Multi-page SPA
 
@@ -212,7 +211,6 @@ Responsive ไม่ใช่ Desktop ที่ถูกย่อ
 6. Map
 7. Charts
 8. Watchlist Cards
-9. Data completeness
 
 ต้อง:
 - ไม่มี horizontal page overflow
@@ -357,7 +355,6 @@ Internal IDs เช่น:
 - Mobile Card
 - Map Popup
 - Drawer title/content
-- Data completeness modal
 - aria-label / accessible name
 - fallback เมื่อ `system_name` หรือ `village_name` ว่าง
 
@@ -413,10 +410,11 @@ Search ต้องทำงานร่วมกับ filter อื่นแ�
 - Map
 - Charts
 - Watchlist
-- Data completeness
 
-การเปลี่ยนอำเภอต้องล้างเฉพาะ Local Authority ซึ่งเป็น dependent filter
-ห้ามล้าง System Type / Status / Drinking Quality / Water Quantity / Search โดยอัตโนมัติ
+การเปลี่ยนอำเภอต้องล้าง Local Authority ซึ่งเป็น dependent filter
+System Type / Status / Drinking Quality / Water Quantity / Search ต้องคงอยู่ตามปกติ
+ยกเว้น system-level filter ที่ไม่มี record อยู่เลยใน area ใหม่ (District/Local Authority ใหม่) ให้ล้างเฉพาะค่าที่กลายเป็น context-invalid เพื่อไม่ให้เกิด hidden/stale filter
+Search ไม่ถูกล้างอัตโนมัติ
 
 ตัวกรองจาก Chart ต้องใช้ state กลางชุดเดียวกับ dropdown/search
 ห้ามมี filter logic แยกเฉพาะ DOM ของ Chart
@@ -427,6 +425,27 @@ Active filter chips:
 - internal code/ID ห้ามหลุดใน chip หรือ aria-label
 
 `ล้างตัวกรอง` ต้องล้าง Search + dropdown + chart cross-filter ทั้งหมดและกลับข้อมูลจังหวัดทั้งหมด
+
+
+### Filter Option Availability — LOCKED
+
+Dropdown ต้องเป็น **contextual / faceted availability** จาก accepted Public Dataset หลัง Public projection
+
+กฎ:
+- `ทั้งหมด` ต้องมีเสมอ
+- ห้าม hard-code non-empty System Type / Operational Status / Drinking Quality / Water Quantity options ใน HTML
+- District แสดงเฉพาะ District ที่มี public village อยู่จริง
+- Local Authority แสดงเฉพาะ Local Authority ที่มี public village อยู่จริงภายใต้ District ที่เลือก
+- System Type คำนวณจาก current area + Status + Drinking Quality + Water Quantity โดย self-exclude System Type
+- Operational Status คำนวณจาก current area + System Type + Drinking Quality + Water Quantity โดย self-exclude Operational Status
+- Drinking Quality คำนวณจาก current area + System Type + Operational Status + Water Quantity โดย self-exclude Drinking Quality
+- Water Quantity คำนวณจาก current area + System Type + Operational Status + Drinking Quality โดย self-exclude Water Quantity
+- ค่าที่มี 0 record ภายใต้ context ของ dropdown นั้น ห้ามเสนอเป็นตัวเลือกใหม่
+- active value ของมิตินั้นต้องยัง representable ได้ถ้าค่าเองยังมีอยู่ใน selected area แต่ combination กับ independent filters อื่นเป็น 0 เพื่อรักษา AND semantics และป้องกัน hidden filter
+- เมื่อเปลี่ยน District / Local Authority แล้ว active system-level value ไม่มี record อยู่เลยใน area ใหม่ ให้ clear เฉพาะค่าที่ context-invalid
+- Free-text Search เป็น independent AND filter และไม่ใช้เพื่อลด dropdown option list
+- `NO_DATA` / `UNKNOWN` แสดงได้เมื่อมี record ที่ normalize เข้าหมวดนั้นจริงใน context
+- ถ้าในอนาคต successful load/refresh เพิ่มข้อมูลที่ทำให้ค่าใหม่มี record ใน context ปัจจุบัน ค่าใหม่ต้องปรากฏอัตโนมัติ
 
 ---
 
@@ -541,50 +560,36 @@ Mobile:
 
 ---
 
-## 14) Data Completeness — LOCKED
+## 14) Public Data Quality Boundary — LOCKED
 
-ชื่อ:
+Public Dashboard **ไม่แสดง Data Completeness / Data Quality inspection UI**
 
-`ความครบถ้วนของข้อมูล`
+ห้ามแสดงใน Public Dashboard:
+- เมนู `ความครบถ้วน`
+- section `ข้อมูลประกอบ Dashboard`
+- section `ความครบถ้วนของข้อมูล`
+- metric ความครบถ้วนของพิกัด / กำลังผลิต / ปีที่ก่อสร้าง / ผลคุณภาพน้ำ
+- source-quality issue count
+- modal ตรวจรายการข้อมูลไม่ครบ
+- action สำหรับแก้/ตรวจ/รับรองข้อมูล
 
-เป็น section รอง
-ไม่ให้แย่งความสำคัญจากข้อมูลประปา
+เหตุผลเชิงสถาปัตยกรรม:
+- Public Dashboard มีหน้าที่สื่อสถานการณ์ประปาที่เผยแพร่แล้ว
+- Data completeness เป็นงานตรวจคุณภาพข้อมูลและ data governance
+- ความสามารถดังกล่าวย้ายไป `Dashboard ช่าง / ระบบจัดการข้อมูลประปาหมู่บ้าน` ในอนาคต
+- Public Dashboard ยังเป็น READ-ONLY เหมือนเดิม
 
-แสดงได้:
-- พิกัดใช้งานได้
-- กำลังผลิต
-- ปีที่ก่อสร้าง
-- ผลคุณภาพน้ำดื่ม
+Temporary R5.1 public suppression:
+- ซ่อน system ที่ latitude หรือ longitude ว่าง
+- ซ่อน village ที่ `has_village_waterworks` เป็นจริง แต่ไม่มี linked system ใน **source system set เดิมก่อน coordinate suppression**
+- ห้ามลบข้อมูลจาก Google Sheet
+- ห้าม hardcode ว่า “เอา 244 แถวแรกออก”; ต้องคำนวณจากสอง rule ข้างต้น
+- current audited baseline คือ 133 system + 111 village = 244 issue rows
+- rule นี้เป็น temporary public projection ไม่ใช่ publication governance ถาวร
 
-Data completeness ต้องคำนวณจากชุดข้อมูลที่กำลังแสดงตาม active filter ปัจจุบัน เพื่อให้ denominator สอดคล้องกับ KPI / Map / Watchlist
-
-ข้อยกเว้น:
-- การตรวจ “หมู่บ้านระบุว่ามีประปา แต่ไม่มีรายละเอียดระบบ” ต้องอ้างอิง source dataset จริงทั้งหมด
-- ห้ามสร้าง issue เทียมเพียงเพราะ system ถูก filter ออกจากหน้าจอ
-
-Modal `รายละเอียดความครบถ้วนของข้อมูล` เป็น read-only และต้องเข้าถึงรายการทั้งหมดได้ด้วย progressive reveal:
-- ต่อหมวดแสดงเริ่มต้นสูงสุด 20 รายการ
-- จำนวนรายการ `<= 20` → ไม่มีปุ่ม `แสดงเพิ่มเติม`
-- จำนวนรายการ `> 20` → แสดง `แสดง X จาก Y รายการ` และปุ่ม `แสดงเพิ่มเติม`
-- กด `แสดงเพิ่มเติม` แต่ละครั้งเพิ่มไม่เกิน 20 รายการ
-- เมื่อแสดงครบ Y แล้วปุ่ม `แสดงเพิ่มเติม` ต้องหาย
-- progressive reveal แยก state ต่อหมวด ห้ามขยายทุกหมวดพร้อมกัน
-
-Action ในรายละเอียด:
-- System row → `รายละเอียด` ใช้ shared System Detail Drawer เดิม
-- System row ที่มี usable coordinate → `แผนที่`
-- System row ที่ไม่มี usable coordinate → ไม่ render ปุ่มแผนที่
-- Village-only issue → เปิดรายละเอียดพื้นที่แบบ read-only และห้ามสร้าง system record ปลอม
-
-ไม่แสดง / ไม่จัดเป็น issue:
-- `พิกัดอยู่นอกขอบเขตพะเยา`
-- ห้ามใช้ heuristic `กำลังผลิต > 200 ลบ.ม./ชม.` เพื่อสรุปว่าเป็นข้อมูลผิดปกติหรือรวมใน issue count; ค่า `กำลังผลิต` ใน Data Completeness ตรวจเฉพาะความมี/ไม่มีข้อมูล
-
-ไม่ทำ:
-- Edit
-- Fix
-- Verify
-- Status workflow
+Long-term:
+- Data quality / review / publish / hide / fix เป็นหน้าที่ Management Dashboard แยกต่างหาก
+- เมื่อมี backend publication governance แล้ว Public API ควรส่งเฉพาะข้อมูลที่เผยแพร่ได้ และ frontend temporary suppression ต้องถูกทบทวน/ถอดเพื่อป้องกัน double filtering
 
 ---
 
@@ -842,12 +847,13 @@ Data correct
 
 1. Global Filter non-sticky + anchor recalibration
 2. Map toolbar: ตำแหน่งฉัน + ดูทุกจุด (เอาปุ่มกว๊านพะเยาออก)
-3. Data completeness Map focus + Detail context restoration
-4. Floating Back-to-top
-5. Playwright functional/regression QA
-6. Responsive + visual screenshot QA ทุก breakpoint
-7. GitHub Actions + Real API smoke
-8. Release Candidate ใหม่
+3. R5.1 Temporary Public Suppression + Public Data Quality boundary
+4. Typography / hierarchy / Monitoring grouping / Refresh semantics
+5. Floating Back-to-top
+6. Playwright functional/regression QA
+7. Responsive + visual screenshot QA ทุก breakpoint
+8. GitHub Actions + Real API smoke
+9. Release Candidate ใหม่
 
 ห้ามรื้อ:
 - Database
@@ -942,7 +948,9 @@ Playwright CI ต้องใช้ Chromium จริงบน GitHub-hosted ru
 - Watchlist scroll / all rows reachable
 - Drawer
 - Document preview card
-- Data completeness progressive reveal + Detail/Map action
+- Temporary Public Suppression ไม่รั่วผ่าน Search / KPI / Map / Charts / Watchlist / Detail
+- Public Dashboard ไม่มี Data Completeness UI
+- Refresh failure ต้องคงข้อมูลเดิมและ successful-load timestamp
 - Presentation code/internal-ID leakage
 - Anchors / sticky offsets / horizontal overflow
 - Error / empty states
@@ -985,7 +993,7 @@ Real API smoke workflow ต้อง:
 - Clear all
 
 ห้ามให้ Chart กรอง DOM แยกจาก filter engine
-ห้ามมี Map / KPI / Charts / Watchlist / Data completeness คนละ filter state
+ห้ามมี Map / KPI / Charts / Watchlist คนละ filter state
 
 Filter combination ใช้ AND semantics ระหว่างมิติ
 
@@ -996,25 +1004,6 @@ Filter combination ใช้ AND semantics ระหว่างมิติ
 
 ---
 
-## 28) Data Completeness Detail Interaction — LOCKED
-
-Modal `รายละเอียดความครบถ้วนของข้อมูล` ต้องเป็น progressive reveal ไม่ใช่ hard truncation
-
-ต่อหมวด:
-- แสดงเริ่มต้นสูงสุด 20 รายการ
-- `<= 20` รายการ: ไม่มีปุ่ม `แสดงเพิ่มเติม`
-- `> 20` รายการ: แสดง `แสดง X จาก Y รายการ` + ปุ่ม `แสดงเพิ่มเติม`
-- กดแต่ละครั้งเพิ่มไม่เกิน 20 รายการ
-- เมื่อครบ Y ปุ่มต้องหาย
-- แต่ละหมวดขยายแยกกัน
-
-Action:
-- System row → `รายละเอียด` ใช้ shared System Detail Drawer
-- System row ที่มี usable coordinate → `แผนที่`
-- System row ไม่มี usable coordinate → ห้ามแสดงปุ่มแผนที่
-- Village-only issue → `รายละเอียด` แบบ read-only ระดับพื้นที่ และห้ามสร้าง system record ปลอม
-
----
 
 ---
 
@@ -1069,51 +1058,9 @@ Floating Back-to-top:
 
 ---
 
-## 32) Data Completeness Context Continuity — LOCKED
-
-Action `แผนที่`:
-- ปิด Data Completeness modal
-- scroll ไป `#map-section`
-- focus ระบบ
-- zoom และเปิด Map Popup
-
-Action `รายละเอียด`:
-- ใช้ shared Detail Drawer
-- ผู้ใช้ไม่ต้องเปิด Data Completeness modal ใหม่เองหลังปิด Drawer
-- ต้อง restore modal เดิมอัตโนมัติ
-- ต้องคงจำนวนรายการที่กด `แสดงเพิ่มเติม` ของแต่ละหมวด
-- ต้องคง scroll position ของ modal เท่าที่ browser รองรับ
-- ต้องไม่สร้าง focus trap ซ้อนระหว่าง SweetAlert modal กับ Drawer
 
 ---
 
----
-
-## 33) Data Completeness Modal Layout — LOCKED
-
-Modal `รายละเอียดความครบถ้วนของข้อมูล` เป็น read-only inspection surface และต้องเน้น information density โดยไม่ลดความสามารถในการเข้าถึงข้อมูล
-
-โครงสร้าง:
-- Header/title อยู่เหนือพื้นที่ scroll และมีปุ่ม `×` มุมขวาบน; visible title ต้องอยู่ภายใน popup bounds เสมอ ห้ามถูก clip/ลอยพ้นขอบบน
-- Content list เป็นพื้นที่ที่ scroll เอง
-- Footer ปุ่ม `ปิด` อยู่ล่างและไม่เลื่อนหายไปพร้อมรายการ
-- Desktop ใช้ compact 3-column layout: `ระบบ / พื้นที่` | `ประเด็น` | `การทำงาน`
-- Mobile ใช้ compact row/card โดย action อยู่ข้างเนื้อหา ไม่แยกเป็นปุ่มเต็มบรรทัดต่อรายการ
-- Mobile modal ใช้ความกว้างเกือบเต็ม viewport แต่ต้องไม่มี horizontal overflow
-
-Progressive reveal:
-- ถ้าหมวดมี `<= 20` รายการ ไม่แสดง footer `แสดงเพิ่มเติม`
-- ถ้ามี `> 20` รายการ แสดง `แสดง X จาก Y รายการ` และ `แสดงเพิ่มเติม`
-- เพิ่มครั้งละไม่เกิน 20 จนครบ แล้วซ่อนปุ่ม `แสดงเพิ่มเติม`
-
-Action:
-- `รายละเอียด` ต้องใช้ shared Drawer และกลับ modal context เดิมหลังปิด Drawer
-- `แผนที่` แสดงเฉพาะระบบที่มี usable coordinate และต้อง focus Map ตามกฎเดิม
-- Accessible name ห้ามมี internal ID หรือ database code
-
-QA ต้องตรวจอย่างน้อย desktop + mobile 390px + mobile 360px สำหรับ title/popup geometry, clipping, horizontal overflow, action placement, modal scroll boundary และ focus behavior
-
----
 
 ## 34) Monitoring Summary Quick Filters — LOCKED
 
@@ -1151,9 +1098,9 @@ QA ต้องตรวจอย่างน้อย:
 - preservation ของ filter อิสระ
 - synchronization สองทางกับ Dropdown / Chart / Chip / Clear all
 - faceted count self-exclusion
-- KPI / Map / Charts / Watchlist / Data Completeness ใช้ scope เดียวกัน
+- KPI / Map / Charts / Watchlist ใช้ public scope เดียวกัน
 - keyboard accessibility
 - selected layout ที่ desktop + 390px + 360px
 
 
-Last updated: 2026-08-19 (monitoring quick filters + cross-filter, user location, non-sticky filters, data completeness context continuity + compact modal layout)
+Last updated: 2026-08-28 (R5.1 temporary public suppression, remove Public Data Completeness, refresh semantics, hierarchy/accessibility)

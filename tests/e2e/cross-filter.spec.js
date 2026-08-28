@@ -17,11 +17,24 @@ test('global search filters the whole dashboard and clear-all restores province 
   await page.locator('#filterSearch').fill('เทศบาลเมืองพะเยา');
   await expect(page.locator('#kpiSystems')).toHaveText('1');
   await expectFilterChip(page, 'ค้นหา: “เทศบาลเมืองพะเยา”');
-  await expect(page.locator('#dataCompletenessSummary')).toContainText('1 / 1 ระบบ');
+
+  // Public R5.1 no longer exposes Data Completeness. Verify the same unified
+  // search scope through public surfaces instead.
+  await expect(page.locator('.water-system-marker')).toHaveCount(1);
+  await expect(page.locator('#watchlistTotal')).toHaveText('1');
+  await expect.poll(async () => page.evaluate(() => {
+    const chart = window.Chart?.getChart?.(document.getElementById('districtChart'));
+    const datasets = chart?.data?.datasets || [];
+    const systems = datasets.find(dataset => dataset.label === 'ระบบประปา');
+    if (systems) return systems.data.reduce((sum, value) => sum + Number(value || 0), 0);
+    // Fallback to the second grouped dataset used by the current chart.
+    return (datasets[1]?.data || []).reduce((sum, value) => sum + Number(value || 0), 0);
+  })).toBe(1);
 
   await page.locator('#btnClearFilters').click();
   await expect(page.locator('#filterSearch')).toHaveValue('');
   await expect(page.locator('#kpiSystems')).toHaveText('2');
+  await expect(page.locator('.water-system-marker')).toHaveCount(2);
   await expect(page.locator('#activeFilterChips')).toBeHidden();
   await expect(page.locator('#scopeLabel')).toHaveText('จังหวัดพะเยา');
 });
@@ -104,7 +117,9 @@ test('monitoring summary cards toggle the shared filter state and update the who
   await expect(page.locator('#filterOperationalStatus')).toHaveValue('NOT_WORKING');
   await expect(page.locator('#kpiSystems')).toHaveText('1');
   await expect(page.locator('.water-system-marker')).toHaveCount(1);
-  await expect(page.locator('#dataCompletenessSummary')).toContainText('1 / 1 ระบบ');
+
+  // Public R5.1 intentionally removed Data Completeness. KPI, Map, Watchlist,
+  // filters and charts remain the shared-scope acceptance surfaces.
   await expect(page.locator('#watchlistTotal')).toHaveText('1');
   await expectFilterChip(page, 'สถานะ: ใช้การไม่ได้');
   await expect.poll(async () => page.evaluate(() => {
@@ -118,7 +133,6 @@ test('monitoring summary cards toggle the shared filter state and update the who
   await expect(page.locator('#kpiSystems')).toHaveText('2');
   await expect(page.locator('.water-system-marker')).toHaveCount(2);
 });
-
 
 test('monitoring quick filters preserve independent area and system-type scope', async ({ page }) => {
   await openDashboard(page);
@@ -258,4 +272,3 @@ for (const viewport of [
     });
   });
 }
-

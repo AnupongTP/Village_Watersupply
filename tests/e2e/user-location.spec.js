@@ -11,17 +11,45 @@ test('map toolbar exposes user location and removes the old Phayao home button',
 });
 
 test('user location is shown on the map without issuing mutating HTTP requests', async ({ context, page }, testInfo) => {
+  const latitude = 19.171194;
+  const longitude = 99.874972;
+
   await context.grantPermissions(['geolocation'], { origin: 'http://127.0.0.1:4173' });
-  await context.setGeolocation({ latitude: 19.171194, longitude: 99.874972, accuracy: 9 });
+  await context.setGeolocation({ latitude, longitude, accuracy: 9 });
+
   const forbidden = collectForbiddenHttpMethods(page);
+  const locationRequests = [];
+  let locationRequested = false;
+
+  page.on('request', request => {
+    if (!locationRequested) return;
+    const payload = `${request.url()}\n${request.postData() || ''}`;
+    if (payload.includes(String(latitude)) || payload.includes(String(longitude))) {
+      locationRequests.push(`${request.method()} ${request.url()}`);
+    }
+  });
 
   await openDashboard(page);
+  locationRequested = true;
   await page.locator('#btnUserLocation').click();
 
   await expect(page.locator('.user-location-marker')).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.leaflet-popup')).toContainText('ตำแหน่งของคุณ');
-  await expect(page.locator('.leaflet-popup')).toContainText('ไม่ได้ส่งไปบันทึกในระบบ');
+
+  // The current UI intentionally does not display a storage/privacy sentence in
+  // the popup. Verify the actual contract instead: no mutating request, no raw
+  // coordinate in outbound request data, and no browser storage persistence.
   expect(forbidden).toEqual([]);
+  expect(locationRequests).toEqual([]);
+
+  const storageSnapshot = await page.evaluate(() => ({
+    local: Object.entries(localStorage),
+    session: Object.entries(sessionStorage)
+  }));
+  const storageText = JSON.stringify(storageSnapshot);
+  expect(storageText).not.toContain(String(latitude));
+  expect(storageText).not.toContain(String(longitude));
+
   await page.screenshot({ path: testInfo.outputPath('user-location.png'), fullPage: false });
 });
 

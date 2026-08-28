@@ -1,5 +1,6 @@
 import { AppState } from './state.js';
 import {
+  normalizeOperationalStatus,
   normalizeQuality,
   normalizeQuantity,
   systemTypeLabel,
@@ -14,6 +15,13 @@ const FILTER_KEYS = Object.freeze([
   'search',
   'district',
   'localAuthority',
+  'systemType',
+  'operationalStatus',
+  'drinkingWaterQuality',
+  'waterQuantity'
+]);
+
+const SYSTEM_FILTER_KEYS = Object.freeze([
   'systemType',
   'operationalStatus',
   'drinkingWaterQuality',
@@ -35,72 +43,164 @@ export function applyFilters() {
 /**
  * Produce a deterministic filtered snapshot without mutating AppState.filtered.
  * Charts use excludeKeys to render their own full dimension while still honoring
- * every other active filter. This keeps cross-filter charts switchable instead
- * of collapsing to only the currently selected bar/segment.
+ * every other active filter.
  */
 export function buildFilteredSnapshot({ excludeKeys = [] } = {}) {
-  const excluded = new Set(excludeKeys);
-  const f = AppState.filters || {};
+  return buildFilteredSnapshotFrom(
+    AppState.data,
+    AppState.filters,
+    { excludeKeys, ignoreSearch: false }
+  );
+}
 
-  const district = excluded.has('district') ? '' : String(f.district || '');
-  const localAuthority = excluded.has('localAuthority') ? '' : String(f.localAuthority || '');
-  const search = excluded.has('search') ? '' : normalizeSearchTerm(f.search);
+/**
+ * Derive dropdown choices from the accepted Public Dataset and the CURRENT AREA /
+ * OTHER SYSTEM FILTERS.
+ *
+ * Rules:
+ * - District: all districts that still exist in public village data.
+ * - Local Authority: only authorities in the selected district.
+ * - System Type: current area + status + quality + quantity, self-excluding type.
+ * - Status: current area + type + quality + quantity, self-excluding status.
+ * - Drinking Quality: current area + type + status + quantity, self-excluding quality.
+ * - Water Quantity: current area + type + status + quality, self-excluding quantity.
+ * - Free-text Search does not shrink dropdown choices; Search remains an
+ *   independent AND filter on the rendered dashboard.
+ * - An already-active system value may remain visible even when OTHER system
+ *   filters make the combination zero, so the state is never hidden from the user.
+ *   Area changes are handled separately by reconcileAreaInvalidFilters().
+ */
+export function deriveFacetedFilterOptions(
+  data = AppState.data,
+  filters = AppState.filters
+) {
+  const safeData = normalizeDataShape(data);
+  const safeFilters = normalizeFilterShape(filters);
+  const areaFilters = { ...safeFilters, search: '' };
 
-  const areaVillages = AppState.data.villages
-    .filter(village => !district || village.district === district)
-    .filter(village => !localAuthority || village.local_authority === localAuthority);
+  const districts = uniqueSorted(
+    safeData.villages.map(village => village?.district)
+  );
 
-  const areaVillageIds = new Set(areaVillages.map(village => village.village_id));
-  const areaVillageById = new Map(areaVillages.map(village => [village.village_id, village]));
+  const localAuthorities = uniqueSorted(
+    safeData.villages
+      .filter(village => !areaFilters.district || village?.district === areaFilters.district)
+      .map(village => village?.local_authority)
+  );
 
-  const directlyMatchedVillageIds = new Set();
-  if (search) {
-    for (const village of areaVillages) {
-      if (matchesVillageSearch(village, search)) directlyMatchedVillageIds.add(village.village_id);
-    }
-  }
+  const systemTypes = optionValuesForSystemDimension(
+    safeData,
+    areaFilters,
+    'systemType',
+    system => normalizeSystemType(system?.system_type),
+    systemTypeLabel
+  );
 
-  const filteredSystems = AppState.data.waterSystems
-    .filter(system => areaVillageIds.has(system.village_id))
-    .filter(system => {
-      if (!search) return true;
-      const village = areaVillageById.get(system.village_id);
-      return directlyMatchedVillageIds.has(system.village_id) || matchesSystemSearch(system, village, search);
-    })
-    .filter(system => excluded.has('systemType') || !f.systemType || system.system_type === f.systemType)
-    .filter(system => excluded.has('operationalStatus') || !f.operationalStatus || system.operational_status === f.operationalStatus)
-    .filter(system => excluded.has('drinkingWaterQuality') || !f.drinkingWaterQuality || normalizeQuality(system.drinking_water_quality) === f.drinkingWaterQuality)
-    .filter(system => excluded.has('waterQuantity') || !f.waterQuantity || normalizeQuantity(system.water_quantity) === f.waterQuantity);
+  const operationalStatuses = optionValuesForSystemDimension(
+    safeData,
+    areaFilters,
+    'operationalStatus',
+    system => normalizeOperationalStatus(system?.operational_status),
+    operationalStatusLabel
+  );
 
-  const hasSystemLevelFilter = ['systemType', 'operationalStatus', 'drinkingWaterQuality', 'waterQuantity']
-    .some(key => !excluded.has(key) && Boolean(f[key]));
-  const matchedSystemVillageIds = new Set(filteredSystems.map(system => system.village_id));
+  const drinkingWaterQualities = optionValuesForSystemDimension(
+    safeData,
+    areaFilters,
+    'drinkingWaterQuality',
+    system => normalizeQuality(system?.drinking_water_quality),
+    qualityLabel
+  );
 
-  let finalVillages = areaVillages;
-  if (search || hasSystemLevelFilter) {
-    finalVillages = areaVillages.filter(village => {
-      if (hasSystemLevelFilter) return matchedSystemVillageIds.has(village.village_id);
-      return directlyMatchedVillageIds.has(village.village_id) || matchedSystemVillageIds.has(village.village_id);
-    });
-  }
-
-  const finalVillageIds = new Set(finalVillages.map(village => village.village_id));
-  const waterSources = AppState.data.waterSources
-    .filter(source => finalVillageIds.has(source.village_id));
+  const waterQuantities = optionValuesForSystemDimension(
+    safeData,
+    areaFilters,
+    'waterQuantity',
+    system => normalizeQuantity(system?.water_quantity),
+    quantityLabel
+  );
 
   return {
-    villages: finalVillages,
-    waterSystems: filteredSystems,
-    waterSources
+    districts,
+    localAuthorities,
+    systemTypes,
+    operationalStatuses,
+    drinkingWaterQualities,
+    waterQuantities
   };
 }
 
+/**
+ * Upstream area changes must not leave a hidden/stale system filter behind.
+ *
+ * This reconciliation is intentionally AREA-BASED only. It does not break the
+ * existing AND semantics between independent system dimensions. Example:
+ * Status + Quality may still intentionally produce zero when both values exist
+ * somewhere in the selected area but no single system has both.
+ */
+export function reconcileAreaInvalidFilters(
+  data = AppState.data,
+  filters = AppState.filters
+) {
+  const safeData = normalizeDataShape(data);
+  const next = normalizeFilterShape(filters);
+
+  const districts = new Set(
+    safeData.villages
+      .map(village => normalizeTextValue(village?.district))
+      .filter(Boolean)
+  );
+
+  if (next.district && !districts.has(next.district)) {
+    next.district = '';
+    next.localAuthority = '';
+  }
+
+  const authorities = new Set(
+    safeData.villages
+      .filter(village => !next.district || village?.district === next.district)
+      .map(village => normalizeTextValue(village?.local_authority))
+      .filter(Boolean)
+  );
+
+  if (next.localAuthority && !authorities.has(next.localAuthority)) {
+    next.localAuthority = '';
+  }
+
+  const areaSystems = systemsInArea(safeData, next);
+
+  for (const key of SYSTEM_FILTER_KEYS) {
+    const active = String(next[key] || '');
+    if (!active) continue;
+
+    const available = new Set(
+      areaSystems
+        .map(system => normalizedSystemFilterValue(key, system))
+        .filter(Boolean)
+    );
+
+    if (!available.has(active)) next[key] = '';
+  }
+
+  return next;
+}
+
 export function buildFilterOptions() {
-  buildDistrictOptions();
-  buildLocalAuthorityOptions();
-  buildSystemTypeOptions();
+  const reconciled = reconcileAreaInvalidFilters(AppState.data, AppState.filters);
+  Object.assign(AppState.filters, reconciled);
+
+  const options = deriveFacetedFilterOptions(AppState.data, AppState.filters);
+
+  replaceSelectOptions('filterDistrict', options.districts, value => value);
+  replaceSelectOptions('filterLocalAuthority', options.localAuthorities, value => value);
+  replaceSelectOptions('filterSystemType', options.systemTypes, systemTypeLabel);
+  replaceSelectOptions('filterOperationalStatus', options.operationalStatuses, operationalStatusLabel);
+  replaceSelectOptions('filterDrinkingWaterQuality', options.drinkingWaterQualities, qualityLabel);
+  replaceSelectOptions('filterWaterQuantity', options.waterQuantities, quantityLabel);
+
   syncFilterControls();
   updateFilterUi();
+  return options;
 }
 
 export function bindFilterEvents(onChange) {
@@ -184,10 +284,12 @@ export function bindFilterEvents(onChange) {
 }
 
 /**
- * Central mutation path for dropdowns, search, chart cross-filters and chips.
- * Independent filters are preserved. District is the only parent filter, so a
- * district change clears Local Authority but does not silently clear system type,
- * status, quality, quantity or search.
+ * Central mutation path for dropdowns, Search, chart cross-filters, Monitoring
+ * quick filters and chips.
+ *
+ * District remains the parent of Local Authority. Changing District clears Local
+ * Authority immediately. After every mutation the option lists are rebuilt so
+ * unavailable alternatives disappear from the UI.
  */
 export function setFilterValue(key, value, { toggle = false } = {}) {
   if (!FILTER_KEYS.includes(key)) throw new Error(`Unknown filter key: ${key}`);
@@ -204,11 +306,10 @@ export function setFilterValue(key, value, { toggle = false } = {}) {
 
   AppState.filters[key] = resolved;
 
-  if (key === 'district') buildLocalAuthorityOptions();
-  syncFilterControls();
+  buildFilterOptions();
   applyFilters();
   updateFilterUi();
-  return resolved;
+  return String(AppState.filters[key] || '');
 }
 
 export function clearFilters() {
@@ -271,6 +372,151 @@ export function matchesSystemSearch(system, village, normalizedTerm) {
   ], term);
 }
 
+function buildFilteredSnapshotFrom(
+  data,
+  filters,
+  { excludeKeys = [], ignoreSearch = false } = {}
+) {
+  const safeData = normalizeDataShape(data);
+  const f = normalizeFilterShape(filters);
+  const excluded = new Set(excludeKeys);
+
+  const district = excluded.has('district') ? '' : String(f.district || '');
+  const localAuthority = excluded.has('localAuthority') ? '' : String(f.localAuthority || '');
+  const search = ignoreSearch || excluded.has('search') ? '' : normalizeSearchTerm(f.search);
+
+  const areaVillages = safeData.villages
+    .filter(village => !district || village?.district === district)
+    .filter(village => !localAuthority || village?.local_authority === localAuthority);
+
+  const areaVillageIds = new Set(areaVillages.map(village => village?.village_id));
+  const areaVillageById = new Map(areaVillages.map(village => [village?.village_id, village]));
+
+  const directlyMatchedVillageIds = new Set();
+  if (search) {
+    for (const village of areaVillages) {
+      if (matchesVillageSearch(village, search)) directlyMatchedVillageIds.add(village?.village_id);
+    }
+  }
+
+  const filteredSystems = safeData.waterSystems
+    .filter(system => areaVillageIds.has(system?.village_id))
+    .filter(system => {
+      if (!search) return true;
+      const village = areaVillageById.get(system?.village_id);
+      return directlyMatchedVillageIds.has(system?.village_id) ||
+        matchesSystemSearch(system, village, search);
+    })
+    .filter(system => excluded.has('systemType') ||
+      !f.systemType ||
+      normalizeSystemType(system?.system_type) === f.systemType)
+    .filter(system => excluded.has('operationalStatus') ||
+      !f.operationalStatus ||
+      normalizeOperationalStatus(system?.operational_status) === f.operationalStatus)
+    .filter(system => excluded.has('drinkingWaterQuality') ||
+      !f.drinkingWaterQuality ||
+      normalizeQuality(system?.drinking_water_quality) === f.drinkingWaterQuality)
+    .filter(system => excluded.has('waterQuantity') ||
+      !f.waterQuantity ||
+      normalizeQuantity(system?.water_quantity) === f.waterQuantity);
+
+  const hasSystemLevelFilter = SYSTEM_FILTER_KEYS
+    .some(key => !excluded.has(key) && Boolean(f[key]));
+  const matchedSystemVillageIds = new Set(filteredSystems.map(system => system?.village_id));
+
+  let finalVillages = areaVillages;
+  if (search || hasSystemLevelFilter) {
+    finalVillages = areaVillages.filter(village => {
+      if (hasSystemLevelFilter) return matchedSystemVillageIds.has(village?.village_id);
+      return directlyMatchedVillageIds.has(village?.village_id) ||
+        matchedSystemVillageIds.has(village?.village_id);
+    });
+  }
+
+  const finalVillageIds = new Set(finalVillages.map(village => village?.village_id));
+  const waterSources = safeData.waterSources
+    .filter(source => finalVillageIds.has(source?.village_id));
+
+  return {
+    villages: finalVillages,
+    waterSystems: filteredSystems,
+    waterSources
+  };
+}
+
+function optionValuesForSystemDimension(data, filters, key, normalizer, labelFn) {
+  const snapshot = buildFilteredSnapshotFrom(
+    data,
+    filters,
+    { excludeKeys: [key], ignoreSearch: true }
+  );
+
+  const values = snapshot.waterSystems
+    .map(system => normalizer(system))
+    .map(normalizeTextValue)
+    .filter(Boolean);
+
+  const active = String(filters[key] || '');
+  if (active && !values.includes(active) && isSystemValuePresentInArea(data, filters, key, active)) {
+    values.push(active);
+  }
+
+  return uniqueSortedByLabel(values, labelFn);
+}
+
+function isSystemValuePresentInArea(data, filters, key, value) {
+  if (!value) return false;
+  return systemsInArea(data, filters)
+    .some(system => normalizedSystemFilterValue(key, system) === value);
+}
+
+function systemsInArea(data, filters) {
+  const safeData = normalizeDataShape(data);
+  const f = normalizeFilterShape(filters);
+
+  const villageIds = new Set(
+    safeData.villages
+      .filter(village => !f.district || village?.district === f.district)
+      .filter(village => !f.localAuthority || village?.local_authority === f.localAuthority)
+      .map(village => village?.village_id)
+  );
+
+  return safeData.waterSystems.filter(system => villageIds.has(system?.village_id));
+}
+
+function normalizedSystemFilterValue(key, system) {
+  if (key === 'systemType') return normalizeSystemType(system?.system_type);
+  if (key === 'operationalStatus') return normalizeOperationalStatus(system?.operational_status);
+  if (key === 'drinkingWaterQuality') return normalizeQuality(system?.drinking_water_quality);
+  if (key === 'waterQuantity') return normalizeQuantity(system?.water_quantity);
+  return '';
+}
+
+function normalizeSystemType(value) {
+  if (value === '' || value === null || value === undefined || value === '-') return '';
+  return String(value).trim();
+}
+
+function normalizeDataShape(data) {
+  return {
+    villages: Array.isArray(data?.villages) ? data.villages : [],
+    waterSystems: Array.isArray(data?.waterSystems) ? data.waterSystems : [],
+    waterSources: Array.isArray(data?.waterSources) ? data.waterSources : []
+  };
+}
+
+function normalizeFilterShape(filters) {
+  return {
+    search: String(filters?.search || ''),
+    district: String(filters?.district || ''),
+    localAuthority: String(filters?.localAuthority || ''),
+    systemType: String(filters?.systemType || ''),
+    operationalStatus: String(filters?.operationalStatus || ''),
+    drinkingWaterQuality: String(filters?.drinkingWaterQuality || ''),
+    waterQuantity: String(filters?.waterQuantity || '')
+  };
+}
+
 function includesSearchTerm(values, term) {
   return values.some(value => {
     if (value === '' || value === null || value === undefined) return false;
@@ -278,40 +524,12 @@ function includesSearchTerm(values, term) {
   });
 }
 
-function buildDistrictOptions() {
-  const select = typeof document !== 'undefined' ? document.getElementById('filterDistrict') : null;
+function replaceSelectOptions(id, values, labelFn) {
+  const select = typeof document !== 'undefined' ? document.getElementById(id) : null;
   if (!select) return;
-  const districts = uniqueSorted(AppState.data.villages.map(village => village.district));
-  select.innerHTML = optionHtml('', 'ทั้งหมด') + districts.map(value => optionHtml(value, value)).join('');
-}
-
-function buildLocalAuthorityOptions() {
-  const select = typeof document !== 'undefined' ? document.getElementById('filterLocalAuthority') : null;
-  if (!select) return;
-  const district = AppState.filters.district;
-  const values = uniqueSorted(
-    AppState.data.villages
-      .filter(village => !district || village.district === district)
-      .map(village => village.local_authority)
-  );
-  select.innerHTML = optionHtml('', 'ทั้งหมด') + values.map(value => optionHtml(value, value)).join('');
-}
-
-function buildSystemTypeOptions() {
-  const select = typeof document !== 'undefined' ? document.getElementById('filterSystemType') : null;
-  if (!select) return;
-
-  // System type is an independent filter, not a child of District/Local Authority.
-  // Keep the full option set available so changing area filters does not silently
-  // drop an active type filter.
-  const values = [...new Set(
-    AppState.data.waterSystems
-      .map(system => system.system_type)
-      .filter(Boolean)
-  )].sort((a, b) => systemTypeLabel(a).localeCompare(systemTypeLabel(b), 'th'));
 
   select.innerHTML = optionHtml('', 'ทั้งหมด') + values
-    .map(value => optionHtml(value, systemTypeLabel(value)))
+    .map(value => optionHtml(value, labelFn(value)))
     .join('');
 }
 
@@ -356,7 +574,9 @@ function syncDeclarativeFilterToggles() {
   document.querySelectorAll(FILTER_TOGGLE_SELECTOR).forEach(control => {
     const key = control.dataset.filterToggleKey;
     const value = String(control.dataset.filterToggleValue || '');
-    const pressed = FILTER_KEYS.includes(key) && value && String(AppState.filters[key] || '') === value;
+    const pressed = FILTER_KEYS.includes(key) &&
+      value &&
+      String(AppState.filters[key] || '') === value;
     control.setAttribute('aria-pressed', pressed ? 'true' : 'false');
   });
 }
@@ -403,8 +623,18 @@ function filterChipRows() {
 }
 
 function uniqueSorted(values) {
-  return [...new Set(values.filter(Boolean))]
+  return [...new Set(values.map(normalizeTextValue).filter(Boolean))]
     .sort((a, b) => String(a).localeCompare(String(b), 'th'));
+}
+
+function uniqueSortedByLabel(values, labelFn) {
+  return [...new Set(values.map(normalizeTextValue).filter(Boolean))]
+    .sort((a, b) => String(labelFn(a)).localeCompare(String(labelFn(b)), 'th'));
+}
+
+function normalizeTextValue(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  return String(value).trim();
 }
 
 function optionHtml(value, label) {

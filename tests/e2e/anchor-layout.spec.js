@@ -7,8 +7,7 @@ const SECTION_IDS = [
   'areas',
   'quality',
   'system-structure',
-  'watchlist',
-  'data-completeness'
+  'watchlist'
 ];
 
 test('section navigation does not place target underneath sticky chrome', async ({ page }) => {
@@ -31,7 +30,6 @@ test('section navigation does not place target underneath sticky chrome', async 
     }, id), { timeout: 5_000 }).toBe(true);
   }
 });
-
 
 test('global filter is part of normal document flow and never sticky', async ({ page }) => {
   await openDashboard(page);
