@@ -1,6 +1,8 @@
 export const AppState = {
   meta: {
-    generatedAt: ''
+    sourceGeneratedAt: '',
+    lastSuccessfulLoadAt: '',
+    publicSuppression: null
   },
 
   data: {

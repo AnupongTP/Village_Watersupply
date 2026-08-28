@@ -85,15 +85,17 @@ function renderDistrictChart() {
           borderColor: COLORS.blue,
           borderWidth: labels.map((_, index) => selectedIndex === index ? 2 : 1),
           borderRadius: 5,
+          pointStyle: 'rectRounded',
           maxBarThickness: 34
         },
         {
           label: 'ระบบประปา',
           data: labels.map(label => systemCounts[label] || 0),
-          backgroundColor: labels.map(label => selected ? (label === selected ? FILLS.cyan : FILLS.cyanDim) : FILLS.cyan),
-          borderColor: COLORS.cyan,
+          backgroundColor: labels.map(label => selected ? (label === selected ? FILLS.amber : FILLS.amberDim) : FILLS.amber),
+          borderColor: COLORS.amber,
           borderWidth: labels.map((_, index) => selectedIndex === index ? 2 : 1),
-          borderRadius: 5,
+          borderRadius: 0,
+          pointStyle: 'rect',
           maxBarThickness: 34
         }
       ]
@@ -243,7 +245,7 @@ function countByNormalizedValue(rows, field, normalizer, codes) {
 }
 
 function baseCartesianOptions({ indexAxis = 'x', legend = true, onElementClick = null } = {}) {
-  const size = narrowMode ? 11 : 12;
+  const size = narrowMode ? 12 : 13;
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -263,7 +265,7 @@ function baseCartesianOptions({ indexAxis = 'x', legend = true, onElementClick =
       legend: {
         display: legend,
         position: 'bottom',
-        labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, color: '#64748b', font: { size }, padding: 14 }
+        labels: { usePointStyle: true, boxWidth: 10, boxHeight: 10, color: '#334155', font: { size }, padding: 16 }
       },
       tooltip: { displayColors: true, titleFont: { family: 'Sarabun' }, bodyFont: { family: 'Sarabun' } }
     },
@@ -271,13 +273,13 @@ function baseCartesianOptions({ indexAxis = 'x', legend = true, onElementClick =
       x: {
         beginAtZero: true,
         grid: { color: 'rgba(226, 232, 240, .75)' },
-        ticks: { color: '#64748b', font: { size, family: 'Sarabun' }, maxRotation: indexAxis === 'x' ? 30 : 0, minRotation: 0 },
+        ticks: { color: '#475569', font: { size, family: 'Sarabun' }, maxRotation: indexAxis === 'x' ? 30 : 0, minRotation: 0 },
         border: { color: '#e2e8f0' }
       },
       y: {
         beginAtZero: true,
         grid: { color: indexAxis === 'y' ? 'transparent' : 'rgba(226, 232, 240, .75)' },
-        ticks: { color: '#64748b', font: { size, family: 'Sarabun' } },
+        ticks: { color: '#475569', font: { size, family: 'Sarabun' } },
         border: { color: '#e2e8f0' }
       }
     }
@@ -285,7 +287,7 @@ function baseCartesianOptions({ indexAxis = 'x', legend = true, onElementClick =
 }
 
 function doughnutOptions(onElementClick) {
-  const size = narrowMode ? 11 : 12;
+  const size = narrowMode ? 12 : 13;
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -302,7 +304,7 @@ function doughnutOptions(onElementClick) {
     plugins: {
       legend: {
         position: 'bottom',
-        labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, padding: 14, color: '#64748b', font: { size, family: 'Sarabun' } },
+        labels: { usePointStyle: true, boxWidth: 10, boxHeight: 10, padding: 16, color: '#334155', font: { size, family: 'Sarabun' } },
         // Doughnut legends are dimension labels. Make them use the same filter
         // semantics as clicking the segment instead of Chart.js' default hide/show.
         onClick: (_event, legendItem) => {

@@ -7,7 +7,7 @@ import {
   expectNoHorizontalPageOverflow
 } from './helpers.js';
 
-const CRITICAL_ANCHORS = ['map-section', 'system-structure', 'watchlist', 'data-completeness'];
+const CRITICAL_ANCHORS = ['map-section', 'system-structure', 'watchlist'];
 
 for (const viewport of LOCKED_VIEWPORTS) {
   test(`responsive layout: ${viewport.name} ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
@@ -32,9 +32,7 @@ for (const viewport of LOCKED_VIEWPORTS) {
       await expect(page.locator('#filterPanel')).toBeVisible();
     }
 
-    await page.screenshot({
-      path: testInfo.outputPath(`${viewport.name}.png`),
-      fullPage: true
-    });
+    await expect(page.locator('#data-completeness')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`), fullPage: true });
   });
 }

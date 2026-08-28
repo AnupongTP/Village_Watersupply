@@ -31,6 +31,21 @@ export function showError(message) {
   }
 }
 
+export function showRefreshError(message) {
+  const text = `${message} ข้อมูลเดิมที่โหลดสำเร็จล่าสุดยังคงแสดงอยู่`;
+  if (window.Swal) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'รีเฟรชข้อมูลไม่สำเร็จ',
+      text,
+      confirmButtonText: 'ปิด',
+      confirmButtonColor: '#0369a1'
+    });
+  } else {
+    window.alert(`รีเฟรชข้อมูลไม่สำเร็จ\n${text}`);
+  }
+}
+
 export function initMobileFilters() {
   const button = document.getElementById('btnFilterToggle');
   const panel = document.getElementById('filterPanel');

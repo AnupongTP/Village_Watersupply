@@ -82,7 +82,7 @@ test('chart self-exclusion keeps the full selected dimension switchable', () => 
   assert.deepEqual(new Set(chartSnapshot.waterSystems.map(row => row.system_type)), new Set(['GROUNDWATER_SMALL', 'SURFACE_SMALL']));
 });
 
-test('district mutation clears only dependent Local Authority and preserves independent filters', () => {
+test('district mutation clears Local Authority and system filters unavailable in the new area', () => {
   AppState.filters.localAuthority = 'เทศบาลตำบลจุน';
   AppState.filters.systemType = 'GROUNDWATER_SMALL';
   AppState.filters.drinkingWaterQuality = 'PASS';
@@ -91,10 +91,26 @@ test('district mutation clears only dependent Local Authority and preserves inde
 
   assert.equal(AppState.filters.district, 'เมืองพะเยา');
   assert.equal(AppState.filters.localAuthority, '');
-  assert.equal(AppState.filters.systemType, 'GROUNDWATER_SMALL');
-  assert.equal(AppState.filters.drinkingWaterQuality, 'PASS');
+  assert.equal(AppState.filters.systemType, '');
+  assert.equal(AppState.filters.drinkingWaterQuality, '');
 });
 
+test('district mutation preserves independent system filters that still exist in the new area', () => {
+  AppState.filters.localAuthority = 'เทศบาลตำบลจุน';
+  AppState.filters.systemType = 'SURFACE_SMALL';
+  AppState.filters.operationalStatus = 'NOT_WORKING';
+  AppState.filters.drinkingWaterQuality = 'FAIL';
+  AppState.filters.waterQuantity = 'INSUFFICIENT';
+
+  setFilterValue('district', 'เมืองพะเยา');
+
+  assert.equal(AppState.filters.district, 'เมืองพะเยา');
+  assert.equal(AppState.filters.localAuthority, '');
+  assert.equal(AppState.filters.systemType, 'SURFACE_SMALL');
+  assert.equal(AppState.filters.operationalStatus, 'NOT_WORKING');
+  assert.equal(AppState.filters.drinkingWaterQuality, 'FAIL');
+  assert.equal(AppState.filters.waterQuantity, 'INSUFFICIENT');
+});
 
 test('quality and quantity UNKNOWN normalize into the same no-data filter bucket shown in the UI', () => {
   AppState.data.waterSystems[0].drinking_water_quality = 'UNKNOWN';
@@ -144,4 +160,3 @@ test('monitoring quick-filter counts self-exclude only their own dimension', () 
     qualityFail: 0
   });
 });
-
