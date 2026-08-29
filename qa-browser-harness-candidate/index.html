@@ -19,19 +19,28 @@ async function source(spec){
  const actual=hex(await crypto.subtle.digest('SHA-256',data)); if(actual!==spec.sha)throw new Error('SHA256 mismatch '+spec.url+' '+actual);
  return new TextDecoder().decode(data);
 }
+function replaceExactlyOnce(text,needle,replacement,label){
+ const first=text.indexOf(needle); if(first<0)throw new Error('missing '+label+' marker');
+ if(text.indexOf(needle,first+needle.length)>=0)throw new Error('duplicate '+label+' marker');
+ return text.slice(0,first)+replacement+text.slice(first+needle.length);
+}
 try{
  sessionStorage.removeItem('vws_management_token_v2');
  const [html,js,css]=await Promise.all([source(SOURCES.html),source(SOURCES.js),source(SOURCES.css)]);
- let transformed=html;
  const closeScript='</scr'+'ipt>';
  const closeStyle='</sty'+'le>';
+ const configNeedle='<script src="assets/config.js" defer>'+closeScript;
+ const technicianNeedle='<script src="assets/technician.js" defer>'+closeScript;
+ const cssNeedle='<link rel="stylesheet" href="assets/technician.css">';
  const cssTag='<style data-qa-source-sha="'+SOURCES.css.sha+'">'+css+closeStyle;
  const cfg='<script>window.VWS_MANAGEMENT_CONFIG=Object.freeze({endpoint:'+JSON.stringify(ENDPOINT)+'});sessionStorage.removeItem("vws_management_token_v2");'+closeScript;
  const jsTag='<script data-qa-source-sha="'+SOURCES.js.sha+'">'+js+closeScript;
- transformed=transformed.replace('<link rel="stylesheet" href="assets/technician.css">',cssTag);
- transformed=transformed.replace('<script src="assets/config.js" defer></script>',cfg);
- transformed=transformed.replace('<script src="assets/technician.js" defer></script>',jsTag);
- transformed=transformed.replace('</body>','<script>window.__QA_CANDIDATE_SOURCE_VERIFIED='+JSON.stringify({html:SOURCES.html.sha,js:SOURCES.js.sha,css:SOURCES.css.sha})+';'+closeScript+'</body>');
+ let transformed=replaceExactlyOnce(html,cssNeedle,cssTag,'technician CSS');
+ transformed=replaceExactlyOnce(transformed,configNeedle,cfg,'config script');
+ transformed=replaceExactlyOnce(transformed,technicianNeedle,jsTag,'technician script');
+ if(/assets\/(?:config|technician)\.(?:js|css)/.test(transformed))throw new Error('candidate external asset marker remained after transform');
+ const verify='<script>window.__QA_CANDIDATE_SOURCE_VERIFIED='+JSON.stringify({html:SOURCES.html.sha,js:SOURCES.js.sha,css:SOURCES.css.sha})+';'+closeScript;
+ transformed=replaceExactlyOnce(transformed,'</body>',verify+'</body>','body close');
  document.open(); document.write(transformed); document.close();
 }catch(e){
  window.__QA_CANDIDATE_LOAD_ERROR=String(e&&e.message||e); document.getElementById('status').textContent='LOAD FAIL: '+window.__QA_CANDIDATE_LOAD_ERROR; console.error(e);
