@@ -23,13 +23,15 @@ try{
  sessionStorage.removeItem('vws_management_token_v2');
  const [html,js,css]=await Promise.all([source(SOURCES.html),source(SOURCES.js),source(SOURCES.css)]);
  let transformed=html;
- const cssTag='<style data-qa-source-sha="'+SOURCES.css.sha+'">'+css.replace(/<\/style/gi,'<\\/style')+'</style>';
- const cfg='<script>window.VWS_MANAGEMENT_CONFIG=Object.freeze({endpoint:'+JSON.stringify(ENDPOINT)+'});sessionStorage.removeItem("vws_management_token_v2");<\\/script>';
- const jsTag='<script data-qa-source-sha="'+SOURCES.js.sha+'">'+js.replace(/<\/script/gi,'<\\/script')+'<\\/script>';
+ const closeScript='</scr'+'ipt>';
+ const closeStyle='</sty'+'le>';
+ const cssTag='<style data-qa-source-sha="'+SOURCES.css.sha+'">'+css+closeStyle;
+ const cfg='<script>window.VWS_MANAGEMENT_CONFIG=Object.freeze({endpoint:'+JSON.stringify(ENDPOINT)+'});sessionStorage.removeItem("vws_management_token_v2");'+closeScript;
+ const jsTag='<script data-qa-source-sha="'+SOURCES.js.sha+'">'+js+closeScript;
  transformed=transformed.replace('<link rel="stylesheet" href="assets/technician.css">',cssTag);
  transformed=transformed.replace('<script src="assets/config.js" defer></script>',cfg);
  transformed=transformed.replace('<script src="assets/technician.js" defer></script>',jsTag);
- transformed=transformed.replace('</body>','<script>window.__QA_CANDIDATE_SOURCE_VERIFIED='+JSON.stringify({html:SOURCES.html.sha,js:SOURCES.js.sha,css:SOURCES.css.sha})+';<\\/script></body>');
+ transformed=transformed.replace('</body>','<script>window.__QA_CANDIDATE_SOURCE_VERIFIED='+JSON.stringify({html:SOURCES.html.sha,js:SOURCES.js.sha,css:SOURCES.css.sha})+';'+closeScript+'</body>');
  document.open(); document.write(transformed); document.close();
 }catch(e){
  window.__QA_CANDIDATE_LOAD_ERROR=String(e&&e.message||e); document.getElementById('status').textContent='LOAD FAIL: '+window.__QA_CANDIDATE_LOAD_ERROR; console.error(e);
