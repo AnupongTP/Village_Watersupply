@@ -47,7 +47,7 @@
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyJjBCkGlQHxBeA7jdYy5rA-KBiDE73t3E0M36SIFDfrs2asCKwk11TQaWQrlRMqsXzPQ/exec';
   const CANDIDATE = '../qa-browser-harness-candidate/';
   const TOKEN_KEY = 'vws_management_token_v2';
-  const REQUIRED_ACTIONS = ['auth.login','data.bootstrap','data.dashboard','data.waterSystem','auth.logout'];
+  const REQUIRED_ACTIONS = ['auth.login','data.bootstrap','data.dashboard','data.waterSystem'];
   const MUTATION_ACTIONS = new Set(['data.updateWaterSystem','data.deleteWaterSystem','auth.changePassword','technicians.create','technicians.update','technicians.disable','technicians.enable','technicians.delete','technicians.resetPassword']);
   const VIEWPORTS = [[1920,1080],[1440,900],[1366,768],[1024,768],[768,1024],[440,956],[390,844],[360,800]];
   const $ = id => document.getElementById(id);
@@ -57,6 +57,7 @@
   let observed = [];
   let errors = [];
   let violations = [];
+  let activeCandidateToken = '';
 
   function line(s=''){ out.textContent += s + '\n'; }
   function check(name, cond, detail=''){
@@ -73,6 +74,22 @@
     const res = await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({version:2,action,payload:payload||{}}),redirect:'follow',cache:'no-store',credentials:'omit'});
     const text=await res.text(); let json; try{json=JSON.parse(text);}catch(_){throw new Error('Evidence response is not JSON (HTTP '+res.status+')');}
     return {res,json};
+  }
+
+  async function cleanupCandidateSession(){
+    let token=activeCandidateToken;
+    try{ if(!token && frame.contentWindow) token=String(frame.contentWindow.sessionStorage.getItem(TOKEN_KEY)||''); }catch(_){}
+    let safe=!token;
+    if(/^MGT-[0-9a-f]{64}$/.test(token)){
+      try{
+        const result=await directPost('auth.logout',{token});
+        const code=String(result.json&&result.json.error&&result.json.error.code||'');
+        safe=Boolean(result.json&&result.json.success===true)||code==='SESSION_REVOKED'||code==='SESSION_EXPIRED';
+      }catch(_){ safe=false; }
+    }
+    try{ if(frame.contentWindow) frame.contentWindow.sessionStorage.removeItem(TOKEN_KEY); }catch(_){}
+    activeCandidateToken='';
+    return safe;
   }
 
   async function writeEvidence(username,password,runId,status,detail){
@@ -138,6 +155,7 @@
     check('candidate app becomes visible after real login', await waitFor(()=>!d.getElementById('appView').classList.contains('hidden'),45000));
     const token=w.sessionStorage.getItem(TOKEN_KEY)||'';
     check('candidate received opaque session token', /^MGT-[0-9a-f]{64}$/.test(token));
+    activeCandidateToken=token;
     check('candidate clears login password field', d.getElementById('loginPassword').value==='');
     const resultCount=safeText(d.getElementById('resultCount').textContent);
     check('real dashboard count rendered', /รายการ/.test(resultCount), resultCount);
@@ -157,21 +175,23 @@
     check('all required responsive viewports passed',vpPass===8,vpPass+'/8');
     frame.style.width='1440px'; frame.style.height='900px'; await sleep(100);
 
+    d.getElementById('logoutButton').click();
+    check('candidate returns to login after logout',await waitFor(()=>!d.getElementById('loginView').classList.contains('hidden'),20000));
+    await sleep(500);
+    check('candidate sessionStorage token cleared',!(w.sessionStorage.getItem(TOKEN_KEY)||''));
+    check('candidate auth.logout observed over real browser fetch',observed.includes('auth.logout'),observed.join(','));
+    activeCandidateToken='';
+
     const requiredMissing=REQUIRED_ACTIONS.filter(a=>!observed.includes(a));
     check('required v2 actions observed over real browser fetch',requiredMissing.length===0,requiredMissing.join(','));
     check('candidate browser run stayed read-only for business/account data',!observed.some(a=>MUTATION_ACTIONS.has(a)),observed.join(','));
     check('no transport-envelope violations',violations.length===0,violations.join(' | '));
     check('no candidate console/page errors',errors.length===0,errors.join(' | '));
-
-    d.getElementById('logoutButton').click();
-    check('candidate returns to login after logout',await waitFor(()=>!d.getElementById('loginView').classList.contains('hidden'),20000));
-    await sleep(500);
-    check('candidate sessionStorage token cleared',!(w.sessionStorage.getItem(TOKEN_KEY)||''));
     return {resultCount,observed:[...observed]};
   }
 
   $('run').addEventListener('click',async()=>{
-    checks=[]; observed=[]; errors=[]; violations=[]; out.textContent='';
+    checks=[]; observed=[]; errors=[]; violations=[]; activeCandidateToken=''; out.textContent='';
     const username=$('username').value.trim(), password=$('password').value, runId=makeRunId();
     $('runId').textContent='runId: '+runId; $('headline').textContent='กำลังทดสอบ...'; $('headline').className='status running'; $('run').disabled=true;
     let status='FAIL', detail='';
@@ -182,6 +202,8 @@
       $('headline').textContent=`QA BROWSER PASS — ${checks.filter(x=>x.pass).length}/${checks.length}`; $('headline').className='status pass';
     }catch(e){ detail=safeText(e&&e.message||e); line('\nERROR: '+detail); $('headline').textContent=`QA BROWSER FAIL — ${checks.filter(x=>x.pass).length}/${checks.length}`; $('headline').className='status fail'; }
     finally{
+      const cleanupSafe=await cleanupCandidateSession();
+      if(!cleanupSafe) line('\nCandidate session cleanup: unable to confirm revocation');
       const evidence=await writeEvidence(username,password,runId,status,detail); line('\nEvidence marker: '+(evidence?'written + revoked':'NOT WRITTEN'));
       $('password').value=''; $('run').disabled=false;
     }
