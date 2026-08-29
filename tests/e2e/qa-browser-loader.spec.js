@@ -40,3 +40,22 @@ test('temporary QA candidate loader reaches verified source state', async ({ pag
   expect(snapshot.loadError).toBe('');
   expect(consoleErrors).toEqual([]);
 });
+
+test('temporary QA browser harness verifies logout only after triggering logout and has fail-safe cleanup', async ({ page }) => {
+  await page.goto('/qa-browser-harness/?ci=' + Date.now(), { waitUntil: 'domcontentloaded' });
+  const source = await page.locator('script').last().textContent();
+
+  const logoutClick = source.indexOf("d.getElementById('logoutButton').click()");
+  const logoutObservedCheck = source.indexOf("candidate auth.logout observed over real browser fetch");
+  const requiredActionCheck = source.indexOf('const requiredMissing=REQUIRED_ACTIONS.filter');
+  const cleanupCall = source.indexOf('const cleanupSafe=await cleanupCandidateSession();');
+  const evidenceCall = source.indexOf('const evidence=await writeEvidence');
+
+  expect(source).toContain("const REQUIRED_ACTIONS = ['auth.login','data.bootstrap','data.dashboard','data.waterSystem'];");
+  expect(logoutClick).toBeGreaterThan(0);
+  expect(logoutObservedCheck).toBeGreaterThan(logoutClick);
+  expect(requiredActionCheck).toBeGreaterThan(logoutObservedCheck);
+  expect(source).toContain('async function cleanupCandidateSession(){');
+  expect(cleanupCall).toBeGreaterThan(0);
+  expect(evidenceCall).toBeGreaterThan(cleanupCall);
+});
