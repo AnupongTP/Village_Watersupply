@@ -33,14 +33,17 @@ try{
  const technicianNeedle='<script src="assets/technician.js" defer>'+closeScript;
  const cssNeedle='<link rel="stylesheet" href="assets/technician.css">';
  const cssTag='<style data-qa-source-sha="'+SOURCES.css.sha+'">'+css+closeStyle;
- const cfg='<script>window.VWS_MANAGEMENT_CONFIG=Object.freeze({endpoint:'+JSON.stringify(ENDPOINT)+'});sessionStorage.removeItem("vws_management_token_v2");'+closeScript;
- const jsTag='<script data-qa-source-sha="'+SOURCES.js.sha+'">'+js+closeScript;
+ const configCode='window.VWS_MANAGEMENT_CONFIG=Object.freeze({endpoint:'+JSON.stringify(ENDPOINT)+'});sessionStorage.removeItem("vws_management_token_v2");window.__QA_CANDIDATE_EARLY_ERRORS=[];window.addEventListener("error",function(e){window.__QA_CANDIDATE_EARLY_ERRORS.push("error:"+String(e.message||""));});window.addEventListener("unhandledrejection",function(e){window.__QA_CANDIDATE_EARLY_ERRORS.push("unhandledrejection:"+String(e.reason&&e.reason.message||e.reason||""));});';
+ const configUrl=URL.createObjectURL(new Blob([configCode],{type:'text/javascript'}));
+ const technicianUrl=URL.createObjectURL(new Blob([js],{type:'text/javascript'}));
+ const readyCode='window.__QA_CANDIDATE_SOURCE_VERIFIED='+JSON.stringify({html:SOURCES.html.sha,js:SOURCES.js.sha,css:SOURCES.css.sha})+';window.__QA_CANDIDATE_RUNTIME_READY=true;';
+ const readyUrl=URL.createObjectURL(new Blob([readyCode],{type:'text/javascript'}));
+ const cfg='<script defer data-qa-config="true" src="'+configUrl+'">'+closeScript;
+ const jsTag='<script defer data-qa-source-sha="'+SOURCES.js.sha+'" src="'+technicianUrl+'">'+closeScript+'<script defer data-qa-runtime-ready="true" src="'+readyUrl+'">'+closeScript;
  let transformed=replaceExactlyOnce(html,cssNeedle,cssTag,'technician CSS');
  transformed=replaceExactlyOnce(transformed,configNeedle,cfg,'config script');
  transformed=replaceExactlyOnce(transformed,technicianNeedle,jsTag,'technician script');
  if(/assets\/(?:config|technician)\.(?:js|css)/.test(transformed))throw new Error('candidate external asset marker remained after transform');
- const verify='<script>window.__QA_CANDIDATE_SOURCE_VERIFIED='+JSON.stringify({html:SOURCES.html.sha,js:SOURCES.js.sha,css:SOURCES.css.sha})+';'+closeScript;
- transformed=replaceExactlyOnce(transformed,'</body>',verify+'</body>','body close');
  document.open(); document.write(transformed); document.close();
 }catch(e){
  window.__QA_CANDIDATE_LOAD_ERROR=String(e&&e.message||e); document.getElementById('status').textContent='LOAD FAIL: '+window.__QA_CANDIDATE_LOAD_ERROR; console.error(e);
