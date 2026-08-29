@@ -92,8 +92,16 @@
     $('viewportLabel').textContent='Candidate preview — 1440×900';
     frame.src=CANDIDATE+'?run='+encodeURIComponent(runId)+'&t='+Date.now();
     await new Promise((resolve,reject)=>{ const timer=setTimeout(()=>reject(new Error('candidate iframe load timeout')),30000); frame.onload=()=>{clearTimeout(timer);resolve();}; });
-    const w=frame.contentWindow, d=frame.contentDocument;
-    check('candidate iframe same-origin access', Boolean(w&&d));
+    const w=frame.contentWindow;
+    check('candidate iframe same-origin access', Boolean(w&&frame.contentDocument));
+    const loaded=await waitFor(()=>w.__QA_CANDIDATE_SOURCE_VERIFIED||w.__QA_CANDIDATE_LOAD_ERROR,45000);
+    check('exact frozen candidate source loader completed',loaded,w.__QA_CANDIDATE_LOAD_ERROR||'');
+    check('candidate source loader reported no error',!w.__QA_CANDIDATE_LOAD_ERROR,w.__QA_CANDIDATE_LOAD_ERROR||'');
+    const verified=w.__QA_CANDIDATE_SOURCE_VERIFIED||{};
+    check('candidate HTML SHA-256 verified',verified.html==='265545664ed8b374809072077f36a17fb57de304715b7678657ab8e4595ca7f4',verified.html||'');
+    check('candidate JS SHA-256 verified',verified.js==='de2b7a3f6fd86dde45b7fde39f849fbb4f692c9b72e9669fb7996c9f2b953357',verified.js||'');
+    check('candidate CSS SHA-256 verified',verified.css==='b0650ddcd3ab11adf3e2c4b84f333e7a9bbc67395e79b4a55cc98bee699c501a',verified.css||'');
+    const d=frame.contentDocument;
     try{w.sessionStorage.removeItem(TOKEN_KEY);}catch(_){}
     return {w,d};
   }
