@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f67b1">
+  <meta name="color-scheme" content="light">
+  <title>Dashboard ช่าง — ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Reuse the exact Public Dashboard visual foundation in production. -->
+  <link rel="stylesheet" href="../assets/css/tailwind.css">
+  <script defer src="../assets/vendor/fontawesome/js/fontawesome.min.js"></script>
+  <script defer src="../assets/vendor/fontawesome/js/solid.min.js"></script>
+  <link rel="stylesheet" href="../assets/css/app.css">
+
+  <!-- Management-only components / edge cases. -->
+  <link rel="stylesheet" href="assets/technician.css">
+  <script src="assets/config.js" defer></script>
+  <script src="assets/technician.js" defer></script>
+</head>
+<body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
+  <a class="skip-link" href="#main">ข้ามไปยังเนื้อหาหลัก</a>
+
+  <!-- Login uses the same Government BI visual language but remains isolated from the app shell. -->
+  <section id="loginView" class="auth-shell" data-testid="login-view" aria-labelledby="loginTitle">
+    <div class="auth-card">
+      <div class="auth-brand-row">
+        <div class="brand-mark" aria-hidden="true"><i class="fa-solid fa-droplet"></i><span class="icon-fallback">💧</span></div>
+        <div>
+          <p class="eyebrow">ระบบเจ้าหน้าที่</p>
+          <h1 id="loginTitle">Dashboard ช่าง</h1>
+          <p class="muted">ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</p>
+        </div>
+      </div>
+      <div class="auth-divider"></div>
+      <form id="loginForm" class="stack" autocomplete="on">
+        <label class="field-label">ชื่อผู้ใช้
+          <input id="loginUsername" name="username" autocomplete="username" required autofocus>
+        </label>
+        <label class="field-label">รหัสผ่าน
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="btn btn-primary auth-submit" type="submit" id="loginSubmit">
+          <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>เข้าสู่ระบบ</span>
+        </button>
+        <p id="loginError" class="form-error" role="alert"></p>
+      </form>
+      <p class="auth-footnote">สำหรับ ADMIN และ TECHNICIAN ที่ได้รับสิทธิ์เท่านั้น</p>
+    </div>
+  </section>
+
+  <div id="appView" class="app-shell hidden" data-testid="app-view">
+    <!-- Header cloned from the Public Dashboard baseline. -->
+    <header id="appHeader" tabindex="-1" class="app-header sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md">
+      <div class="header-main mx-auto flex min-h-16 max-w-[1600px] items-center justify-between gap-3 px-4 py-2.5 sm:px-5 xl:px-6">
+        <div class="brand-inline flex min-w-0 items-center gap-3">
+          <div class="brand-mark small" aria-hidden="true"><i class="fa-solid fa-droplet"></i><span class="icon-fallback">💧</span></div>
+          <div class="min-w-0">
+            <strong class="header-title">ระบบข้อมูลประปาหมู่บ้าน</strong>
+            <small class="header-subtitle">จังหวัดพะเยา</small>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="sync-meta header-sync">
+            <span>ข้อมูลล่าสุด</span>
+            <strong id="generatedAt">-</strong>
+          </div>
+          <button id="refreshButton" class="btn btn-outline" type="button" title="รีเฟรชข้อมูล">
+            <i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="icon-fallback">↻</span><span class="desktop-label">รีเฟรช</span>
+          </button>
+          <span class="management-mode-badge">Dashboard ช่าง</span>
+          <div class="user-chip" aria-label="ผู้ใช้งานปัจจุบัน">
+            <span id="currentUserName">-</span><small id="currentUserRole">-</small>
+          </div>
+          <button id="changePasswordButton" class="btn btn-outline compact-action" type="button" title="เปลี่ยนรหัสผ่าน">
+            <i class="fa-solid fa-key" aria-hidden="true"></i><span class="icon-fallback">🔑</span><span class="desktop-label">เปลี่ยนรหัสผ่าน</span>
+          </button>
+          <button id="logoutButton" class="btn btn-danger-soft compact-action" type="button" title="ออกจากระบบ">
+            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span class="icon-fallback">↪</span><span class="desktop-label">ออกจากระบบ</span>
+          </button>
+          <div class="mobile-account">
+            <button id="mobileAccountButton" class="btn btn-outline" type="button" aria-expanded="false" aria-controls="mobileAccountMenu" aria-label="เมนูผู้ใช้งาน">
+              <i class="fa-solid fa-user" aria-hidden="true"></i><span class="icon-fallback">👤</span>
+            </button>
+            <div id="mobileAccountMenu" class="mobile-account-menu hidden">
+              <div class="mobile-account-summary"><strong id="mobileCurrentUserName">-</strong><small id="mobileCurrentUserRole">-</small></div>
+              <button id="mobileChangePasswordButton" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i><span>เปลี่ยนรหัสผ่าน</span></button>
+              <button id="mobileLogoutButton" class="danger" type="button"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>ออกจากระบบ</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="section-nav-shell border-t border-slate-100" aria-label="เมนู Dashboard ช่าง">
+        <div class="tabs section-nav-scroll mx-auto flex max-w-[1600px] gap-1 overflow-x-auto px-3 py-1.5 sm:px-5 xl:px-6">
+          <button class="tab active section-link" type="button" data-tab="systems"><i class="fa-solid fa-faucet-drip" aria-hidden="true"></i><span>ระบบประปา</span></button>
+          <button class="tab section-link" type="button" data-tab="history"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>ประวัติการแก้ไข</span></button>
+          <button id="techniciansTab" class="tab section-link hidden" type="button" data-tab="technicians"><i class="fa-solid fa-users-gear" aria-hidden="true"></i><span>บัญชีช่าง</span></button>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main" class="main-content mx-auto max-w-[1600px] px-3 pb-10 pt-3 sm:px-5 sm:pt-4 xl:px-6" tabindex="-1">
+      <section id="systemsPanel" data-panel="systems" class="dashboard-section">
+        <div class="section-heading page-heading">
+          <div>
+            <p class="eyebrow">ข้อมูลปัจจุบัน</p>
+            <h2>ระบบประปา</h2>
+            <p class="section-description muted">ดู แก้ไข และลบข้อมูลระบบประปา การเพิ่มข้อมูลใหม่ยังใช้ Feature 3 เดิมเพียงช่องทางเดียว</p>
+          </div>
+          <div class="scope-note"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>ทุกการแก้ไขและลบมี Audit</span></div>
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi-card">
+            <div class="kpi-icon bg-sky"><i class="fa-solid fa-faucet-drip" aria-hidden="true"></i></div>
+            <div><p class="kpi-label">ระบบทั้งหมด</p><p id="kpiSystems" class="kpi-value">-</p></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-icon bg-amber"><i class="fa-solid fa-location-dot" aria-hidden="true"></i></div>
+            <div><p class="kpi-label">พิกัดไม่ครบ</p><p id="kpiMissingCoords" class="kpi-value">-</p></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-icon bg-red"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>
+            <div><p class="kpi-label">ใช้การไม่ได้</p><p id="kpiNotWorking" class="kpi-value">-</p></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-icon bg-rose"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i></div>
+            <div><p class="kpi-label">น้ำดื่มไม่ผ่าน</p><p id="kpiQualityFail" class="kpi-value">-</p></div>
+          </article>
+        </div>
+
+        <!-- Filter composition follows the Public Dashboard mobile/desktop pattern. -->
+        <section class="filter-shell" aria-label="ตัวกรองระบบประปา">
+          <div class="filter-mobile-head">
+            <div><p class="eyebrow">ตัวกรองข้อมูล</p><p class="filter-mobile-summary">ค้นหาและจำกัดรายการระบบประปา</p></div>
+            <button id="filterToggleButton" class="btn btn-outline" type="button" aria-expanded="false" aria-controls="filterPanel">
+              <i class="fa-solid fa-sliders" aria-hidden="true"></i><span>ตัวกรอง</span>
+            </button>
+          </div>
+          <div id="filterPanel" class="filter-panel">
+            <label class="filter-field search-field">ค้นหา
+              <div class="input-with-icon"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="searchInput" type="search" autocomplete="off" placeholder="ชื่อระบบ หมู่บ้าน อำเภอ อปท. หรือรหัสระบบ"></div>
+            </label>
+            <label class="filter-field">อำเภอ<select id="districtFilter"><option value="">ทั้งหมด</option></select></label>
+            <label class="filter-field">สถานะระบบ<select id="statusFilter"><option value="">ทั้งหมด</option></select></label>
+            <label class="filter-field">การแสดง Public<select id="publicFilter"><option value="">ทั้งหมด</option><option value="VISIBLE">แสดง Public</option><option value="HIDDEN">ไม่แสดง Public</option></select></label>
+            <button id="clearFiltersButton" class="btn btn-ghost clear-filter" type="button"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i><span>ล้างตัวกรอง</span></button>
+          </div>
+        </section>
+
+        <section class="data-card" aria-labelledby="systemsListTitle">
+          <div class="table-head-meta">
+            <div><p class="eyebrow">รายการระบบ</p><strong id="systemsListTitle"><span id="resultCount">0 รายการ</span></strong></div>
+            <span id="pageStatus" class="muted"></span>
+          </div>
+          <div class="table-scroll desktop-table-wrap" tabindex="0" aria-label="ตารางระบบประปา เลื่อนแนวนอนได้เมื่อจำเป็น">
+            <table class="management-table">
+              <thead><tr><th>ระบบ</th><th>หมู่บ้าน / พื้นที่</th><th>ประเภท</th><th>สถานะ</th><th>Public</th><th class="actions-column">จัดการ</th></tr></thead>
+              <tbody id="systemsTableBody"></tbody>
+            </table>
+          </div>
+          <div id="systemsMobileList" class="systems-mobile-list" aria-live="polite"></div>
+          <div class="pager"><button id="prevPage" class="btn btn-outline" type="button"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>ก่อนหน้า</span></button><button id="nextPage" class="btn btn-outline" type="button"><span>ถัดไป</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>
+        </section>
+      </section>
+
+      <section id="historyPanel" data-panel="history" class="dashboard-section hidden">
+        <div class="section-heading page-heading"><div><p class="eyebrow">Audit Log</p><h2>ประวัติการแก้ไข</h2><p class="section-description muted">ค้นด้วยรหัสระบบเพื่อดูว่าใครแก้ไขหรือลบข้อมูล เมื่อใด และด้วยเหตุผลอะไร</p></div></div>
+        <section class="filter-shell history-search-shell" aria-label="ค้นหาประวัติระบบ">
+          <label class="filter-field search-field">รหัสระบบ
+            <div class="input-with-icon"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="historySystemId" autocomplete="off" placeholder="เช่น PY-W-000733"></div>
+          </label>
+          <button id="historySearchButton" class="btn btn-primary" type="button"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>ดูประวัติ</span></button>
+        </section>
+        <div id="historyList" class="history-list empty-state">ระบุรหัสระบบเพื่อดูประวัติ</div>
+      </section>
+
+      <section id="techniciansPanel" data-panel="technicians" class="dashboard-section hidden">
+        <div class="section-heading page-heading">
+          <div><p class="eyebrow">ADMIN</p><h2>บัญชีช่าง</h2><p class="section-description muted">จัดการบัญชี Technician โดยไม่เปิดเผยรหัสผ่านหรือข้อมูล Session ในหน้าจอ</p></div>
+          <button id="createTechnicianButton" class="btn btn-primary" type="button"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>สร้างบัญชีช่าง</span></button>
+        </div>
+        <section class="data-card">
+          <div class="table-scroll" tabindex="0" aria-label="ตารางบัญชีช่าง">
+            <table class="management-table"><thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อแสดงผล</th><th>สถานะ</th><th>เข้าสู่ระบบล่าสุด</th><th class="actions-column">จัดการ</th></tr></thead><tbody id="techniciansTableBody"></tbody></table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="busyOverlay" class="busy-overlay hidden" aria-live="polite" aria-busy="true"><div class="spinner" aria-hidden="true"></div><span id="busyText">กำลังประมวลผล...</span></div>
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Detail dialog is intentionally styled as the same right-side drawer used by Public. -->
+  <dialog id="systemDialog" class="drawer-dialog">
+    <form method="dialog" class="drawer-panel" id="systemDialogForm">
+      <header class="drawer-header"><div><p class="eyebrow">ข้อมูลระบบประปา</p><h3 id="systemDialogTitle">รายละเอียดระบบ</h3></div><button class="icon-btn" value="cancel" aria-label="ปิดรายละเอียด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <div id="systemDialogBody" class="drawer-body"></div>
+      <footer class="drawer-footer"><button class="btn btn-ghost" value="cancel">ปิด</button><button id="editSystemButton" class="btn btn-primary" type="button"><i class="fa-solid fa-pen" aria-hidden="true"></i><span>แก้ไขข้อมูล</span></button><button id="deleteSystemButton" class="btn btn-danger" type="button"><i class="fa-solid fa-trash" aria-hidden="true"></i><span>ลบระบบ</span></button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="editDialog" class="modal wide">
+    <form id="editForm" class="modal-card" method="dialog">
+      <header class="modal-header"><div><p class="eyebrow">แก้ไขข้อมูล</p><h3 id="editDialogTitle">-</h3></div><button class="icon-btn" value="cancel" aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <div class="modal-body edit-modal-body"><div id="editFields" class="edit-sections"></div><label class="full field-label edit-reason">หมายเหตุ/เหตุผลการแก้ไข<textarea id="editReason" rows="3" placeholder="ไม่บังคับ แต่ควรระบุเมื่อเป็นการแก้ข้อมูลสำคัญ"></textarea></label><p id="editError" class="form-error" role="alert"></p></div>
+      <footer class="modal-footer"><button class="btn btn-ghost" value="cancel">ยกเลิก</button><button id="saveEditButton" class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>บันทึกการแก้ไข</span></button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="deleteDialog" class="modal danger-modal">
+    <form id="deleteForm" class="modal-card" method="dialog">
+      <header class="modal-header"><div><p class="eyebrow danger-text">ลบข้อมูลถาวร</p><h3>ลบระบบประปา</h3></div><button class="icon-btn" value="cancel" aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <div class="modal-body stack"><div class="warning-box"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><div><strong>รายการนี้จะถูกลบจาก water_systems จริง</strong><p>Audit จะเก็บข้อมูลก่อนลบ ผู้ดำเนินการ เวลา และเหตุผลไว้ แต่ Dashboard ไม่มีปุ่ม Undo/Restore</p></div></div><label class="field-label">เหตุผลในการลบ<textarea id="deleteReason" rows="3" required placeholder="ระบุเหตุผลที่ตรวจสอบย้อนหลังได้"></textarea></label><label class="field-label">พิมพ์รหัสระบบ <strong id="deleteConfirmId">-</strong> เพื่อยืนยัน<input id="deleteConfirmInput" autocomplete="off" required></label><p id="deleteError" class="form-error" role="alert"></p></div>
+      <footer class="modal-footer"><button class="btn btn-ghost" value="cancel">ยกเลิก</button><button id="confirmDeleteButton" class="btn btn-danger" type="submit"><i class="fa-solid fa-trash" aria-hidden="true"></i><span>ลบระบบถาวร</span></button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="technicianDialog" class="modal">
+    <form id="technicianForm" class="modal-card" method="dialog">
+      <header class="modal-header"><div><p class="eyebrow">บัญชีช่าง</p><h3 id="technicianDialogTitle">สร้างบัญชีช่าง</h3></div><button class="icon-btn" value="cancel" aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <div class="modal-body stack"><label class="field-label">ชื่อผู้ใช้<input id="techUsername" autocomplete="off" required></label><label class="field-label">ชื่อแสดงผล<input id="techDisplayName" required></label><label id="techPasswordLabel" class="field-label">รหัสผ่านเริ่มต้น<input id="techPassword" type="password" autocomplete="new-password" minlength="8"></label><p id="technicianError" class="form-error" role="alert"></p></div>
+      <footer class="modal-footer"><button class="btn btn-ghost" value="cancel">ยกเลิก</button><button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>บันทึก</span></button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="actionDialog" class="modal">
+    <form id="actionForm" class="modal-card" method="dialog">
+      <header class="modal-header"><div><p class="eyebrow">จัดการบัญชี</p><h3 id="actionTitle">-</h3></div><button class="icon-btn" value="cancel" aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <div class="modal-body stack"><p id="actionDescription" class="muted"></p><label id="actionReasonLabel" class="field-label hidden">เหตุผล<textarea id="actionReason" rows="3"></textarea></label><label id="actionPasswordLabel" class="field-label hidden">รหัสผ่านใหม่<input id="actionPassword" type="password" autocomplete="new-password" minlength="8"></label><p id="actionError" class="form-error" role="alert"></p></div>
+      <footer class="modal-footer"><button class="btn btn-ghost" value="cancel">ยกเลิก</button><button id="actionConfirmButton" class="btn btn-primary" type="submit">ยืนยัน</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="passwordDialog" class="modal password-modal">
+    <form id="passwordForm" class="modal-card" method="dialog">
+      <header class="modal-header"><div><p class="eyebrow">ความปลอดภัย</p><h3>เปลี่ยนรหัสผ่าน</h3></div><button id="passwordCloseButton" class="icon-btn" value="cancel" aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <div class="modal-body stack"><p id="passwordDialogDescription" class="muted">เปลี่ยนรหัสผ่านของบัญชีที่กำลังเข้าสู่ระบบ</p><label class="field-label">รหัสผ่านปัจจุบัน<input id="currentPassword" type="password" autocomplete="current-password" required></label><label class="field-label">รหัสผ่านใหม่<input id="newPassword" type="password" autocomplete="new-password" minlength="8" required></label><label class="field-label">ยืนยันรหัสผ่านใหม่<input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="8" required></label><p id="passwordError" class="form-error" role="alert"></p></div>
+      <footer class="modal-footer"><button id="passwordCancelButton" class="btn btn-ghost" value="cancel">ยกเลิก</button><button id="passwordChangeSubmit" class="btn btn-primary" type="submit"><i class="fa-solid fa-key" aria-hidden="true"></i><span>เปลี่ยนรหัสผ่าน</span></button></footer>
+    </form>
+  </dialog>
+</body>
+</html>
