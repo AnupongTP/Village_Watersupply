@@ -13,6 +13,8 @@ const walk = dir => fs.readdirSync(path.join(root, dir), { withFileTypes: true }
 });
 const assert = (condition, message) => { if (!condition) failures.push(message); };
 
+assert(!exists('technician-read-smoke.html'), 'Public Technician credential QA page must not be published');
+
 assert(exists('assets/js/config.example.js'), 'config.example.js is required');
 if (exists('assets/js/config.js')) {
   const runtimeConfig = read('assets/js/config.js');
