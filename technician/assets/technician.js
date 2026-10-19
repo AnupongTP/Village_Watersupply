@@ -98,6 +98,7 @@
   function showBusy(text='กำลังประมวลผล...'){return window.VWSTechnicianUI.showLoading(text);}
   function hideBusy(operation){window.VWSTechnicianUI.closeLoading(operation);}
   function clearBusy(){window.VWSTechnicianUI.clearLoading();}
+  let bootOperation=null;
   function toast(message,type='success'){const ui=window.VWSTechnicianUI; (type==='error'?ui.showError:type==='warning'?ui.showWarning:ui.showSuccess)(message);}
   function setError(id,message=''){ $(id).textContent=message; }
 
@@ -112,9 +113,10 @@
   function unwrap(response){ if (!response || response.success !== true){ const err=new Error(response?.error?.message || 'คำขอไม่สำเร็จ'); err.code=response?.error?.code || 'UNKNOWN'; err.details=response?.error?.details || {}; throw err; } return response.data || {}; }
   function authPayload(extra={}){ return Object.assign({token:state.token},extra); }
   function clearSession(){ state.token='';state.user=null;state.bootstrap=null;state.dashboard=null;storageRemove(TOKEN_KEY); }
-  function showLogin(){ state.selectionRequest++;clearBusy();document.documentElement.classList.remove('has-session');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value=''; }
-  function showApp(){ document.documentElement.classList.remove('has-session');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden'); }
-  function showBoot(message='กำลังตรวจสอบการเข้าสู่ระบบ...',retry=false){document.documentElement.classList.add('has-session');$('skipLink').href='#bootView';$('bootView').classList.remove('hidden');$('loginView').classList.add('hidden');$('appView').classList.add('hidden');$('bootTitle').textContent=message;$('bootError').textContent=retry?'ไม่สามารถตรวจสอบ Session ได้ในขณะนี้ โปรดลองอีกครั้ง':'';$('bootError').classList.toggle('hidden',!retry);$('retryResumeButton').classList.toggle('hidden',!retry);$('bootView').querySelector('.loading-progress').classList.toggle('hidden',retry);}
+  function closeBootOperation(){if(bootOperation){hideBusy(bootOperation);bootOperation=null;}}
+  function showLogin(){ state.selectionRequest++;bootOperation=null;clearBusy();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value=''; }
+  function showApp(){ closeBootOperation();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden'); }
+  function showBoot(message='กำลังตรวจสอบการเข้าสู่ระบบ...',retry=false){document.documentElement.classList.add('has-session','boot-handoff');$('skipLink').href='#bootView';$('loginView').classList.add('hidden');$('appView').classList.add('hidden');$('bootTitle').textContent=message;$('bootError').textContent=retry?'ไม่สามารถตรวจสอบ Session ได้ในขณะนี้ โปรดลองอีกครั้ง':'';$('bootError').classList.toggle('hidden',!retry);$('retryResumeButton').classList.toggle('hidden',!retry);$('bootView').querySelector('.loading-progress').classList.toggle('hidden',retry);if(retry||!window.Swal){closeBootOperation();$('bootView').classList.remove('hidden');}else{$('bootView').classList.add('hidden');if(bootOperation)window.VWSTechnicianUI.updateLoading(message,bootOperation);else bootOperation=showBusy(message);}}
 
   async function login(username,password){
     const data=unwrap(await api('auth.login',{username,password,clientInfo:clientInfo()}));
@@ -134,8 +136,12 @@
       throw e;
     }
     state.bootstrap=boot; state.user=boot.user; renderCurrentUser();
-    const dash=unwrap(await api('data.dashboard',authPayload({filters:{}}))); assertDashboard(dash); state.dashboard=dash; showApp(); renderDashboard();
-    $('techniciansTab').classList.toggle('hidden',!hasPermission('MANAGE_TECHNICIANS'));
+    const dash=unwrap(await api('data.dashboard',authPayload({filters:{}}))); assertDashboard(dash); state.dashboard=dash;
+    const canManageAccounts=hasPermission('MANAGE_TECHNICIANS');
+    $('techniciansTab').classList.toggle('hidden',!canManageAccounts);
+    $('techniciansPanel').classList.toggle('hidden',!canManageAccounts);
+    if(!canManageAccounts&&location.hash==='#techniciansPanel')history.replaceState(null,'',location.pathname+location.search);
+    showApp(); renderDashboard(); requestAnimationFrame(()=>restoreSection());
   }
 
   async function resume(){
@@ -282,7 +288,24 @@
   function renderHistory(items){const box=$('historyList');box.className='history-list';if(!items.length){box.className='history-list empty-state';box.textContent='ไม่พบประวัติของระบบนี้';return;}box.innerHTML=items.map(a=>`<article class="history-card"><header><div><h4>${escapeHtml(label(a.action))}</h4><div class="history-meta">${escapeHtml(a.username||a.userId)} · ${escapeHtml(a.role)} · ${escapeHtml(fmtDate(a.timestamp))}</div></div><span class="badge ${a.status==='COMMITTED'?'good':a.status==='FAILED'?'bad':'warn'}">${escapeHtml(label(a.status))}</span></header><div class="history-change-list">เปลี่ยน: ${escapeHtml((a.changedFields||[]).map(label).join(', ')||'-')}</div>${a.reason?`<div class="history-change-list">เหตุผล: ${escapeHtml(a.reason)}</div>`:''}</article>`).join('');}
 
   async function reloadDashboard(withBusy=true){const request=++state.refreshRequest,busy=withBusy?showBusy('กำลังรีเฟรชข้อมูล...'):null;try{const dash=unwrap(await api('data.dashboard',authPayload({filters:{}})));assertDashboard(dash);if(request===state.refreshRequest){state.dashboard=dash;renderDashboard();}}catch(e){if(request===state.refreshRequest)handleApiError(e);}finally{if(busy)hideBusy(busy);}}
-  function switchTab(name){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('hidden',p.dataset.panel!==(name==='overview'||name==='map'?'systems':name)));if(name==='technicians')loadTechnicians();setTimeout(()=>{if(name==='overview'||name==='map'||name==='systems'){const target=$(name==='overview'?'technicianOverviewAnchor':name==='map'?'technicianMapSection':'technicianManagementSection');target.scrollIntoView({block:'start',behavior:'instant'});window.VWSTechnicianMap?.invalidate();}else {const target=$(`${name}Panel`);if(target){target.style.scrollMarginTop=`${Math.ceil($('appHeader').getBoundingClientRect().height)+12}px`;target.scrollIntoView({block:'start',behavior:'instant'});}window.VWSTechnicianAnalytics?.resize();}},0);}
+  const sectionIds=['technicianOverviewAnchor','technicianMapSection','areaPanel','qualityPanel','typesPanel','monitoringPanel','technicianManagementSection','historyPanel','techniciansPanel'];
+  let accountsRequest=null;
+  function sectionAllowed(id){return sectionIds.includes(id)&&(id!=='techniciansPanel'||hasPermission('MANAGE_TECHNICIANS'));}
+  function setActiveSection(id){document.querySelectorAll('.tabs .section-link').forEach(link=>{const active=link.hash==='#'+id;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});$('technicianToolsButton').classList.toggle('active',['technicianManagementSection','historyPanel','techniciansPanel'].includes(id));}
+  function closeTools(restoreFocus=false){$('technicianToolsMenu').classList.add('hidden');$('technicianToolsButton').setAttribute('aria-expanded','false');if(restoreFocus)$('technicianToolsButton').focus();}
+  function updateHeaderOffset(){document.documentElement.style.setProperty('--technician-header-height',`${Math.ceil($('appHeader').getBoundingClientRect().height)}px`);}
+  function navigateToSection(id,{smooth=true,updateHash=true}={}){
+    if(!sectionAllowed(id)||$('appView').classList.contains('hidden'))return false;
+    const target=$(id);if(!target||target.classList.contains('hidden'))return false;
+    updateHeaderOffset();target.scrollIntoView({block:'start',behavior:smooth&&!matchMedia('(prefers-reduced-motion: reduce)').matches?'smooth':'instant'});
+    if(updateHash&&location.hash!=='#'+id)history.pushState(null,'','#'+id);
+    setActiveSection(id);closeTools();
+    if(id==='techniciansPanel'&&!accountsRequest){accountsRequest=loadTechnicians().finally(()=>{accountsRequest=null;});}
+    if(id==='technicianMapSection')requestAnimationFrame(()=>window.VWSTechnicianMap?.invalidate());
+    return true;
+  }
+  function restoreSection(){let id='';try{id=decodeURIComponent(location.hash.slice(1));}catch(_){updateHeaderOffset();return;}if(id==='techniciansPanel'&&!sectionAllowed(id))history.replaceState(null,'',location.pathname+location.search);if(sectionAllowed(id))navigateToSection(id,{smooth:false,updateHash:false});else updateHeaderOffset();}
+  function syncActiveSection(){if($('appView').classList.contains('hidden'))return;const offset=$('appHeader').getBoundingClientRect().height+24;let active=sectionIds[0];for(const id of sectionIds){if(!sectionAllowed(id))continue;const element=$(id);if(element&&!element.classList.contains('hidden')&&element.getBoundingClientRect().top<=offset)active=id;}setActiveSection(active);}
 
   async function loadTechnicians(){if(!hasPermission('MANAGE_TECHNICIANS'))return;const busy=showBusy('กำลังโหลดบัญชีช่าง...');try{state.technicians=unwrap(await api('technicians.list',{token:state.token})).technicians||[];renderTechnicians();}catch(e){handleApiError(e);}finally{hideBusy(busy);}}
   function technicianActions(u){const id=escapeHtml(u.userId);return u.status==='DELETED'?'':`<button class="mini-btn" data-tech-action="edit" data-id="${id}">แก้ไข</button>${u.status==='ACTIVE'?`<button class="mini-btn" data-tech-action="disable" data-id="${id}">ปิด</button>`:''}${u.status==='DISABLED'?`<button class="mini-btn primary" data-tech-action="enable" data-id="${id}">เปิด</button>`:''}<button class="mini-btn" data-tech-action="reset" data-id="${id}">รีเซ็ตรหัสผ่าน</button><button class="mini-btn danger" data-tech-action="delete" data-id="${id}">ลบบัญชี</button>`;}
@@ -316,11 +339,18 @@
     $('mobileAccountButton').addEventListener('click',()=>{const menu=$('mobileAccountMenu'),open=menu.classList.contains('hidden');menu.classList.toggle('hidden',!open);$('mobileAccountButton').setAttribute('aria-expanded',open?'true':'false');});
     document.addEventListener('click',e=>{if(!e.target.closest('.mobile-account')){$('mobileAccountMenu').classList.add('hidden');$('mobileAccountButton').setAttribute('aria-expanded','false');}});
     $('filterToggleButton').addEventListener('click',()=>{const panel=$('filterPanel'),open=panel.classList.toggle('open');$('filterToggleButton').setAttribute('aria-expanded',open?'true':'false');});
-    document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+    document.querySelectorAll('a.section-link, #technicianToolsMenu a').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();navigateToSection(link.hash.slice(1));}));
+    $('technicianToolsButton').addEventListener('click',()=>{const menu=$('technicianToolsMenu'),open=menu.classList.toggle('hidden');$('technicianToolsButton').setAttribute('aria-expanded',String(!open));});
+    document.addEventListener('click',event=>{if(!event.target.closest('.technician-tools'))closeTools();});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('technicianToolsMenu').classList.contains('hidden')){event.preventDefault();closeTools(true);}});
+    window.addEventListener('scroll',()=>requestAnimationFrame(syncActiveSection),{passive:true});
+    window.addEventListener('resize',()=>{updateHeaderOffset();requestAnimationFrame(syncActiveSection);},{passive:true});
+    window.addEventListener('hashchange',restoreSection);window.addEventListener('popstate',restoreSection);
+    if('ResizeObserver'in window)new ResizeObserver(updateHeaderOffset).observe($('appHeader'));
     ['searchInput','districtFilter','statusFilter','publicFilter'].forEach(id=>$(id).addEventListener(id==='searchInput'?'input':'change',applyFilters));
     $('clearFiltersButton').addEventListener('click',()=>{$('searchInput').value='';$('districtFilter').value='';$('statusFilter').value='';$('publicFilter').value='';applyFilters();});
     $('prevPage').addEventListener('click',()=>{if(state.page>1){state.page--;renderSystemsTable();}});$('nextPage').addEventListener('click',()=>{if(state.page<Math.ceil(state.filteredSystems.length/PAGE_SIZE)){state.page++;renderSystemsTable();}});
-    const handleSystemAction=e=>{const b=e.target.closest('button[data-action]');if(!b||b.disabled)return;const {action,id}=b.dataset;if(action==='edit'&&!hasPermission('UPDATE_SYSTEM'))return;if(action==='delete'&&!hasPermission('DELETE_SYSTEM'))return;if(action==='view'||action==='edit'||action==='delete')openSystem(id,action);if(action==='map'){switchTab('map');window.VWSTechnicianMap?.focus(id);}if(action==='history'){switchTab('history');loadHistory(id);}};
+    const handleSystemAction=e=>{const b=e.target.closest('button[data-action]');if(!b||b.disabled)return;const {action,id}=b.dataset;if(action==='edit'&&!hasPermission('UPDATE_SYSTEM'))return;if(action==='delete'&&!hasPermission('DELETE_SYSTEM'))return;if(action==='view'||action==='edit'||action==='delete')openSystem(id,action);if(action==='map'){navigateToSection('technicianMapSection');window.VWSTechnicianMap?.focus(id);}if(action==='history'){navigateToSection('historyPanel');loadHistory(id);}};
     $('systemsTableBody').addEventListener('click',handleSystemAction);$('systemsMobileList').addEventListener('click',handleSystemAction);
     $('editSystemButton').addEventListener('click',openEdit);$('deleteSystemButton').addEventListener('click',openDelete);
     $('editForm').addEventListener('submit',e=>{e.preventDefault();saveEdit();});$('deleteForm').addEventListener('submit',e=>{e.preventDefault();confirmDelete();});

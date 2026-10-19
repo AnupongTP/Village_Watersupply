@@ -7,6 +7,12 @@ import AxeBuilder from '@axe-core/playwright';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const origin = 'http://village.test';
 const observations = new WeakMap();
+async function captureArchitecture(page, name) {
+  const directory = process.env.VWS_ARCH_SCREENSHOTS;
+  if (!directory) return;
+  fs.mkdirSync(directory, { recursive: true });
+  await page.screenshot({ path: path.join(directory, `${name}.png`) });
+}
 const token = `MGT-${'a'.repeat(64)}`;
 const user = { username: 'synthetic-technician', displayName: 'Synthetic Technician', role: 'TECHNICIAN' };
 const system = {
@@ -222,6 +228,11 @@ function managementMocks(extra = {}) {
     ...extra
   };
 }
+async function openToolSection(page, name) {
+  if (await page.locator('#technicianToolsMenu').isHidden()) await page.locator('#technicianToolsButton').click();
+  await page.locator(`[data-tab="${name}"]`).click();
+}
+
 async function openManagement(page, overrides = {}) {
   const network = await installIsolatedTechnician(page, managementMocks(overrides));
   await openLogin(page);
@@ -229,6 +240,122 @@ async function openManagement(page, overrides = {}) {
   await expect(page.locator('#appView')).toBeVisible();
   return network;
 }
+
+test('single-page sections, tools permissions, hashes and wheel scrolling use one authenticated document', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const network = await openManagement(page);
+  await captureArchitecture(page, 'technician-1440-overview');
+  const ids = ['technicianOverviewAnchor', 'technicianMapSection', 'areaPanel', 'qualityPanel', 'typesPanel', 'monitoringPanel', 'technicianManagementSection', 'historyPanel', 'techniciansPanel'];
+  for (const id of ids) await expect(page.locator(`#${id}`)).toBeVisible();
+  expect(await page.locator('.tabs a.section-link').count()).toBe(6);
+  await page.locator('#searchInput').fill('Synthetic');
+  const reads = network.calls.filter(call => call.action === 'data.dashboard').length;
+  await page.locator('a[href="#areaPanel"]').click();
+  await expect(page).toHaveURL(/#areaPanel$/);
+  await expect(page.locator('#areaPanel')).toBeInViewport();
+  await captureArchitecture(page, 'technician-1440-area');
+  await expect(page.locator('#qualityPanel')).toBeVisible();
+  await expect(page.locator('#searchInput')).toHaveValue('Synthetic');
+  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(reads);
+  await page.locator('#technicianToolsButton').click();
+  await expect(page.locator('#technicianToolsMenu')).toBeVisible();
+  await captureArchitecture(page, 'technician-1440-tools');
+  await page.locator('a[href="#technicianManagementSection"]').click();
+  await expect(page.locator('#technicianManagementSection')).toBeInViewport();
+  await captureArchitecture(page, 'technician-1440-management');
+  await page.goBack();
+  await expect(page).toHaveURL(/#areaPanel$/);
+  await expect(page.locator('#areaPanel')).toBeInViewport();
+  await page.goForward();
+  await expect(page.locator('#technicianManagementSection')).toBeInViewport();
+  const table = page.locator('.desktop-table-wrap');
+  expect(await table.evaluate(el => getComputedStyle(el).overscrollBehaviorY)).toBe('auto');
+  await page.locator('#systemsTableBody tr').first().hover();
+  const before = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before);
+  await page.locator('#technicianToolsButton').click();
+  await openToolSection(page, 'technicians');
+  await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
+  const accountBefore = await page.evaluate(() => scrollY);
+  await page.locator('#techniciansTableBody tr').first().hover();
+  await page.mouse.wheel(0, -400);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(accountBefore);
+  expect(network.blocked).toEqual([]);
+  expect(network.pageErrors).toEqual([]);
+});
+
+for (const width of [768, 390]) {
+  test(`continuous navigation and tools remain usable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const network = await openManagement(page);
+    await captureArchitecture(page, `technician-${width}-overview`);
+    await page.locator('a[href="#monitoringPanel"]').click();
+    await expect(page.locator('#monitoringPanel')).toBeInViewport();
+    await captureArchitecture(page, `technician-${width}-monitoring`);
+    await expect(page.locator('#areaPanel')).toBeVisible();
+    await page.locator('#technicianToolsButton').click();
+    await expect(page.locator('#technicianToolsButton')).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#technicianToolsMenu')).toBeHidden();
+    await page.locator('#technicianToolsButton').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#technicianToolsMenu')).toBeVisible();
+    await captureArchitecture(page, `technician-${width}-tools`);
+    await page.locator('#main').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('#technicianToolsMenu')).toBeHidden();
+    await page.locator('#technicianToolsButton').click();
+    await page.locator('a[href="#historyPanel"]').click();
+    await expect(page.locator('#historyPanel')).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    expect(network.blocked).toEqual([]);
+  });
+}
+
+test('tablet Management tables chain vertical wheel and retain horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  const network = await openManagement(page);
+  for (const [name, wrapper, row] of [
+    ['systems', '.desktop-table-wrap', '#systemsTableBody tr'],
+    ['technicians', '.technicians-desktop-table', '#techniciansTableBody tr']
+  ]) {
+    await openToolSection(page, name);
+    if (name === 'technicians') await expect(page.locator(row)).toHaveCount(1);
+    const table = page.locator(wrapper);
+    await page.locator(row).first().hover();
+    const beforeY = await page.evaluate(() => scrollY);
+    await page.mouse.wheel(0, -300);
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(beforeY);
+    const dimensions = await table.evaluate(element => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+    expect(dimensions.scroll).toBeGreaterThan(dimensions.client);
+    await table.hover();
+    await page.mouse.wheel(350, 0);
+    await expect.poll(() => table.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+  }
+  expect(network.blocked).toEqual([]);
+  expect(network.pageErrors).toEqual([]);
+});
+
+test('saved session deep link waits for verification and rejects unauthorized account hash', async ({ page }) => {
+  const pending = heldResponse(success({ user }));
+  const network = await installIsolatedTechnician(page, { 'auth.me': pending.respond });
+  await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
+  await page.goto(`${origin}/technician/#areaPanel`);
+  await expect(page.locator('#busyOverlay')).toBeVisible();
+  await captureArchitecture(page, 'technician-boot-1440');
+  await expect(page.locator('#loginView')).toBeHidden();
+  await expect(page.locator('#appView')).toBeHidden();
+  pending.release();
+  await expect(page.locator('#appView')).toBeVisible();
+  await expect(page.locator('#areaPanel')).toBeInViewport();
+  await page.goto(`${origin}/technician/#techniciansPanel`);
+  await expect(page.locator('#appView')).toBeVisible();
+  await expect(page.locator('#techniciansPanel')).toBeHidden();
+  await expect(page.locator('#techniciansTab')).toBeHidden();
+  await expect(page).not.toHaveURL(/#techniciansPanel$/);
+  expect(network.calls.some(call => call.action === 'technicians.list')).toBe(false);
+  expect(network.blocked).toEqual([]);
+});
 async function openEditFromTable(page, mobile = false) {
   await page.locator(`${mobile ? '#systemsMobileList' : '#systemsTableBody'} [data-action="edit"]`).first().click();
   await expect(page.locator('#editDialog')).toBeVisible();
@@ -283,7 +410,7 @@ for (const viewport of [
         await page.screenshot({ path: path.join(process.env.VWS_PHASE_D_SCREENSHOTS, `phase-d-${viewport.name}-password.png`) });
       }
       await page.locator('#passwordCancelButton').click();
-      await page.locator('#techniciansTab').click();
+      await openToolSection(page, 'technicians');
       await expect(page.locator(mobile ? '#techniciansMobileList' : '#techniciansTableBody')).toContainText('synthetic-account');
       await page.locator('#createTechnicianButton').click();
       await expectCenteredDialog(page, '#technicianDialog');
@@ -323,13 +450,13 @@ for (const viewport of [
       expect(mapBox.x).toBeGreaterThanOrEqual(0);
       expect(mapBox.x + mapBox.width).toBeLessThanOrEqual(viewport.width + 1);
       await page.locator('#technicianMapFit').click();
-      await page.locator('[data-tab="systems"]').click();
+      await openToolSection(page, 'systems');
       await expect(page.locator('#technicianManagementSection')).toBeVisible();
       await page.locator('[data-tab="overview"]').click();
       await expect(page.locator('#kpiSystems')).toHaveText('5');
-      await page.locator('[data-tab="history"]').click();
+      await openToolSection(page, 'history');
       await expect(page.locator('#historyPanel')).toBeVisible();
-      await page.locator('#techniciansTab').click();
+      await openToolSection(page, 'technicians');
       await expect(page.locator('#techniciansPanel')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     });
@@ -546,16 +673,16 @@ for (const viewport of [
       await installIsolatedTechnician(page, { 'auth.me': hold.respond });
       await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
       await page.goto(`${origin}/technician/`);
-      await expect(page.locator('#bootView')).toBeVisible();
+      await expect(page.locator('#bootView')).toBeHidden();
       await expect(page.locator('#loginView')).toBeHidden();
-      await expect(page.locator('#busyOverlay')).toBeHidden();
-      await expect(page.locator('.loading-dialog:visible')).toHaveCount(1);
-      await expect(page.locator('#bootTitle')).toContainText('กำลัง');
-      const frames = await spinnerFrames(page, '#bootView .spinner');
-      expect(frames.animation).toBe('technician-spin');
+      await expect(page.locator('#busyOverlay')).toBeVisible();
+      await expect(page.locator('#busyOverlay .swal2-popup:visible')).toHaveCount(1);
+      await expect(page.locator('#busyOverlay .swal2-title')).toContainText('กำลัง');
+      const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
+      expect(frames.animation).toBe('swal2-rotate-loading');
       expect(frames.second.time).toBeGreaterThan(frames.first.time);
       expect(frames.second.transform).not.toBe(frames.first.transform);
-      const a11y = await new AxeBuilder({ page }).include('#bootView').analyze();
+      const a11y = await new AxeBuilder({ page }).include('#busyOverlay').analyze();
       expect(a11y.violations).toEqual([]);
       hold.release();
       await expect(page.locator('#appView')).toBeVisible();
@@ -570,9 +697,9 @@ for (const viewport of [
       await installIsolatedTechnician(page, { 'auth.me': hold.respond });
       await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
       await page.goto(`${origin}/technician/`);
-      await expect(page.locator('#bootView')).toBeVisible();
-      await expect(page.locator('.reduced-motion-hint:visible')).toContainText('กำลังดำเนินการ');
-      const frames = await spinnerFrames(page, '#bootView .spinner');
+      await expect(page.locator('#busyOverlay')).toBeVisible();
+      await expect(page.locator('#busyOverlay .swal2-title')).toContainText('กำลัง');
+      const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
       expect(frames.animation).toBe('none');
       expect(frames.second.transform).toBe(frames.first.transform);
       hold.release();
@@ -636,11 +763,11 @@ test('refresh, account listing, detail and history use the shared busy dialog', 
   await expect(page.locator('#busyOverlay')).toBeHidden();
   await expect(page.locator('#systemDialog')).toBeVisible();
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
-  await page.locator('#techniciansTab').click();
+  await openToolSection(page, 'technicians');
   await expectBusyDialog(page, 'กำลังโหลดบัญชีช่าง...');
   list.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
-  await page.locator('[data-tab="history"]').click();
+  await openToolSection(page, 'history');
   await page.locator('#historySystemId').fill(system.system_id);
   await page.locator('#historySearchButton').click();
   await expectBusyDialog(page, 'กำลังโหลดประวัติ...');
@@ -674,7 +801,7 @@ test('edit, delete, account mutation and password loading remain above their dia
   await expectBusyDialog(page, 'กำลังลบระบบประปา...');
   deleteHold.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
-  await page.locator('#techniciansTab').click();
+  await openToolSection(page, 'technicians');
   await page.locator('#createTechnicianButton').click();
   await page.locator('#techUsername').fill('another-synthetic');
   await page.locator('#techDisplayName').fill('Another Synthetic');
@@ -704,7 +831,7 @@ test('account edit and action keep one animated dialog through nested list reloa
     'technicians.list': () => ++listCalls === 1 ? managementMocks()['technicians.list'] : reload.respond(),
     'technicians.disable': action.respond
   });
-  await page.locator('#techniciansTab').click();
+  await openToolSection(page, 'technicians');
   await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
   await page.locator('#techniciansTableBody [data-tech-action="edit"]').first().click();
   await page.locator('#techDisplayName').fill('Updated Synthetic');
@@ -768,7 +895,7 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
       await page.locator('[data-analytics-system="QA-ANALYTICS-2"]').click();
       await expect(page.locator('#systemDialogTitle')).toHaveText('Synthetic B');
       await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
-      await page.locator('[data-tab="systems"]').click();
+      await openToolSection(page, 'systems');
       if (viewport.width < 768) await page.locator('#filterToggleButton').click();
       await page.locator('#districtFilter').selectOption('เมือง');
       await expect(page.locator('#analyticsLinkedVillageCount')).toHaveText('1');
@@ -811,6 +938,7 @@ if (process.env.VWS_MANUAL_ACCEPTANCE === '1') {
     await page.pause();
   });
 }
+
 
 test('coordinate edit uses archive-verified ranges, paired blank semantics and expectedVersion', async ({ page }) => {
   let row = { ...editableSystem, latitude: 19.2, longitude: 100.1 };
@@ -1008,7 +1136,7 @@ test('delete X and Cancel never delete after confirmation; explicit Delete valid
 
 test('account and password dialog dismissal never dispatches mutations', async ({ page }) => {
   const network = await openManagement(page);
-  await page.locator('#techniciansTab').click();
+  await openToolSection(page, 'technicians');
   await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
   await page.locator('#createTechnicianButton').click();
   await page.locator('#techUsername').fill('new-synthetic');
@@ -1064,7 +1192,7 @@ test('saved valid session shows boot state before validation, never login flash'
   const network = await installIsolatedTechnician(page, managementMocks({ 'auth.me': async () => { await hold; return success({ user: managementUser }); } }));
   await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
   await page.goto(`${origin}/technician/`, { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#bootView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeVisible();
   await expect(page.locator('#loginView')).toBeHidden();
   await expect(page.locator('#appView')).toBeHidden();
   release();
@@ -1075,15 +1203,25 @@ test('saved valid session shows boot state before validation, never login flash'
 
 test('saved session hides login before deferred application script executes', async ({ page }) => {
   let releaseScript; const holdScript = new Promise(resolve => { releaseScript = resolve; });
-  const network = await installIsolatedTechnician(page, managementMocks());
+  const holdMe = heldResponse(success({ user: managementUser }));
+  const network = await installIsolatedTechnician(page, managementMocks({ 'auth.me': holdMe.respond }));
   await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
   await page.route('**/technician/assets/technician.js', async route => { await holdScript; await route.fallback(); });
   await page.goto(`${origin}/technician/`, { waitUntil: 'commit' });
   await expect(page.locator('#bootView')).toBeVisible();
+  await captureArchitecture(page, 'technician-first-paint-fallback');
   await expect(page.locator('#loginView')).toBeHidden();
   await expect(page.locator('#appView')).toBeHidden();
   expect(network.calls).toEqual([]);
+  const fallback = await page.locator('#bootView .loading-dialog').evaluate(element => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height, titleSize: Number.parseFloat(getComputedStyle(element.querySelector('.loading-message')).fontSize) }));
   releaseScript();
+  await expect(page.locator('#busyOverlay')).toBeVisible();
+  await expect(page.locator('#bootView')).toBeHidden();
+  const sweet = await page.locator('#busyOverlay .swal2-popup').evaluate(element => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height, titleSize: Number.parseFloat(getComputedStyle(element.querySelector('.swal2-title')).fontSize) }));
+  expect(Math.abs(fallback.width - sweet.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(fallback.height - sweet.height)).toBeLessThanOrEqual(30);
+  expect(Math.abs(fallback.titleSize - sweet.titleSize)).toBeLessThanOrEqual(2);
+  holdMe.release();
   await expect(page.locator('#appView')).toBeVisible();
 });
 
@@ -1126,7 +1264,7 @@ test('touched then restored array remains pristine; invalid untouched JSON is pr
 
 test('explicit account create and password change each dispatch once', async ({ page }) => {
   const network = await openManagement(page);
-  await page.locator('#techniciansTab').click();
+  await openToolSection(page, 'technicians');
   await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
   await page.locator('#createTechnicianButton').click();
   await page.locator('#techUsername').fill('new-synthetic');
@@ -1256,7 +1394,7 @@ test('Phase B rejects invalid numeric values and preserves unknown array values'
 test('Phase B mobile account actions and responsive layout are accessible without page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const network = await openManagement(page);
-  await page.locator('#techniciansTab').click();
+  await openToolSection(page, 'technicians');
   await expect(page.locator('#techniciansMobileList')).toBeVisible();
   await page.locator('#techniciansMobileList [data-tech-action="edit"]').click();
   await expect(page.locator('#technicianDialog')).toBeVisible();
@@ -1340,7 +1478,7 @@ for (const width of [1440, 768, 390]) {
     await scan('delete');
     await page.locator('#deleteDialog [data-dismiss-dialog]').first().click();
     await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
-    await page.locator('#techniciansTab').click();
+    await openToolSection(page, 'technicians');
     await page.locator('#createTechnicianButton').click();
     await scan('account');
     await page.locator('#technicianDialog [data-dismiss-dialog]').first().click();

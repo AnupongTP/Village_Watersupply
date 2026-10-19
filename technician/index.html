@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light">
   <title>Dashboard ช่าง — ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</title>
   <script>try { if (sessionStorage.getItem('vws_management_token_v2')) document.documentElement.classList.add('has-session'); } catch (_) {}</script>
-  <style>.has-session #loginView { display: none !important; }.has-session #bootView { display: grid !important; }</style>
+  <style>.has-session #loginView { display: none !important; }.has-session:not(.boot-handoff) #bootView { display: grid !important; }</style>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -115,22 +115,29 @@
       </div>
 
       <nav class="section-nav-shell border-t border-slate-100" aria-label="เมนู Dashboard ช่าง">
-        <div class="tabs section-nav-scroll mx-auto flex max-w-[1600px] gap-1 overflow-x-auto px-3 py-1.5 sm:px-5 xl:px-6">
-          <button class="tab active section-link" type="button" data-tab="overview"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i><span>ภาพรวม</span></button>
-          <button class="tab section-link" type="button" data-tab="map"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i><span>แผนที่</span></button>
-          <button class="tab section-link" type="button" data-tab="area"><i class="fa-solid fa-chart-column" aria-hidden="true"></i><span>รายพื้นที่</span></button>
-          <button class="tab section-link" type="button" data-tab="quality"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i><span>คุณภาพน้ำ</span></button>
-          <button class="tab section-link" type="button" data-tab="types"><i class="fa-solid fa-faucet-drip" aria-hidden="true"></i><span>ระบบประปา</span></button>
-          <button class="tab section-link" type="button" data-tab="monitoring"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>เฝ้าระวัง</span></button>
-          <button class="tab section-link" type="button" data-tab="systems"><i class="fa-solid fa-faucet-drip" aria-hidden="true"></i><span>จัดการข้อมูล</span></button>
-          <button class="tab section-link" type="button" data-tab="history"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>ประวัติการแก้ไข</span></button>
-          <button id="techniciansTab" class="tab section-link hidden" type="button" data-tab="technicians"><i class="fa-solid fa-users-gear" aria-hidden="true"></i><span>บัญชีช่าง</span></button>
+        <div class="technician-nav-layout">
+          <div class="tabs section-nav-scroll">
+            <a class="tab active section-link" data-tab="overview" href="#technicianOverviewAnchor"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i><span>ภาพรวม</span></a>
+            <a class="tab section-link" data-tab="map" href="#technicianMapSection"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i><span>แผนที่</span></a>
+            <a class="tab section-link" data-tab="area" href="#areaPanel"><i class="fa-solid fa-chart-column" aria-hidden="true"></i><span>รายพื้นที่</span></a>
+            <a class="tab section-link" data-tab="quality" href="#qualityPanel"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i><span>คุณภาพน้ำ</span></a>
+            <a class="tab section-link" data-tab="types" href="#typesPanel"><i class="fa-solid fa-faucet-drip" aria-hidden="true"></i><span>ระบบประปา</span></a>
+            <a class="tab section-link" data-tab="monitoring" href="#monitoringPanel"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>เฝ้าระวัง</span></a>
+          </div>
+          <div class="technician-tools">
+            <button id="technicianToolsButton" class="tab section-link" type="button" aria-expanded="false" aria-controls="technicianToolsMenu"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i><span>เครื่องมือช่าง</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
+            <div id="technicianToolsMenu" class="technician-tools-menu hidden">
+              <a data-tab="systems" href="#technicianManagementSection">จัดการข้อมูล</a>
+              <a data-tab="history" href="#historyPanel">ประวัติการแก้ไข</a>
+              <a id="techniciansTab" class="hidden" data-tab="technicians" href="#techniciansPanel">บัญชีช่าง</a>
+            </div>
+          </div>
         </div>
       </nav>
     </header>
 
     <main id="main" class="main-content mx-auto max-w-[1600px] px-3 pb-10 pt-3 sm:px-5 sm:pt-4 xl:px-6" tabindex="-1">
-      <section id="systemsPanel" data-panel="systems" class="dashboard-section">
+      <section id="systemsPanel" class="dashboard-section">
         <div id="technicianOverviewAnchor" class="technician-section-anchor"></div>
         <div class="section-heading page-heading">
           <div>
@@ -164,7 +171,9 @@
           <article class="kpi-card"><div class="kpi-icon bg-red"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i></div><div><p class="kpi-label">ไม่แสดง Public ตามตัวกรอง</p><p id="analyticsHidden" class="kpi-value">-</p></div></article>
         </div>
 
-        <section id="technicianMapSection" class="technician-map-panel map-panel" aria-labelledby="technicianMapTitle">
+      </section>
+
+        <section id="technicianMapSection" class="technician-map-panel map-panel dashboard-section" aria-labelledby="technicianMapTitle">
           <div class="technician-map-head">
             <div><p class="eyebrow">ตำแหน่งระบบประปา</p><h3 id="technicianMapTitle">แผนที่ระบบประปาสำหรับเจ้าหน้าที่</h3><p id="technicianMapScope" class="muted" role="status">แสดงระบบที่มีพิกัดใช้งานได้ รวมรายการที่ไม่แสดงใน Public</p></div>
             <div class="technician-map-actions"><button id="technicianMapLocate" class="btn btn-outline" type="button" aria-busy="false"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i><span>ตำแหน่งฉัน</span></button><button id="technicianMapFit" class="btn btn-primary" type="button"><i class="fa-solid fa-expand" aria-hidden="true"></i><span>ดูทุกจุด</span></button></div>
@@ -173,6 +182,25 @@
           <p id="technicianMapEmpty" class="technician-map-empty hidden" role="status">ไม่มีระบบประปาที่มีพิกัดใช้งานได้ตามตัวกรอง</p>
         </section>
 
+      <section id="areaPanel" class="dashboard-section" aria-labelledby="areaTitle">
+        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="areaTitle">วิเคราะห์รายพื้นที่</h2><p class="section-description">จำนวนระบบประปาตามตัวกรองปัจจุบัน หมู่บ้านที่เชื่อมโยง <strong id="analyticsLinkedVillageCount">-</strong> แห่ง (นับรหัสหมู่บ้านไม่ซ้ำ)</p></div></div>
+        <div class="analytics-grid"><article class="data-card analytics-card"><h3>ระบบประปารายอำเภอ</h3><div class="analytics-chart"><canvas id="analyticsDistrictChart" aria-label="กราฟจำนวนระบบประปารายอำเภอ" role="img"></canvas></div><ul id="analyticsDistrictList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>หมู่บ้านทั้งหมดรายอำเภอ</h3><p class="muted">นับจากหมู่บ้านทุกแห่งในชุดข้อมูลเจ้าหน้าที่ ไม่ขึ้นกับตัวกรองระบบ</p><ul id="analyticsVillageDistrictList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>รายตำบล</h3><ul id="analyticsSubdistrictList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>รายองค์กรปกครองส่วนท้องถิ่น</h3><ul id="analyticsAuthorityList" class="analytics-list"></ul></article></div>
+      </section>
+      <section id="qualityPanel" class="dashboard-section" aria-labelledby="qualityTitle">
+        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="qualityTitle">คุณภาพน้ำ</h2><p class="section-description">แยกผ่าน ไม่ผ่าน ไม่มีข้อมูล และค่าไม่ทราบ โดยไม่ตีความข้อมูลที่หายไปว่าไม่ผ่าน</p></div></div>
+        <div class="analytics-grid"><article class="data-card analytics-card"><h3>คุณภาพน้ำดื่ม · ไม่ผ่าน <span id="analyticsDrinkingFail">-</span> ระบบ</h3><div class="analytics-chart"><canvas id="analyticsQualityChart" aria-label="กราฟคุณภาพน้ำดื่ม" role="img"></canvas></div><ul id="analyticsDrinkingList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>คุณภาพน้ำใช้ · ไม่ผ่าน <span id="analyticsUtilityFail">-</span> ระบบ</h3><ul id="analyticsUtilityList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>ความเพียงพอของน้ำ</h3><ul id="analyticsQuantityList" class="analytics-list"></ul></article></div>
+      </section>
+      <section id="typesPanel" class="dashboard-section" aria-labelledby="typesTitle">
+        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="typesTitle">ประเภทระบบประปา</h2><p class="section-description">แจกแจงระบบประปาตามข้อมูลที่ได้รับจาก Management API</p></div></div>
+        <div class="analytics-grid"><article class="data-card analytics-card"><h3>ประเภทระบบ</h3><div class="analytics-chart"><canvas id="analyticsTypeChart" aria-label="กราฟประเภทระบบประปา" role="img"></canvas></div><ul id="analyticsTypeList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>สถานะการใช้งาน</h3><ul id="analyticsOperationalList" class="analytics-list"></ul></article></div>
+      </section>
+      <section id="monitoringPanel" class="dashboard-section" aria-labelledby="monitoringTitle">
+        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="monitoringTitle">ระบบที่ต้องเฝ้าระวัง</h2><p class="section-description" id="analyticsMonitoringCount">-</p></div></div>
+        <div class="kpi-grid analytics-monitor-kpis"><article class="kpi-card"><div><p class="kpi-label">พิกัดไม่ครบ</p><p id="analyticsMissingCoords" class="kpi-value">-</p></div></article><article class="kpi-card"><div><p class="kpi-label">ไม่แสดง Public</p><p id="analyticsHiddenMonitor" class="kpi-value">-</p></div></article></div>
+        <article class="data-card analytics-card"><p class="muted">ระบบหนึ่งรายการอาจมีหลายประเด็น จำนวนรายหมวดจึงไม่ควรนำมาบวกกัน</p><ul id="analyticsMonitoringList" class="analytics-monitor-list"></ul></article>
+      </section>
+
+      <section class="dashboard-section management-section" aria-label="จัดการข้อมูลระบบประปา">
         <!-- Filter composition follows the Public Dashboard mobile/desktop pattern. -->
         <section id="technicianManagementSection" class="filter-shell technician-section-anchor" aria-label="ตัวกรองระบบประปา">
           <div class="filter-mobile-head">
@@ -208,25 +236,7 @@
         </section>
       </section>
 
-      <section id="areaPanel" data-panel="area" class="dashboard-section hidden" aria-labelledby="areaTitle">
-        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="areaTitle">วิเคราะห์รายพื้นที่</h2><p class="section-description">จำนวนระบบประปาตามตัวกรองปัจจุบัน หมู่บ้านที่เชื่อมโยง <strong id="analyticsLinkedVillageCount">-</strong> แห่ง (นับรหัสหมู่บ้านไม่ซ้ำ)</p></div></div>
-        <div class="analytics-grid"><article class="data-card analytics-card"><h3>ระบบประปารายอำเภอ</h3><div class="analytics-chart"><canvas id="analyticsDistrictChart" aria-label="กราฟจำนวนระบบประปารายอำเภอ" role="img"></canvas></div><ul id="analyticsDistrictList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>หมู่บ้านทั้งหมดรายอำเภอ</h3><p class="muted">นับจากหมู่บ้านทุกแห่งในชุดข้อมูลเจ้าหน้าที่ ไม่ขึ้นกับตัวกรองระบบ</p><ul id="analyticsVillageDistrictList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>รายตำบล</h3><ul id="analyticsSubdistrictList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>รายองค์กรปกครองส่วนท้องถิ่น</h3><ul id="analyticsAuthorityList" class="analytics-list"></ul></article></div>
-      </section>
-      <section id="qualityPanel" data-panel="quality" class="dashboard-section hidden" aria-labelledby="qualityTitle">
-        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="qualityTitle">คุณภาพน้ำ</h2><p class="section-description">แยกผ่าน ไม่ผ่าน ไม่มีข้อมูล และค่าไม่ทราบ โดยไม่ตีความข้อมูลที่หายไปว่าไม่ผ่าน</p></div></div>
-        <div class="analytics-grid"><article class="data-card analytics-card"><h3>คุณภาพน้ำดื่ม · ไม่ผ่าน <span id="analyticsDrinkingFail">-</span> ระบบ</h3><div class="analytics-chart"><canvas id="analyticsQualityChart" aria-label="กราฟคุณภาพน้ำดื่ม" role="img"></canvas></div><ul id="analyticsDrinkingList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>คุณภาพน้ำใช้ · ไม่ผ่าน <span id="analyticsUtilityFail">-</span> ระบบ</h3><ul id="analyticsUtilityList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>ความเพียงพอของน้ำ</h3><ul id="analyticsQuantityList" class="analytics-list"></ul></article></div>
-      </section>
-      <section id="typesPanel" data-panel="types" class="dashboard-section hidden" aria-labelledby="typesTitle">
-        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="typesTitle">ประเภทระบบประปา</h2><p class="section-description">แจกแจงระบบประปาตามข้อมูลที่ได้รับจาก Management API</p></div></div>
-        <div class="analytics-grid"><article class="data-card analytics-card"><h3>ประเภทระบบ</h3><div class="analytics-chart"><canvas id="analyticsTypeChart" aria-label="กราฟประเภทระบบประปา" role="img"></canvas></div><ul id="analyticsTypeList" class="analytics-list"></ul></article><article class="data-card analytics-card"><h3>สถานะการใช้งาน</h3><ul id="analyticsOperationalList" class="analytics-list"></ul></article></div>
-      </section>
-      <section id="monitoringPanel" data-panel="monitoring" class="dashboard-section hidden" aria-labelledby="monitoringTitle">
-        <div class="section-heading page-heading"><div><p class="eyebrow">ข้อมูลเจ้าหน้าที่</p><h2 id="monitoringTitle">ระบบที่ต้องเฝ้าระวัง</h2><p class="section-description" id="analyticsMonitoringCount">-</p></div></div>
-        <div class="kpi-grid analytics-monitor-kpis"><article class="kpi-card"><div><p class="kpi-label">พิกัดไม่ครบ</p><p id="analyticsMissingCoords" class="kpi-value">-</p></div></article><article class="kpi-card"><div><p class="kpi-label">ไม่แสดง Public</p><p id="analyticsHiddenMonitor" class="kpi-value">-</p></div></article></div>
-        <article class="data-card analytics-card"><p class="muted">ระบบหนึ่งรายการอาจมีหลายประเด็น จำนวนรายหมวดจึงไม่ควรนำมาบวกกัน</p><ul id="analyticsMonitoringList" class="analytics-monitor-list"></ul></article>
-      </section>
-
-      <section id="historyPanel" data-panel="history" class="dashboard-section hidden">
+      <section id="historyPanel" class="dashboard-section">
         <div class="section-heading page-heading"><div><p class="eyebrow">Audit Log</p><h2>ประวัติการแก้ไข</h2><p class="section-description muted">ค้นด้วยรหัสระบบเพื่อดูว่าใครแก้ไขหรือลบข้อมูล เมื่อใด และด้วยเหตุผลอะไร</p></div></div>
         <section class="filter-shell history-search-shell" aria-label="ค้นหาประวัติระบบ">
           <label class="filter-field search-field">รหัสระบบ
@@ -237,7 +247,7 @@
         <div id="historyList" class="history-list empty-state">ระบุรหัสระบบเพื่อดูประวัติ</div>
       </section>
 
-      <section id="techniciansPanel" data-panel="technicians" class="dashboard-section hidden">
+      <section id="techniciansPanel" class="dashboard-section hidden">
         <div class="section-heading page-heading">
           <div><p class="eyebrow">ADMIN</p><h2>บัญชีช่าง</h2><p class="section-description muted">จัดการบัญชี Technician โดยไม่เปิดเผยรหัสผ่านหรือข้อมูล Session ในหน้าจอ</p></div>
           <button id="createTechnicianButton" class="btn btn-primary" type="button"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>สร้างบัญชีช่าง</span></button>
