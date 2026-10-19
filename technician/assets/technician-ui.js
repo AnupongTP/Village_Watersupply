@@ -29,7 +29,7 @@
     window.Swal.fire({
       target: dialog, title: message, showConfirmButton: false,
       backdrop: false,
-      allowOutsideClick: false, allowEscapeKey: false, allowEnterKey: false,
+      allowOutsideClick: false, allowEscapeKey: false,
       showClass: { popup: '' }, hideClass: { popup: '' },
       customClass: { popup: 'technician-swal-loading' },
       didOpen: () => window.Swal.showLoading()

@@ -139,7 +139,7 @@
     const dash=unwrap(await api('data.dashboard',authPayload({filters:{}}))); assertDashboard(dash); state.dashboard=dash;
     const canManageAccounts=hasPermission('MANAGE_TECHNICIANS');
     $('techniciansTab').classList.toggle('hidden',!canManageAccounts);
-    $('techniciansPanel').classList.toggle('hidden',!canManageAccounts);
+    $('techniciansPanel').classList.add('hidden');
     if(!canManageAccounts&&location.hash==='#techniciansPanel')history.replaceState(null,'',location.pathname+location.search);
     showApp(); renderDashboard(); requestAnimationFrame(()=>restoreSection());
   }
@@ -156,15 +156,12 @@
 
   function renderDashboard(){
     state.datasetGeneration++;
-    const d=state.dashboard||{}; const systems=d.waterSystems||[];
+    const d=state.dashboard||{};
     $('generatedAt').textContent=fmtDate(d.generatedAt);
-    $('kpiSystems').textContent=systems.length.toLocaleString('th-TH');
-    $('kpiMissingCoords').textContent=systems.filter(s=>s.latitude===''||s.latitude==null||s.longitude===''||s.longitude==null).length.toLocaleString('th-TH');
-    $('kpiNotWorking').textContent=systems.filter(s=>s.operational_status==='NOT_WORKING').length.toLocaleString('th-TH');
-    $('kpiQualityFail').textContent=systems.filter(s=>s.drinking_water_quality==='FAIL').length.toLocaleString('th-TH');
     populateFilters();
     window.VWSTechnicianMap?.init(id=>openSystem(id),message=>toast(message,'error'));
     applyFilters();
+    window.VWSTechnicianAnalytics?.render(d,analyticsLabel);
   }
 
   function populateFilters(){
@@ -184,8 +181,6 @@
     const q=$('searchInput').value.trim().toLowerCase(),district=$('districtFilter').value,status=$('statusFilter').value,pub=$('publicFilter').value;
     state.filteredSystems=(state.dashboard?.waterSystems||[]).filter(s=>(!q||searchableText(s).includes(q))&&(!district||s.village?.district===district)&&(!status||s.operational_status===status)&&(!pub||(pub==='VISIBLE'?s.publicVisible===true:s.publicVisible!==true)));
     state.page=1; renderSystemsTable();
-    window.VWSTechnicianMap?.render(state.filteredSystems,Boolean(q||district||status||pub));
-    window.VWSTechnicianAnalytics?.render(state.dashboard,state.filteredSystems,analyticsLabel);
   }
   function systemActionButtons(s){
     const mutable=s.managementMutable===true;
@@ -288,24 +283,36 @@
   function renderHistory(items){const box=$('historyList');box.className='history-list';if(!items.length){box.className='history-list empty-state';box.textContent='ไม่พบประวัติของระบบนี้';return;}box.innerHTML=items.map(a=>`<article class="history-card"><header><div><h4>${escapeHtml(label(a.action))}</h4><div class="history-meta">${escapeHtml(a.username||a.userId)} · ${escapeHtml(a.role)} · ${escapeHtml(fmtDate(a.timestamp))}</div></div><span class="badge ${a.status==='COMMITTED'?'good':a.status==='FAILED'?'bad':'warn'}">${escapeHtml(label(a.status))}</span></header><div class="history-change-list">เปลี่ยน: ${escapeHtml((a.changedFields||[]).map(label).join(', ')||'-')}</div>${a.reason?`<div class="history-change-list">เหตุผล: ${escapeHtml(a.reason)}</div>`:''}</article>`).join('');}
 
   async function reloadDashboard(withBusy=true){const request=++state.refreshRequest,busy=withBusy?showBusy('กำลังรีเฟรชข้อมูล...'):null;try{const dash=unwrap(await api('data.dashboard',authPayload({filters:{}})));assertDashboard(dash);if(request===state.refreshRequest){state.dashboard=dash;renderDashboard();}}catch(e){if(request===state.refreshRequest)handleApiError(e);}finally{if(busy)hideBusy(busy);}}
-  const sectionIds=['technicianOverviewAnchor','technicianMapSection','areaPanel','qualityPanel','typesPanel','monitoringPanel','technicianManagementSection','historyPanel','techniciansPanel'];
+  const dashboardSections=['overview','map-section','areas','quality','system-structure','watchlist'];
+  const workspaceTargets={technicianManagementSection:'managementWorkspace',historyPanel:'historyPanel',techniciansPanel:'techniciansPanel'};
+  const sectionIds=[...dashboardSections,...Object.keys(workspaceTargets)];
   let accountsRequest=null;
+  let dashboardScrollY=0;
+  let activeWorkspace='dashboard';
   function sectionAllowed(id){return sectionIds.includes(id)&&(id!=='techniciansPanel'||hasPermission('MANAGE_TECHNICIANS'));}
-  function setActiveSection(id){document.querySelectorAll('.tabs .section-link').forEach(link=>{const active=link.hash==='#'+id;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});$('technicianToolsButton').classList.toggle('active',['technicianManagementSection','historyPanel','techniciansPanel'].includes(id));}
+  function setActiveSection(id){document.querySelectorAll('.tabs .section-link').forEach(link=>{const active=link.hash==='#'+id;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});$('technicianToolsButton').classList.toggle('active',Boolean(workspaceTargets[id]));$('technicianToolsMenu').querySelectorAll('a').forEach(link=>{if(link.hash==='#'+id)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});}
   function closeTools(restoreFocus=false){$('technicianToolsMenu').classList.add('hidden');$('technicianToolsButton').setAttribute('aria-expanded','false');if(restoreFocus)$('technicianToolsButton').focus();}
   function updateHeaderOffset(){document.documentElement.style.setProperty('--technician-header-height',`${Math.ceil($('appHeader').getBoundingClientRect().height)}px`);}
   function navigateToSection(id,{smooth=true,updateHash=true}={}){
     if(!sectionAllowed(id)||$('appView').classList.contains('hidden'))return false;
-    const target=$(id);if(!target||target.classList.contains('hidden'))return false;
-    updateHeaderOffset();target.scrollIntoView({block:'start',behavior:smooth&&!matchMedia('(prefers-reduced-motion: reduce)').matches?'smooth':'instant'});
+    const workspace=workspaceTargets[id]||'dashboard';
+    const previousWorkspace=activeWorkspace;
+    if(activeWorkspace==='dashboard'&&workspace!=='dashboard')dashboardScrollY=window.scrollY;
+    $('dashboardWorkspace').classList.toggle('hidden',workspace!=='dashboard');
+    for(const targetId of Object.values(workspaceTargets))$(targetId).classList.toggle('hidden',targetId!==workspace);
+    activeWorkspace=workspace;
+    const target=$(id);if(!target)return false;
+    updateHeaderOffset();
+    if(workspace==='dashboard'&&id==='overview'&&previousWorkspace!=='dashboard')window.scrollTo({top:dashboardScrollY,behavior:'instant'});
+    else target.scrollIntoView({block:'start',behavior:smooth&&!matchMedia('(prefers-reduced-motion: reduce)').matches?'smooth':'instant'});
     if(updateHash&&location.hash!=='#'+id)history.pushState(null,'','#'+id);
     setActiveSection(id);closeTools();
     if(id==='techniciansPanel'&&!accountsRequest){accountsRequest=loadTechnicians().finally(()=>{accountsRequest=null;});}
-    if(id==='technicianMapSection')requestAnimationFrame(()=>window.VWSTechnicianMap?.invalidate());
+    if(id==='map-section')requestAnimationFrame(()=>window.VWSTechnicianMap?.invalidate());
     return true;
   }
-  function restoreSection(){let id='';try{id=decodeURIComponent(location.hash.slice(1));}catch(_){updateHeaderOffset();return;}if(id==='techniciansPanel'&&!sectionAllowed(id))history.replaceState(null,'',location.pathname+location.search);if(sectionAllowed(id))navigateToSection(id,{smooth:false,updateHash:false});else updateHeaderOffset();}
-  function syncActiveSection(){if($('appView').classList.contains('hidden'))return;const offset=$('appHeader').getBoundingClientRect().height+24;let active=sectionIds[0];for(const id of sectionIds){if(!sectionAllowed(id))continue;const element=$(id);if(element&&!element.classList.contains('hidden')&&element.getBoundingClientRect().top<=offset)active=id;}setActiveSection(active);}
+  function restoreSection(){let id='';try{id=decodeURIComponent(location.hash.slice(1));}catch(_){id='';}if(!sectionAllowed(id)){if(id==='techniciansPanel')history.replaceState(null,'',location.pathname+location.search);id='overview';}navigateToSection(id,{smooth:false,updateHash:false});if(!location.hash)window.scrollTo({top:0,behavior:'instant'});}
+  function syncActiveSection(){if($('appView').classList.contains('hidden')||activeWorkspace!=='dashboard')return;const offset=$('appHeader').getBoundingClientRect().height+24;let active=dashboardSections[0];for(const id of dashboardSections){const element=$(id);if(element&&element.getBoundingClientRect().top<=offset)active=id;}setActiveSection(active);}
 
   async function loadTechnicians(){if(!hasPermission('MANAGE_TECHNICIANS'))return;const busy=showBusy('กำลังโหลดบัญชีช่าง...');try{state.technicians=unwrap(await api('technicians.list',{token:state.token})).technicians||[];renderTechnicians();}catch(e){handleApiError(e);}finally{hideBusy(busy);}}
   function technicianActions(u){const id=escapeHtml(u.userId);return u.status==='DELETED'?'':`<button class="mini-btn" data-tech-action="edit" data-id="${id}">แก้ไข</button>${u.status==='ACTIVE'?`<button class="mini-btn" data-tech-action="disable" data-id="${id}">ปิด</button>`:''}${u.status==='DISABLED'?`<button class="mini-btn primary" data-tech-action="enable" data-id="${id}">เปิด</button>`:''}<button class="mini-btn" data-tech-action="reset" data-id="${id}">รีเซ็ตรหัสผ่าน</button><button class="mini-btn danger" data-tech-action="delete" data-id="${id}">ลบบัญชี</button>`;}
@@ -328,7 +335,11 @@
 
   function bind(){
     bindDialogDismissal();
-    window.VWSTechnicianAnalytics?.bind(id=>openSystem(id));
+    window.VWSTechnicianAnalytics?.bind({
+      onSystem:id=>openSystem(id),
+      onMap:id=>{navigateToSection('map-section');window.VWSTechnicianMap?.focus(id);},
+      onChange:(systems,filtered)=>window.VWSTechnicianMap?.render(systems,filtered)
+    });
     for(const id of ['editForm','deleteForm','technicianForm','actionForm','passwordForm'])$(id).addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches('input, select')&&event.target.type!=='checkbox')event.preventDefault();});
     $('retryResumeButton').addEventListener('click',resume);
     for(const name of ['input','change'])$('editFields').addEventListener(name,event=>{const key=event.target.dataset.field||event.target.name;if(key)state.editTouched.add(key);});
@@ -340,6 +351,7 @@
     document.addEventListener('click',e=>{if(!e.target.closest('.mobile-account')){$('mobileAccountMenu').classList.add('hidden');$('mobileAccountButton').setAttribute('aria-expanded','false');}});
     $('filterToggleButton').addEventListener('click',()=>{const panel=$('filterPanel'),open=panel.classList.toggle('open');$('filterToggleButton').setAttribute('aria-expanded',open?'true':'false');});
     document.querySelectorAll('a.section-link, #technicianToolsMenu a').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();navigateToSection(link.hash.slice(1));}));
+    document.querySelectorAll('[data-return-dashboard]').forEach(button=>button.addEventListener('click',()=>navigateToSection('overview')));
     $('technicianToolsButton').addEventListener('click',()=>{const menu=$('technicianToolsMenu'),open=menu.classList.toggle('hidden');$('technicianToolsButton').setAttribute('aria-expanded',String(!open));});
     document.addEventListener('click',event=>{if(!event.target.closest('.technician-tools'))closeTools();});
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('technicianToolsMenu').classList.contains('hidden')){event.preventDefault();closeTools(true);}});
@@ -350,7 +362,7 @@
     ['searchInput','districtFilter','statusFilter','publicFilter'].forEach(id=>$(id).addEventListener(id==='searchInput'?'input':'change',applyFilters));
     $('clearFiltersButton').addEventListener('click',()=>{$('searchInput').value='';$('districtFilter').value='';$('statusFilter').value='';$('publicFilter').value='';applyFilters();});
     $('prevPage').addEventListener('click',()=>{if(state.page>1){state.page--;renderSystemsTable();}});$('nextPage').addEventListener('click',()=>{if(state.page<Math.ceil(state.filteredSystems.length/PAGE_SIZE)){state.page++;renderSystemsTable();}});
-    const handleSystemAction=e=>{const b=e.target.closest('button[data-action]');if(!b||b.disabled)return;const {action,id}=b.dataset;if(action==='edit'&&!hasPermission('UPDATE_SYSTEM'))return;if(action==='delete'&&!hasPermission('DELETE_SYSTEM'))return;if(action==='view'||action==='edit'||action==='delete')openSystem(id,action);if(action==='map'){navigateToSection('technicianMapSection');window.VWSTechnicianMap?.focus(id);}if(action==='history'){navigateToSection('historyPanel');loadHistory(id);}};
+    const handleSystemAction=e=>{const b=e.target.closest('button[data-action]');if(!b||b.disabled)return;const {action,id}=b.dataset;if(action==='edit'&&!hasPermission('UPDATE_SYSTEM'))return;if(action==='delete'&&!hasPermission('DELETE_SYSTEM'))return;if(action==='view'||action==='edit'||action==='delete')openSystem(id,action);if(action==='map'){navigateToSection('map-section');window.VWSTechnicianMap?.focus(id);}if(action==='history'){navigateToSection('historyPanel');loadHistory(id);}};
     $('systemsTableBody').addEventListener('click',handleSystemAction);$('systemsMobileList').addEventListener('click',handleSystemAction);
     $('editSystemButton').addEventListener('click',openEdit);$('deleteSystemButton').addEventListener('click',openDelete);
     $('editForm').addEventListener('submit',e=>{e.preventDefault();saveEdit();});$('deleteForm').addEventListener('submit',e=>{e.preventDefault();confirmDelete();});

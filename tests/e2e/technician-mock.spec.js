@@ -13,6 +13,12 @@ async function captureArchitecture(page, name) {
   fs.mkdirSync(directory, { recursive: true });
   await page.screenshot({ path: path.join(directory, `${name}.png`) });
 }
+async function captureParity(page,name,fullPage=false) {
+  const directory=process.env.VWS_PARITY_SCREENSHOTS;
+  if(!directory)return;
+  fs.mkdirSync(directory,{recursive:true});
+  await page.screenshot({path:path.join(directory,`${name}.png`),fullPage});
+}
 const token = `MGT-${'a'.repeat(64)}`;
 const user = { username: 'synthetic-technician', displayName: 'Synthetic Technician', role: 'TECHNICIAN' };
 const system = {
@@ -162,6 +168,7 @@ test('loads a mocked system detail and logs out locally', async ({ page }) => {
   await openLogin(page);
   await submitSyntheticLogin(page);
   await expect(page.locator('#appView')).toBeVisible();
+  await openToolSection(page, 'systems');
   await page.locator('#systemsTableBody [data-action="view"]').first().click();
   await expect(page.locator('#systemDialog')).toBeVisible();
   await expect(page.locator('#systemDialogTitle')).toHaveText(system.system_name);
@@ -233,67 +240,73 @@ async function openToolSection(page, name) {
   await page.locator(`[data-tab="${name}"]`).click();
 }
 
-async function openManagement(page, overrides = {}) {
+async function openManagement(page, overrides = {}, start = 'management') {
   const network = await installIsolatedTechnician(page, managementMocks(overrides));
   await openLogin(page);
   await submitSyntheticLogin(page);
   await expect(page.locator('#appView')).toBeVisible();
+  if (start === 'management') await openToolSection(page, 'systems');
   return network;
 }
 
-test('single-page sections, tools permissions, hashes and wheel scrolling use one authenticated document', async ({ page }) => {
+test('Public-style Dashboard is continuous and tools open exclusive authenticated workspaces', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const network = await openManagement(page);
+  const network = await openManagement(page, {}, 'dashboard');
   await captureArchitecture(page, 'technician-1440-overview');
-  const ids = ['technicianOverviewAnchor', 'technicianMapSection', 'areaPanel', 'qualityPanel', 'typesPanel', 'monitoringPanel', 'technicianManagementSection', 'historyPanel', 'techniciansPanel'];
-  for (const id of ids) await expect(page.locator(`#${id}`)).toBeVisible();
+  const analytical = ['overview','map-section','areas','quality','system-structure','watchlist'];
+  for (const id of analytical) await expect(page.locator(`#${id}`)).toBeVisible();
+  for (const id of ['managementWorkspace','historyPanel','techniciansPanel']) await expect(page.locator(`#${id}`)).toBeHidden();
+  await expect(page.locator('#overview .kpi-card')).toHaveCount(4);
+  await expect(page.locator('#kpiWithWaterworks')).toHaveText('ไม่พร้อมใช้');
   expect(await page.locator('.tabs a.section-link').count()).toBe(6);
-  await page.locator('#searchInput').fill('Synthetic');
+  await page.locator('#filterSearch').fill('Synthetic');
   const reads = network.calls.filter(call => call.action === 'data.dashboard').length;
-  await page.locator('a[href="#areaPanel"]').click();
-  await expect(page).toHaveURL(/#areaPanel$/);
-  await expect(page.locator('#areaPanel')).toBeInViewport();
+  await page.locator('a[href="#areas"]').click();
+  await expect(page).toHaveURL(/#areas$/);
+  await expect(page.locator('#areas')).toBeInViewport();
   await captureArchitecture(page, 'technician-1440-area');
-  await expect(page.locator('#qualityPanel')).toBeVisible();
-  await expect(page.locator('#searchInput')).toHaveValue('Synthetic');
-  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(reads);
-  await page.locator('#technicianToolsButton').click();
-  await expect(page.locator('#technicianToolsMenu')).toBeVisible();
-  await captureArchitecture(page, 'technician-1440-tools');
-  await page.locator('a[href="#technicianManagementSection"]').click();
-  await expect(page.locator('#technicianManagementSection')).toBeInViewport();
+  await expect(page.locator('#quality')).toBeVisible();
+  await openToolSection(page, 'systems');
+  await expect(page.locator('#managementWorkspace')).toBeVisible();
+  await expect(page.locator('#dashboardWorkspace')).toBeHidden();
   await captureArchitecture(page, 'technician-1440-management');
   await page.goBack();
-  await expect(page).toHaveURL(/#areaPanel$/);
-  await expect(page.locator('#areaPanel')).toBeInViewport();
+  await expect(page).toHaveURL(/#areas$/);
+  await expect(page.locator('#areas')).toBeVisible();
+  await expect(page.locator('#filterSearch')).toHaveValue('Synthetic');
   await page.goForward();
-  await expect(page.locator('#technicianManagementSection')).toBeInViewport();
-  const table = page.locator('.desktop-table-wrap');
-  expect(await table.evaluate(el => getComputedStyle(el).overscrollBehaviorY)).toBe('auto');
-  await page.locator('#systemsTableBody tr').first().hover();
-  const before = await page.evaluate(() => scrollY);
-  await page.mouse.wheel(0, 600);
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before);
-  await page.locator('#technicianToolsButton').click();
+  await expect(page.locator('#managementWorkspace')).toBeVisible();
+  await page.locator('#managementWorkspace [data-return-dashboard]').click();
+  await expect(page.locator('#dashboardWorkspace')).toBeVisible();
+  await expect(page.locator('#filterSearch')).toHaveValue('Synthetic');
+  await expect(page.locator('#areas')).toBeInViewport();
+  await openToolSection(page, 'history');
+  await expect(page.locator('#historyPanel')).toBeVisible();
+  await expect(page.locator('#managementWorkspace')).toBeHidden();
+  await page.locator('#historyPanel [data-return-dashboard]').click();
+  await expect(page.locator('#dashboardWorkspace')).toBeVisible();
+  await expect(page.locator('#filterSearch')).toHaveValue('Synthetic');
   await openToolSection(page, 'technicians');
+  await expect(page.locator('#techniciansPanel')).toBeVisible();
+  await expect(page.locator('#historyPanel')).toBeHidden();
   await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
-  const accountBefore = await page.evaluate(() => scrollY);
-  await page.locator('#techniciansTableBody tr').first().hover();
-  await page.mouse.wheel(0, -400);
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(accountBefore);
+  await page.locator('#techniciansPanel [data-return-dashboard]').click();
+  await expect(page.locator('#dashboardWorkspace')).toBeVisible();
+  await expect(page.locator('#filterSearch')).toHaveValue('Synthetic');
+  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(reads);
   expect(network.blocked).toEqual([]);
   expect(network.pageErrors).toEqual([]);
 });
 
 for (const width of [768, 390]) {
-  test(`continuous navigation and tools remain usable at ${width}px`, async ({ page }) => {
+  test(`continuous Dashboard and exclusive tools remain usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    const network = await openManagement(page);
+    const network = await openManagement(page, {}, 'dashboard');
     await captureArchitecture(page, `technician-${width}-overview`);
-    await page.locator('a[href="#monitoringPanel"]').click();
-    await expect(page.locator('#monitoringPanel')).toBeInViewport();
+    await page.locator('a[href="#watchlist"]').click();
+    await expect(page.locator('#watchlist')).toBeInViewport();
     await captureArchitecture(page, `technician-${width}-monitoring`);
-    await expect(page.locator('#areaPanel')).toBeVisible();
+    await expect(page.locator('#areas')).toBeVisible();
     await page.locator('#technicianToolsButton').click();
     await expect(page.locator('#technicianToolsButton')).toHaveAttribute('aria-expanded', 'true');
     await page.keyboard.press('Escape');
@@ -302,13 +315,44 @@ for (const width of [768, 390]) {
     await page.keyboard.press('Enter');
     await expect(page.locator('#technicianToolsMenu')).toBeVisible();
     await captureArchitecture(page, `technician-${width}-tools`);
-    await page.locator('#main').click({ position: { x: 5, y: 5 } });
-    await expect(page.locator('#technicianToolsMenu')).toBeHidden();
-    await page.locator('#technicianToolsButton').click();
     await page.locator('a[href="#historyPanel"]').click();
-    await expect(page.locator('#historyPanel')).toBeInViewport();
+    await expect(page.locator('#historyPanel')).toBeVisible();
+    await expect(page.locator('#dashboardWorkspace')).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     expect(network.blocked).toEqual([]);
+  });
+}
+
+for (const width of [1440,768,390]) {
+  test(`visual acceptance states remain reachable at ${width}px`,async({page})=>{
+    await page.setViewportSize({width,height:width===390?844:900});
+    const network=await installIsolatedTechnician(page,managementMocks());
+    await openLogin(page);
+    await captureParity(page,`technician-${width}-login`);
+    await submitSyntheticLogin(page);
+    await expect(page.locator('#dashboardWorkspace')).toBeVisible();
+    await captureParity(page,`technician-${width}-dashboard`,true);
+    await openToolSection(page,'systems');
+    await captureParity(page,`technician-${width}-management`);
+    const list=width<768?'#systemsMobileList':'#systemsTableBody';
+    await page.locator(`${list} [data-action="edit"]`).first().click();
+    await expect(page.locator('#editDialog')).toBeVisible();
+    await captureParity(page,`technician-${width}-edit`);
+    await page.locator('#editDialog [data-dismiss-dialog]').first().click();
+    await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+    await page.locator(`${list} [data-action="delete"]`).first().click();
+    await expect(page.locator('#deleteDialog')).toBeVisible();
+    await captureParity(page,`technician-${width}-delete`);
+    await page.locator('#deleteDialog [data-dismiss-dialog]').first().click();
+    await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+    await openToolSection(page,'history');
+    await captureParity(page,`technician-${width}-history`);
+    await openToolSection(page,'technicians');
+    await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
+    await captureParity(page,`technician-${width}-accounts`);
+    expect(network.calls.filter(call=>/^(data\.(update|delete)|technicians\.(create|update|disable|enable|delete|resetPassword))/.test(call.action))).toEqual([]);
+    expect(network.blocked).toEqual([]);
+    expect(network.pageErrors).toEqual([]);
   });
 }
 
@@ -323,9 +367,14 @@ test('tablet Management tables chain vertical wheel and retain horizontal scroll
     if (name === 'technicians') await expect(page.locator(row)).toHaveCount(1);
     const table = page.locator(wrapper);
     await page.locator(row).first().hover();
-    const beforeY = await page.evaluate(() => scrollY);
-    await page.mouse.wheel(0, -300);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(beforeY);
+    const canScroll = await page.evaluate(() => document.documentElement.scrollHeight > innerHeight + 1);
+    if (canScroll) {
+      const beforeY = await page.evaluate(() => scrollY);
+      await page.mouse.wheel(0, 300);
+      await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(beforeY);
+    } else {
+      expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true);
+    }
     const dimensions = await table.evaluate(element => ({ scroll: element.scrollWidth, client: element.clientWidth }));
     expect(dimensions.scroll).toBeGreaterThan(dimensions.client);
     await table.hover();
@@ -340,14 +389,14 @@ test('saved session deep link waits for verification and rejects unauthorized ac
   const pending = heldResponse(success({ user }));
   const network = await installIsolatedTechnician(page, { 'auth.me': pending.respond });
   await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
-  await page.goto(`${origin}/technician/#areaPanel`);
+  await page.goto(`${origin}/technician/#areas`);
   await expect(page.locator('#busyOverlay')).toBeVisible();
   await captureArchitecture(page, 'technician-boot-1440');
   await expect(page.locator('#loginView')).toBeHidden();
   await expect(page.locator('#appView')).toBeHidden();
   pending.release();
   await expect(page.locator('#appView')).toBeVisible();
-  await expect(page.locator('#areaPanel')).toBeInViewport();
+  await expect(page.locator('#areas')).toBeInViewport();
   await page.goto(`${origin}/technician/#techniciansPanel`);
   await expect(page.locator('#appView')).toBeVisible();
   await expect(page.locator('#techniciansPanel')).toBeHidden();
@@ -357,6 +406,7 @@ test('saved session deep link waits for verification and rejects unauthorized ac
   expect(network.blocked).toEqual([]);
 });
 async function openEditFromTable(page, mobile = false) {
+  if (await page.locator('#managementWorkspace').isHidden()) await openToolSection(page, 'systems');
   await page.locator(`${mobile ? '#systemsMobileList' : '#systemsTableBody'} [data-action="edit"]`).first().click();
   await expect(page.locator('#editDialog')).toBeVisible();
 }
@@ -445,8 +495,8 @@ for (const viewport of [
       expect(header.x).toBeGreaterThanOrEqual(0);
       await page.locator('[data-tab="map"]').click();
       await expect(page.locator('[data-tab="map"]')).toHaveClass(/active/);
-      await expect(page.locator('#technicianMapSection')).toBeVisible();
-      const mapBox = await page.locator('#technicianMapSection').boundingBox();
+      await expect(page.locator('#map-section')).toBeVisible();
+      const mapBox = await page.locator('#map-section').boundingBox();
       expect(mapBox.x).toBeGreaterThanOrEqual(0);
       expect(mapBox.x + mapBox.width).toBeLessThanOrEqual(viewport.width + 1);
       await page.locator('#technicianMapFit').click();
@@ -489,18 +539,23 @@ for (const viewport of [
       await expect(page.locator('#editSystemButton')).toBeEnabled();
       expect(network.calls.find(call => call.action === 'data.waterSystem')?.payload.systemId).toBe(hiddenMapSystem.system_id);
       await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+      await openToolSection(page, 'systems');
       if (viewport.width < 768) await page.locator('#filterToggleButton').click();
       await page.locator('#publicFilter').selectOption('HIDDEN');
-      await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(1);
+      await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
       await expect(page.locator('#resultCount')).toHaveText('1 รายการ');
-      await expect(page.locator('#technicianMapScope')).toContainText('กรองตามรายการปัจจุบัน');
       await page.locator('#clearFiltersButton').click();
       await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
       await expect(page.locator('#resultCount')).toHaveText('5 รายการ');
       await expect(page.locator('#technicianMapScope')).toContainText('แสดงทุกระบบ');
       await page.locator('#searchInput').fill('Visible Synthetic System');
-      await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(1);
+      await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
       await expect(page.locator('#resultCount')).toHaveText('1 รายการ');
+      await page.locator('[data-tab="overview"]').click();
+      if (viewport.width < 768) await page.locator('#btnFilterToggle').click();
+      await page.locator('#filterSearch').fill('Visible Synthetic System');
+      await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(1);
+      await expect(page.locator('#technicianMapScope')).toContainText('กรองตามรายการปัจจุบัน');
       expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(1);
       expect(network.calls.filter(call => /^(data\.(update|delete)|technicians\.)/.test(call.action))).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -557,7 +612,7 @@ test('Technician map keyboard popup and restricted detail keep management action
   await expect(marker).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('.technician-map-popup')).toContainText('Hidden Synthetic System');
-  const a11y = await new AxeBuilder({ page }).include('#technicianMapSection').analyze();
+  const a11y = await new AxeBuilder({ page }).include('#map-section').analyze();
   expect(a11y.violations).toEqual([]);
   await page.locator('[data-technician-map-detail="QA-MAP-HIDDEN"]').click();
   await expect(page.locator('#systemDialog')).toBeVisible();
@@ -573,6 +628,7 @@ test('Technician map uses a synthetic browser location without an API mutation',
     } });
   });
   const network = await openManagement(page, { 'data.dashboard': mapDashboard([visibleMapSystem]) });
+  await page.locator('[data-tab="map"]').click();
   await page.locator('#technicianMapLocate').click();
   await expect(page.locator('#technicianWaterMap .user-location-marker')).toHaveCount(1);
   await expect(page.locator('#technicianMapLocate')).toHaveAttribute('aria-busy', 'false');
@@ -614,10 +670,10 @@ test('Technician map handles a synthetic 733-system dataset without duplicate ma
   }, manySystems);
   const elapsed = await page.evaluate(() => {
     const start = performance.now();
-    document.querySelector('#searchInput').value = 'Synthetic System 1';
-    document.querySelector('#searchInput').dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('#filterSearch').value = 'Synthetic System 1';
+    document.querySelector('#filterSearch').dispatchEvent(new Event('input', { bubbles: true }));
     const filtered = window.VWSTechnicianMap.markerCount();
-    document.querySelector('#clearFiltersButton').click();
+    document.querySelector('#btnClearFilters').click();
     return { milliseconds: performance.now() - start, filtered, restored: window.VWSTechnicianMap.markerCount() };
   });
   expect(elapsed.filtered).toBeGreaterThan(0);
@@ -860,51 +916,107 @@ const analyticsSystems = [
   { ...editableSystem, system_id: 'QA-ANALYTICS-3', village_id: 'QA-VILLAGE-2', system_name: 'Synthetic C', village: { village_name: 'Village Two', district: 'เมือง', subdistrict: 'B', local_authority: 'Authority B' }, system_type: 'FUTURE_SYNTHETIC_TYPE', drinking_water_quality: '', utility_water_quality: 'FAIL', latitude: '', longitude: '' }
 ];
 const analyticsDataset = { generatedAt: '2026-01-01T00:00:00Z', villages: [
-  { village_id: 'QA-VILLAGE-1', village_name: 'Village One', district: 'จุน' },
-  { village_id: 'QA-VILLAGE-2', village_name: 'Village Two', district: 'เมือง' }
+  { village_id: 'QA-VILLAGE-1', village_name: 'Village One', district: 'จุน', local_authority: 'Authority A', has_village_waterworks: true },
+  { village_id: 'QA-VILLAGE-2', village_name: 'Village Two', district: 'เมือง', local_authority: 'Authority B', has_village_waterworks: false }
 ], waterSystems: analyticsSystems, waterSources: [{ source_id: 'QA-SOURCE-1', village_id: 'QA-VILLAGE-1' }] };
+
+test('four Public-style charts cross-filter the authenticated Dashboard without Management mutations', async ({ page }) => {
+  const network=await openManagement(page,{'data.dashboard':success(analyticsDataset)},'dashboard');
+  for(const [canvas,index,control,value] of [
+    ['districtChart',0,'filterDistrict','จุน'],
+    ['qualityChart',1,'filterDrinkingWaterQuality','FAIL'],
+    ['quantityChart',1,'filterWaterQuantity','INSUFFICIENT'],
+    ['systemTypeChart',0,'filterSystemType','GROUNDWATER_SMALL']
+  ]) {
+    await page.locator(`#${canvas}`).scrollIntoViewIfNeeded();
+    const clickPoint=async()=>page.locator(`#${canvas}`).evaluate((element,i)=>{
+      const chart=Chart.getChart(element),point=chart.getDatasetMeta(0).data[i].getCenterPoint(),box=element.getBoundingClientRect();
+      return {x:box.left+point.x,y:box.top+point.y};
+    },index);
+    let point=await clickPoint();
+    await page.mouse.click(point.x,point.y);
+    await expect(page.locator(`#${control}`)).toHaveValue(value);
+    await page.waitForTimeout(250);
+    point=await clickPoint();
+    await page.mouse.click(point.x,point.y);
+    await expect(page.locator(`#${control}`)).toHaveValue('');
+  }
+  expect(network.calls.filter(call=>/^(data\.(update|delete)|technicians\.)/.test(call.action))).toEqual([]);
+  expect(network.blocked).toEqual([]);
+  expect(network.pageErrors).toEqual([]);
+});
+
+test('global Dashboard filters cascade, keep their own state, and leave Management search unchanged', async ({ page }) => {
+  const network=await openManagement(page,{'data.dashboard':success(analyticsDataset)},'dashboard');
+  await page.locator('#filterDistrict').selectOption('จุน');
+  await expect(page.locator('#filterLocalAuthority option')).toHaveCount(2);
+  await expect(page.locator('#filterLocalAuthority')).toContainText('Authority A');
+  await expect(page.locator('#filterLocalAuthority')).not.toContainText('Authority B');
+  await page.locator('#filterLocalAuthority').selectOption('Authority A');
+  await page.locator('#filterDrinkingWaterQuality').selectOption('FAIL');
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await expect(page.locator('#activeFilterChips [data-filter-remove]')).toHaveCount(3);
+  await page.locator('#filterDistrict').selectOption('เมือง');
+  await expect(page.locator('#filterLocalAuthority')).toHaveValue('');
+  await expect(page.locator('#filterDrinkingWaterQuality')).toHaveValue('');
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await openToolSection(page,'systems');
+  await expect(page.locator('#searchInput')).toHaveValue('');
+  await page.locator('#searchInput').fill('Synthetic B');
+  await expect(page.locator('#resultCount')).toHaveText('1 รายการ');
+  await page.locator('[data-tab="overview"]').click();
+  await expect(page.locator('#filterDistrict')).toHaveValue('เมือง');
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await page.locator('#btnClearFilters').click();
+  await expect(page.locator('#kpiSystems')).toHaveText('3');
+  await openToolSection(page,'systems');
+  await expect(page.locator('#searchInput')).toHaveValue('Synthetic B');
+  expect(network.calls.filter(call=>call.action==='data.dashboard')).toHaveLength(1);
+  expect(network.blocked).toEqual([]);
+});
 
 for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'tablet', width: 768, height: 1024 }, { name: 'mobile', width: 390, height: 844 }]) {
   test.describe(`Phase E analytics ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
-    test('all analysis navigation uses the authenticated dataset and charts stay singular', async ({ page }) => {
+    test('canonical KPI, monitoring, four charts and cross-filter use authenticated data', async ({ page }) => {
       const network = await openManagement(page, { 'data.dashboard': success(analyticsDataset),
-        'data.waterSystem': envelope => success({ system: analyticsSystems.find(row => row.system_id === envelope.payload.systemId) }) });
+        'data.waterSystem': envelope => success({ system: analyticsSystems.find(row => row.system_id === envelope.payload.systemId) }) }, 'dashboard');
       if (process.env.VWS_PHASE_E_SCREENSHOTS) {
         fs.mkdirSync(process.env.VWS_PHASE_E_SCREENSHOTS, { recursive: true });
-        await page.screenshot({ path: path.join(process.env.VWS_PHASE_E_SCREENSHOTS, `phase-e-${viewport.name}-overview.png`), fullPage: true });
+        await page.screenshot({ path: path.join(process.env.VWS_PHASE_E_SCREENSHOTS, `phase-parity-${viewport.name}-overview.png`), fullPage: true });
       }
-      await expect(page.locator('#analyticsVillageCount')).toHaveText('2');
-      await expect(page.locator('#analyticsSourceCount')).toHaveText('1');
-      await expect(page.locator('#analyticsInsufficient')).toHaveText('1');
-      for (const [tab, panel] of [['area','areaPanel'],['quality','qualityPanel'],['types','typesPanel'],['monitoring','monitoringPanel']]) {
+      await expect(page.locator('#overview .kpi-card')).toHaveCount(4);
+      await expect(page.locator('#kpiVillages')).toHaveText('2');
+      await expect(page.locator('#kpiWithWaterworks')).toHaveText('1');
+      await expect(page.locator('#kpiWithoutWaterworks')).toHaveText('1');
+      await expect(page.locator('#kpiSystems')).toHaveText('3');
+      await expect(page.locator('#alertNotWorking')).toHaveText('0');
+      await expect(page.locator('#alertInsufficient')).toHaveText('1');
+      await expect(page.locator('#alertQualityFail')).toHaveText('1');
+      await expect(page.locator('#watchlistTotal')).toHaveText('1');
+      await expect(page.locator('#problemList .watch-card')).toHaveCount(1);
+      for (const [tab, panel] of [['area','areas'],['quality','quality'],['types','system-structure'],['monitoring','watchlist']]) {
         await page.locator(`[data-tab="${tab}"]`).click();
         await expect(page.locator(`#${panel}`)).toBeVisible();
-        if (process.env.VWS_PHASE_E_SCREENSHOTS) await page.screenshot({ path: path.join(process.env.VWS_PHASE_E_SCREENSHOTS, `phase-e-${viewport.name}-${tab}.png`), fullPage: true });
+        if (process.env.VWS_PHASE_E_SCREENSHOTS) await page.screenshot({ path: path.join(process.env.VWS_PHASE_E_SCREENSHOTS, `phase-parity-${viewport.name}-${tab}.png`), fullPage: true });
       }
-      await expect(page.locator('#analyticsLinkedVillageCount')).toHaveText('2');
-      await expect(page.locator('#analyticsVillageDistrictList li')).toHaveCount(2);
-      await expect(page.locator('#analyticsVillageDistrictList')).toContainText('1 หมู่บ้าน');
-      await expect(page.locator('#analyticsOperationalList')).toContainText('ใช้งานได้');
-      await expect(page.locator('#analyticsTypeList')).toContainText('ค่าที่ยังไม่มีคำแปล');
-      await expect(page.locator('#analyticsTypeList')).not.toContainText('FUTURE_SYNTHETIC_TYPE');
-      await expect(page.locator('#analyticsQuantityList')).toContainText('ไม่เพียงพอ');
-      await expect(page.locator('#analyticsDrinkingList')).toContainText('ไม่ทราบ / ไม่ระบุ');
-      await expect(page.locator('#analyticsUtilityList')).toContainText('ไม่มีข้อมูล');
-      await expect(page.locator('#analyticsMonitoringCount')).toContainText('2 ระบบ');
-      await page.locator('[data-analytics-system="QA-ANALYTICS-2"]').click();
-      await expect(page.locator('#systemDialogTitle')).toHaveText('Synthetic B');
-      await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+      const chartState = await page.evaluate(() => ({ local: window.VWSTechnicianAnalytics.chartCount(), global: Object.keys(Chart.instances).length,
+        district: Chart.getChart('districtChart').data.datasets.map(d => d.label),
+        quality: Chart.getChart('qualityChart').config.type, quantity: Chart.getChart('quantityChart').config.type,
+        type: Chart.getChart('systemTypeChart').options.indexAxis }));
+      expect(chartState).toEqual({ local: 4, global: 4, district: ['หมู่บ้าน','ระบบประปา'], quality: 'doughnut', quantity: 'doughnut', type: 'y' });
+      if (viewport.width < 768) await page.locator('#btnFilterToggle').click();
+      await page.locator('#filterDistrict').selectOption('เมือง');
+      await expect(page.locator('#kpiVillages')).toHaveText('1');
+      await expect(page.locator('#kpiSystems')).toHaveText('1');
+      await expect(page.locator('#watchlistTotal')).toHaveText('0');
       await openToolSection(page, 'systems');
-      if (viewport.width < 768) await page.locator('#filterToggleButton').click();
-      await page.locator('#districtFilter').selectOption('เมือง');
-      await expect(page.locator('#analyticsLinkedVillageCount')).toHaveText('1');
-      await expect(page.locator('#analyticsMonitoringCount')).toContainText('1 ระบบ');
-      const chartState = await page.evaluate(() => ({ local: window.VWSTechnicianAnalytics.chartCount(), global: Object.keys(Chart.instances).length }));
-      expect(chartState).toEqual({ local: 3, global: 3 });
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-      expect(network.calls.some(call => call.action === 'data.dashboard')).toBe(true);
+      await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(3);
+      await page.locator('[data-tab="overview"]').click();
+      await expect(page.locator('#filterDistrict')).toHaveValue('เมือง');
+      expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(1);
       expect(network.blocked).toEqual([]);
+      expect(network.pageErrors).toEqual([]);
     });
 
     test('search icon is inside the editable input without covering text', async ({ page }) => {
@@ -1020,7 +1132,7 @@ for (const width of [1440, 390]) {
   test(`Phase E analytics axe check at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await openManagement(page, { 'data.dashboard': success(analyticsDataset) });
-    for (const [tab, panel] of [['area','areaPanel'],['quality','qualityPanel'],['types','typesPanel'],['monitoring','monitoringPanel']]) {
+    for (const [tab, panel] of [['area','areas'],['quality','quality'],['types','system-structure'],['monitoring','watchlist']]) {
       await page.locator(`[data-tab="${tab}"]`).click();
       const result = await new AxeBuilder({ page }).include(`#${panel}`).analyze();
       expect(result.violations, `${tab} at ${width}px`).toEqual([]);

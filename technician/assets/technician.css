@@ -118,6 +118,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .eyebrow { margin: 0 0 2px; color: #0369a1; font-size: 10px; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }
 .section-heading h2, .page-heading h2 { margin: 0; color: #0f172a; font-size: 20px; font-weight: 800; line-height: 1.45; }
 .section-description { margin: 4px 0 0; max-width: 850px; color: #64748b; font-size: 12px; line-height: 1.6; }
+.workspace-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.workspace-return { flex: 0 0 auto; }
 .scope-note { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; border: 1px solid #bae6fd; border-radius: 999px; background: #f0f9ff; padding: 7px 10px; color: #075985; font-size: 11px; font-weight: 700; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
@@ -129,6 +131,22 @@ button { -webkit-tap-highlight-color: transparent; }
 .kpi-icon.bg-rose { background: #fff1f2; color: #be123c; }
 .kpi-label { margin: 0; color: #64748b; font-size: 11px; font-weight: 600; }
 .kpi-value { margin: 3px 0 0; color: #0f172a; font-size: 28px; font-weight: 800; line-height: 1.05; }
+/* The analytical Dashboard uses the Public composition; Management styles stay in their workspaces. */
+#dashboardWorkspace .kpi-card { min-height: 96px; padding: 12px; box-shadow: 0 1px 2px rgba(15,23,42,.05); }
+#dashboardWorkspace .kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+#dashboardWorkspace .kpi-unavailable { font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+#dashboardWorkspace .filter-field { font-size: 12px; }
+#dashboardWorkspace .filter-field input, #dashboardWorkspace .filter-field select { font-size: 14px; }
+#dashboardWorkspace .watch-mini { font-size: 12px; }
+#dashboardWorkspace .watch-mini-unit, #dashboardWorkspace .problem-summary > span { color: #475569; }
+#dashboardWorkspace .system-sub { color: #475569; }
+#dashboardWorkspace .chart-canvas-wrap { position: relative; }
+#dashboardWorkspace .technician-map-panel { padding: 10px; margin-bottom: 0; }
+#dashboardWorkspace .filter-chip { min-height: 32px; border: 1px solid #bae6fd; border-radius: 999px; background: #f0f9ff; padding: 5px 10px; color: #075985; font-size: 12px; font-weight: 700; cursor: pointer; }
+#dashboardWorkspace .filter-chip:focus-visible { outline: 2px solid #0284c7; outline-offset: 2px; }
+@media (min-width: 768px) { #dashboardFilterPanel { display: block !important; } }
+@media (min-width: 1024px) { #problemList .hidden.lg\:block { display: block !important; } }
+@media (min-width: 640px) { #dashboardWorkspace .kpi-card { min-height: 108px; padding: 16px; } }
 .analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .analytics-grid > :first-child { grid-column: 1 / -1; }
 .analytics-card { padding: 18px; margin-bottom: 14px; }
