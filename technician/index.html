@@ -35,14 +35,14 @@
 <body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
   <a id="skipLink" class="skip-link" href="#loginView">ข้ามไปยังเนื้อหาหลัก</a>
 
-  <main id="bootView" class="loading-overlay hidden" aria-live="polite" aria-labelledby="bootTitle">
-    <div class="loading-dialog boot-card">
-      <h1 id="bootTitle" class="loading-message">กำลังตรวจสอบการเข้าสู่ระบบ...</h1>
-      <div class="loading-progress" aria-hidden="true"><span class="spinner"></span><span class="reduced-motion-hint">กำลังดำเนินการ โปรดรอสักครู่</span></div>
+  <div id="bootView" class="swal2-container swal2-center swal2-backdrop-show hidden" aria-live="polite" aria-labelledby="bootTitle">
+    <div class="swal2-popup swal2-modal swal2-show boot-popup" role="alertdialog" aria-modal="true" aria-labelledby="bootTitle">
+      <h2 id="bootTitle" class="swal2-title">กำลังตรวจสอบการเข้าสู่ระบบ...</h2>
+      <div class="swal2-actions boot-actions" aria-hidden="true"><div class="swal2-loader boot-loader"></div></div>
       <p id="bootError" class="muted hidden" role="alert"></p>
       <button id="retryResumeButton" class="btn btn-primary hidden" type="button">ลองอีกครั้ง</button>
     </div>
-  </main>
+  </div>
 
   <!-- Login uses the same Government BI visual language but remains isolated from the app shell. -->
   <main id="loginView" class="auth-shell" data-testid="login-view" aria-labelledby="loginTitle">
@@ -405,7 +405,7 @@
     </main>
   </div>
 
-  <dialog id="busyOverlay" class="loading-overlay busy-overlay" aria-labelledby="busyText"><div class="loading-dialog"><span id="busyText" class="loading-message" role="status" aria-live="polite" aria-atomic="true">กำลังประมวลผล...</span><div class="loading-progress" aria-hidden="true"><span class="spinner"></span><span class="reduced-motion-hint">กำลังดำเนินการ โปรดรอสักครู่</span></div></div></dialog>
+  <dialog id="busyOverlay" class="busy-overlay" aria-label="กำลังประมวลผล"></dialog>
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Detail dialog is intentionally styled as the same right-side drawer used by Public. -->

@@ -38,8 +38,10 @@ async function installIsolatedTechnician(page, overrides = {}) {
   const calls = [];
   const blocked = [];
   const pageErrors = [];
+  const consoleWarnings = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  observations.set(page, { calls, blocked, pageErrors });
+  page.on('console', message => { if (message.type() === 'warning' || message.type() === 'error') consoleWarnings.push(message.text()); });
+  observations.set(page, { calls, blocked, pageErrors, consoleWarnings });
 
   await page.route('**/*', async route => {
     const request = route.request();
@@ -94,7 +96,7 @@ async function installIsolatedTechnician(page, overrides = {}) {
     return route.fulfill({ status: 200, contentType, body: fs.readFileSync(file) });
   });
 
-  return { calls, blocked, pageErrors };
+  return { calls, blocked, pageErrors, consoleWarnings };
 }
 
 test.afterEach(async ({ page }) => {
@@ -696,10 +698,10 @@ function heldResponse(response = success()) {
 
 async function expectBusyDialog(page, message) {
   await expect(page.locator('#busyOverlay')).toBeVisible();
-  await expect(page.locator('#busyText')).toHaveText(message);
   await expect(page.locator('#busyOverlay .swal2-popup')).toHaveCount(1);
   await expect(page.locator('#busyOverlay .swal2-title')).toHaveText(message);
-  await expect(page.locator('.loading-dialog:visible')).toHaveCount(0);
+  await expect(page.locator('#bootView')).toBeHidden();
+  await expect(page.locator('.swal2-popup:visible')).toHaveCount(1);
   expect(await page.locator('#busyOverlay').evaluate(element => element.matches(':modal'))).toBe(true);
   const style = await page.locator('#busyOverlay .swal2-title').evaluate(element => getComputedStyle(element));
   expect(Number.parseFloat(style.fontSize)).toBeGreaterThanOrEqual(18);
@@ -707,11 +709,58 @@ async function expectBusyDialog(page, message) {
 
 async function spinnerFrames(page, selector) {
   return page.locator(selector).evaluate(async element => {
-    const animation = element.getAnimations()[0];
+    const animation = element.getAnimations().find(item => item.effect?.getComputedTiming().iterations === Infinity);
     const first = { transform: getComputedStyle(element).transform, time: animation?.currentTime };
     await new Promise(resolve => setTimeout(resolve, 180));
     const second = { transform: getComputedStyle(element).transform, time: animation?.currentTime };
     return { first, second, animation: getComputedStyle(element).animationName };
+  });
+}
+
+async function loadingGeometry(page, popupSelector) {
+  return page.locator(popupSelector).evaluate(async popup => {
+    await Promise.all(popup.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations === 1).map(animation => animation.finished));
+    const box = element => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }; };
+    const title = popup.querySelector('.swal2-title');
+    const spinner = popup.querySelector('.swal2-loader');
+    const p = box(popup), t = box(title), s = box(spinner);
+    const spinnerStyle = getComputedStyle(spinner);
+    return { popup: p, title: t, spinner: s, spinnerSize: { width: spinnerStyle.width, height: spinnerStyle.height }, titleSize: getComputedStyle(title).fontSize,
+      titleLineHeight: getComputedStyle(title).lineHeight, popupLineHeight: getComputedStyle(popup).lineHeight,
+      spinnerColor: spinnerStyle.borderTopColor, after: getComputedStyle(popup, '::after').content,
+      centerX: p.x + p.width / 2 - innerWidth / 2, centerY: p.y + p.height / 2 - innerHeight / 2,
+      spinnerCenterX: s.x + s.width / 2 - p.x - p.width / 2,
+      gap: spinner.parentElement.getBoundingClientRect().y - t.y - t.height };
+  });
+}
+
+for (const width of [1440, 768, 390]) {
+  test(`actual Public SweetAlert loader matches Technician at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const network = await installIsolatedTechnician(page, { 'auth.login': heldResponse().respond });
+    await page.route('**/assets/js/app.js', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+    await page.route('https://unpkg.com/**', route => route.fulfill({ contentType: route.request().url().endsWith('.css') ? 'text/css' : 'text/javascript', body: '' }));
+    await page.route('https://cdn.jsdelivr.net/**', route => route.fulfill({ contentType: 'text/javascript', body: route.request().url().includes('sweetalert2') ? fs.readFileSync(path.join(root, 'assets/vendor/sweetalert2/sweetalert2.all.min.js')) : '' }));
+    await page.goto(origin);
+    await page.evaluate(async () => { const { showLoading } = await import('/assets/js/ui.js'); showLoading('กำลังเข้าสู่ระบบ...'); });
+    await expect(page.locator('body > .swal2-container .swal2-loader')).toBeVisible();
+    const publicGeometry = await loadingGeometry(page, 'body > .swal2-container .swal2-popup');
+    const directory = process.env.VWS_LOADING_SCREENSHOTS;
+    if (directory) { fs.mkdirSync(directory, { recursive: true }); await page.screenshot({ path: path.join(directory, `public-loading-${width}.png`) }); }
+    await openLogin(page);
+    await submitSyntheticLogin(page);
+    await expectBusyDialog(page, 'กำลังเข้าสู่ระบบ...');
+    const technicianGeometry = await loadingGeometry(page, '#busyOverlay .swal2-popup');
+    if (directory) await page.screenshot({ path: path.join(directory, `technician-loading-${width}.png`) });
+    for (const key of ['width', 'height']) expect(Math.abs(publicGeometry.popup[key] - technicianGeometry.popup[key]), key).toBeLessThanOrEqual(2);
+    expect(technicianGeometry.spinnerSize).toEqual(publicGeometry.spinnerSize);
+    for (const key of ['centerX', 'centerY', 'spinnerCenterX', 'gap']) expect(Math.abs(publicGeometry[key] - technicianGeometry[key]), key).toBeLessThanOrEqual(2);
+    expect(technicianGeometry.titleSize).toBe(publicGeometry.titleSize);
+    expect(technicianGeometry.spinnerColor).toBe(publicGeometry.spinnerColor);
+    expect(technicianGeometry.after).toBe('none');
+    console.log(`Loading geometry ${width}px`, JSON.stringify({ public: publicGeometry, technician: technicianGeometry }));
+    expect(network.blocked).toEqual([]);
+    expect(network.consoleWarnings).toEqual([]);
   });
 }
 
@@ -760,7 +809,7 @@ for (const viewport of [
       expect(frames.second.transform).toBe(frames.first.transform);
       hold.release();
       await expect(page.locator('#retryResumeButton')).toBeVisible();
-      await expect(page.locator('#bootView .loading-progress')).toBeHidden();
+      await expect(page.locator('#bootView .boot-actions')).toBeHidden();
       await expect(page.locator('#loginView')).toBeHidden();
     });
   });
@@ -779,17 +828,37 @@ test('login busy dialog survives pending authentication and clears on failure', 
   await expect(page.locator('#loginError')).toHaveText('Synthetic credentials rejected');
 });
 
+test('overlapping loading tokens retain the active Public popup until final cleanup', async ({ page }) => {
+  const network = await installIsolatedTechnician(page);
+  await openLogin(page);
+  await page.evaluate(() => {
+    window.firstLoading = window.VWSTechnicianUI.showLoading('กำลังโหลดข้อมูล...');
+    window.loadingPopup = document.querySelector('#busyOverlay .swal2-popup');
+    window.secondLoading = window.VWSTechnicianUI.showLoading('กำลังโหลดบัญชีช่าง...');
+  });
+  await expectBusyDialog(page, 'กำลังโหลดบัญชีช่าง...');
+  await page.evaluate(() => window.VWSTechnicianUI.closeLoading(window.firstLoading));
+  await expectBusyDialog(page, 'กำลังโหลดบัญชีช่าง...');
+  expect(await page.evaluate(() => window.loadingPopup === document.querySelector('#busyOverlay .swal2-popup'))).toBe(true);
+  await page.evaluate(() => window.VWSTechnicianUI.closeLoading(window.secondLoading));
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  expect(network.calls).toEqual([]);
+});
+
 test('reduced-motion busy dialog keeps a static cue and clears after successful login', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const hold = heldResponse(success({ token, user }));
   await installIsolatedTechnician(page, { 'auth.login': hold.respond });
   await openLogin(page);
   await submitSyntheticLogin(page);
   await expectBusyDialog(page, 'กำลังเข้าสู่ระบบ...');
-  await expect(page.locator('#busyOverlay .swal2-popup')).toHaveCSS('animation-duration', '1e-05s');
   const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
   expect(frames.animation).toBe('none');
   expect(frames.second.transform).toBe(frames.first.transform);
+  expect(await page.locator('#busyOverlay .swal2-popup').evaluate(element => getComputedStyle(element, '::after').content)).toBe('none');
+  const reducedDirectory = process.env.VWS_LOADING_SCREENSHOTS;
+  if (reducedDirectory) { fs.mkdirSync(reducedDirectory, { recursive: true }); await page.screenshot({ path: path.join(reducedDirectory, 'technician-loading-reduced-390.png') }); }
   const a11y = await new AxeBuilder({ page }).include('#busyOverlay').analyze();
   expect(a11y.violations).toEqual([]);
   hold.release();
@@ -893,7 +962,7 @@ test('account edit and action keep one animated dialog through nested list reloa
   await page.locator('#techDisplayName').fill('Updated Synthetic');
   await page.locator('#technicianForm button[type="submit"]').click();
   await expectBusyDialog(page, 'กำลังโหลดบัญชีช่าง...');
-  const firstAnimationTime = await page.locator('#busyOverlay .swal2-loader').evaluate(element => element.getAnimations()[0].currentTime);
+  const firstAnimationTime = await page.locator('#busyOverlay .swal2-loader').evaluate(element => element.getAnimations().find(item => item.effect?.getComputedTiming().iterations === Infinity)?.currentTime);
   const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
   expect(frames.second.time).toBeGreaterThan(frames.first.time);
   expect(frames.first.time).toBeGreaterThanOrEqual(firstAnimationTime);
@@ -1313,7 +1382,8 @@ test('saved valid session shows boot state before validation, never login flash'
   expect(network.calls.map(call => call.action)).toEqual(['auth.me', 'data.bootstrap', 'data.dashboard']);
 });
 
-test('saved session hides login before deferred application script executes', async ({ page }) => {
+for (const width of [1440, 768, 390]) test(`saved session hides login before deferred application script executes at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
   let releaseScript; const holdScript = new Promise(resolve => { releaseScript = resolve; });
   const holdMe = heldResponse(success({ user: managementUser }));
   const network = await installIsolatedTechnician(page, managementMocks({ 'auth.me': holdMe.respond }));
@@ -1321,20 +1391,25 @@ test('saved session hides login before deferred application script executes', as
   await page.route('**/technician/assets/technician.js', async route => { await holdScript; await route.fallback(); });
   await page.goto(`${origin}/technician/`, { waitUntil: 'commit' });
   await expect(page.locator('#bootView')).toBeVisible();
-  await captureArchitecture(page, 'technician-first-paint-fallback');
+  const directory = process.env.VWS_LOADING_SCREENSHOTS;
   await expect(page.locator('#loginView')).toBeHidden();
   await expect(page.locator('#appView')).toBeHidden();
   expect(network.calls).toEqual([]);
-  const fallback = await page.locator('#bootView .loading-dialog').evaluate(element => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height, titleSize: Number.parseFloat(getComputedStyle(element.querySelector('.loading-message')).fontSize) }));
+  const fallback = await loadingGeometry(page, '#bootView .swal2-popup');
+  if (directory) { fs.mkdirSync(directory, { recursive: true }); await page.screenshot({ path: path.join(directory, `technician-first-paint-${width}.png`) }); }
   releaseScript();
   await expect(page.locator('#busyOverlay')).toBeVisible();
   await expect(page.locator('#bootView')).toBeHidden();
-  const sweet = await page.locator('#busyOverlay .swal2-popup').evaluate(element => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height, titleSize: Number.parseFloat(getComputedStyle(element.querySelector('.swal2-title')).fontSize) }));
-  expect(Math.abs(fallback.width - sweet.width)).toBeLessThanOrEqual(2);
-  expect(Math.abs(fallback.height - sweet.height)).toBeLessThanOrEqual(30);
-  expect(Math.abs(fallback.titleSize - sweet.titleSize)).toBeLessThanOrEqual(2);
+  const sweet = await loadingGeometry(page, '#busyOverlay .swal2-popup');
+  if (directory) await page.screenshot({ path: path.join(directory, `technician-session-${width}.png`) });
+  for (const key of ['width', 'height']) expect(Math.abs(fallback.popup[key] - sweet.popup[key]), key).toBeLessThanOrEqual(2);
+  for (const key of ['centerX', 'centerY', 'gap']) expect(Math.abs(fallback[key] - sweet[key]), key).toBeLessThanOrEqual(2);
+  expect(fallback.titleSize).toBe(sweet.titleSize);
+  expect(fallback.spinnerColor).toBe(sweet.spinnerColor);
+  console.log(`First-paint/SweetAlert geometry ${width}px`, JSON.stringify({ fallback, sweet }));
   holdMe.release();
   await expect(page.locator('#appView')).toBeVisible();
+  expect(network.consoleWarnings).toEqual([]);
 });
 
 test('temporary resume failure retains token but never reveals dashboard', async ({ page }) => {

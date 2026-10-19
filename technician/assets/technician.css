@@ -309,25 +309,19 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
 .auth-submit { width: 100%; margin-top: 2px; }
 .auth-footnote { margin: 14px 0 0; color: #475569; text-align: center; font-size: 12px; }
 
-/* The Public-style loading dialog is shared by session verification and every busy operation. */
-.loading-overlay { position: fixed; z-index: 10000; inset: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); background: rgba(15,23,42,.48); backdrop-filter: blur(2px); }
-.busy-overlay { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border: 0; }
+/* First paint uses SweetAlert2's own popup, title and loader classes until its script is ready. */
+#bootView { background: var(--swal2-backdrop); }
+#bootView.hidden { display: none; }
+/* The Technician body uses 1.55; Public SweetAlert inherits Tailwind's 1.5. */
+#bootView .swal2-popup, #busyOverlay .swal2-popup { line-height: 1.5; }
+.boot-popup { display: grid; }
+.boot-actions { display: flex; }
+.boot-loader { display: flex; }
+.busy-overlay { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; }
 .busy-overlay:not([open]) { display: none; }
 .busy-overlay::backdrop { background: transparent; }
-.busy-overlay.swal-active { background: rgba(15,23,42,.48); }
-.busy-overlay.swal-active > .loading-dialog { display: none; }
-.busy-overlay .swal2-container { position: fixed; inset: 0; padding: 16px; }
-.technician-swal-loading { max-width: min(420px, calc(100vw - 32px)); border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 24px 64px rgba(15,23,42,.25); font-family: "Sarabun", sans-serif; }
-.technician-swal-loading .swal2-title { color: #1e293b; font-size: 19px; line-height: 1.55; overflow-wrap: anywhere; }
-.technician-swal-loading .swal2-loader { border-color: #0369a1 transparent #0369a1 transparent; }
 .technician-swal-toast { font-family: "Sarabun", sans-serif; font-size: 14px; }
-.loading-dialog { width: min(420px, 100%); display: grid; justify-items: center; gap: 19px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; padding: 28px 24px; text-align: center; box-shadow: 0 24px 64px rgba(15,23,42,.25); }
-.loading-message { margin: 0; color: #1e293b; font-size: 19px; font-weight: 700; line-height: 1.55; overflow-wrap: anywhere; }
-.boot-card .loading-message { max-width: 330px; font-size: 26.4px; }
-.loading-progress { display: grid; justify-items: center; gap: 8px; }
-.spinner { width: 2.2em; height: 2.2em; display: block; margin: 0 1.875em; border: .25em solid #0369a1; border-left-color: transparent; border-right-color: transparent; border-radius: 100%; animation: swal2-rotate-loading 1.5s linear infinite; }
-.reduced-motion-hint { display: none; color: #475569; font-size: 12px; }
-.boot-card p { margin: 0; font-size: 13px; }
+.boot-popup #bootError { margin: 1em 1.6em 0; font-size: 13px; }
 .toast-region { position: fixed; z-index: 11000; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: grid; gap: 7px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
 .toast { border: 1px solid #a7f3d0; border-radius: 10px; background: #ecfdf5; padding: 10px 12px; color: #065f46; font-size: 10px; font-weight: 700; box-shadow: 0 10px 30px rgba(15,23,42,.12); }
 .toast.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
@@ -435,10 +429,7 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-  .spinner { animation: none !important; transform: none !important; }
-  .technician-swal-loading .swal2-loader { animation: none !important; border-color: #0369a1 #bfdbfe #bfdbfe #bfdbfe; }
-  .technician-swal-loading::after { content: 'กำลังดำเนินการ โปรดรอสักครู่'; display: block; color: #475569; font-size: 12px; }
-  .reduced-motion-hint { display: block; }
+  .boot-loader, .busy-overlay .swal2-loader { animation: none !important; border-color: #2778c4 #bfdbfe #bfdbfe #bfdbfe; }
 }
 
 /* Mobile account menu: prevents the management-only actions from crowding the Public-style header. */

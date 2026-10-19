@@ -9,29 +9,23 @@
     const dialog = overlay();
     if (!operations.size) {
       if (window.Swal?.isVisible()) window.Swal.close();
-      dialog.classList.remove('swal-active');
       if (dialog.open) dialog.close();
       return;
     }
     const message = [...operations.values()].at(-1);
-    document.getElementById('busyText').textContent = message;
     // The target dialog is in the browser top layer. SweetAlert inside it stays
     // above edit/password dialogs without closing them or changing their data.
     if (!dialog.open) dialog.showModal();
     if (!window.Swal) return;
-    dialog.classList.add('swal-active');
-    if (window.Swal.isVisible()) {
-      const title = window.Swal.getTitle();
-      if (title && dialog.contains(title)) title.textContent = message;
-      else window.Swal.close();
-      if (title && dialog.contains(title)) return;
-    }
+    const popup = dialog.querySelector('.swal2-popup');
+    const title = popup?.querySelector('.swal2-title');
+    // A previous popup can remain in its hide animation after a completed operation.
+    if (title && !popup.classList.contains('swal2-hide')) { title.textContent = message; return; }
+    if (window.Swal.isVisible()) window.Swal.close();
     window.Swal.fire({
       target: dialog, title: message, showConfirmButton: false,
-      backdrop: false,
       allowOutsideClick: false, allowEscapeKey: false,
-      showClass: { popup: '' }, hideClass: { popup: '' },
-      customClass: { popup: 'technician-swal-loading' },
+      hideClass: { popup: '' },
       didOpen: () => window.Swal.showLoading()
     });
   }
