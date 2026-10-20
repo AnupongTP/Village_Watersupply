@@ -76,6 +76,29 @@ export function initSectionNavigation() {
   const sections = links
     .map(link => document.querySelector(link.getAttribute('href')))
     .filter(Boolean);
+  let preferredId = window.location.hash.slice(1);
+  let sectionRaf = 0;
+  const updateActiveSection = () => {
+    sectionRaf = 0;
+    if (!sections.length) return;
+    const offset = (document.getElementById('appHeader')?.getBoundingClientRect().height || 0) + 24;
+    let active = sections[0];
+    let top = -Infinity;
+    for (const section of sections) {
+      const sectionTop = section.getBoundingClientRect().top;
+      if (sectionTop > offset) continue;
+      if (sectionTop > top + 1) {
+        active = section;
+        top = sectionTop;
+      } else if (Math.abs(sectionTop - top) <= 1 && section.id === preferredId) {
+        active = section;
+      }
+    }
+    links.forEach(link => link.classList.toggle('active', link.hash === `#${active.id}`));
+  };
+  const scheduleActiveSection = () => {
+    if (!sectionRaf) sectionRaf = requestAnimationFrame(updateActiveSection);
+  };
 
   links.forEach(link => {
     link.addEventListener('click', event => {
@@ -83,31 +106,22 @@ export function initSectionNavigation() {
       const target = selector ? document.querySelector(selector) : null;
       if (!target) return;
       event.preventDefault();
+      preferredId = target.id;
       scrollToElement(target, true);
       history.replaceState?.(null, '', selector);
+      scheduleActiveSection();
     });
   });
 
   window.addEventListener('hashchange', () => {
+    preferredId = window.location.hash.slice(1);
     syncHashNavigation({ smooth: false });
+    scheduleActiveSection();
   });
 
-  if (sections.length && 'IntersectionObserver' in window) {
-    const observer = new IntersectionObserver(entries => {
-      const visible = entries
-        .filter(entry => entry.isIntersecting)
-        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-      if (!visible) return;
-      const targetId = `#${visible.target.id}`;
-      links.forEach(link => {
-        link.classList.toggle('active', link.getAttribute('href') === targetId);
-      });
-    }, {
-      rootMargin: '-24% 0px -66% 0px',
-      threshold: [0, 0.1, 0.3, 0.6]
-    });
-    sections.forEach(section => observer.observe(section));
-  }
+  window.addEventListener('scroll', scheduleActiveSection, { passive: true });
+  window.addEventListener('resize', scheduleActiveSection, { passive: true });
+  scheduleActiveSection();
 }
 
 export function initStickyMetrics() {

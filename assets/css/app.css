@@ -16,6 +16,75 @@ body.drawer-open { overflow: hidden; }
   scroll-margin-top: calc(var(--app-header-height) + var(--scroll-gap));
 }
 
+/* Shared compact analytical layout for the Public and Technician dashboards. */
+.dashboard-section > .analysis-heading {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #bfdbfe;
+}
+.analysis-heading-main { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.analysis-heading-main > div { min-width: 0; }
+.analysis-heading-icon {
+  display: grid; place-items: center; flex: none;
+  width: 28px; height: 28px;
+  border: 1px solid #bfdbfe; border-radius: 8px;
+  background: #eff6ff; color: #0369a1; font-size: 13px;
+}
+.analysis-heading .section-description { max-width: 82ch; font-size: 12px; }
+
+.compact-overview-summary { align-content: start; }
+.compact-overview .kpi-card {
+  min-height: 78px;
+  gap: 9px;
+  padding: 10px;
+}
+.compact-overview .kpi-icon { width: 32px; height: 32px; }
+.compact-overview .kpi-label { font-size: 11px; }
+.compact-overview .kpi-value { font-size: 26px; }
+.compact-overview #alerts { padding: 11px; }
+.compact-overview #alerts > p { margin-bottom: 8px; }
+.compact-overview .watch-mini { min-height: 48px; gap: 9px; padding: 7px 9px; }
+.compact-overview .watch-icon { width: 30px; height: 30px; }
+.compact-overview .watch-mini-label { font-size: 11px; }
+.compact-overview .watch-mini strong { font-size: 18px; }
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+.analysis-card {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-top: 2px solid #93c5fd;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .05);
+}
+.analysis-card-heading { display: flex; align-items: flex-start; gap: 9px; min-height: 50px; margin-bottom: 8px; }
+.analysis-card-heading > div { min-width: 0; }
+.analysis-card-heading h2 { margin: 0; color: #0f172a; font-size: 16px; font-weight: 800; line-height: 1.4; }
+.analysis-card-heading p { margin: 2px 0 0; color: #64748b; font-size: 12px; line-height: 1.4; }
+.analysis-chart-wrap--district { height: 290px; }
+.analysis-chart-wrap--type { height: 300px; }
+.analysis-chart-wrap--donut { width: 100%; max-width: 280px; height: 200px; margin-inline: auto; }
+.compact-watchlist { margin-top: 16px; }
+
+@media (min-width: 1200px) {
+  .compact-overview { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; }
+  .compact-overview .monitoring-actions { grid-template-columns: minmax(0, 1fr); }
+  .analysis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .analysis-card { padding: 11px; }
+  .analysis-card-heading { min-height: 0; }
+  .analysis-chart-wrap--district { height: 340px; }
+  .analysis-chart-wrap--type { height: 340px; }
+}
+
 /* Explicit stacking context prevents Leaflet panes/controls from escaping over sticky UI. */
 .map-panel,
 .map-stack {
