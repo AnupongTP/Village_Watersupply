@@ -1,83 +1,84 @@
-/* Authenticated Technician map. Presentation only: the caller owns the Management dataset. */
+/* Authenticated Technician map. The Management caller owns the dataset and detail access. */
 (() => {
   'use strict';
 
-  const HOME = [19.171194, 99.874972];
-  const PHAYAO = { minLat: 18.70, maxLat: 20.00, minLng: 99.40, maxLng: 100.70 };
   let map;
   let markerLayer;
+  let focusLayer;
+  let userLocationLayer;
   let resizeObserver;
   let markers = new Map();
   let onDetail;
-  let onLocationError;
-  let userLocationLayer;
+  let findSystem;
+  let villageForSystem;
+  let initRequested = false;
+  let pendingRender = null;
+  let pendingFocus = null;
   let locationPending = false;
+  let locationGeneration = 0;
+  let presentation;
+  let navigation;
+  let userLocation;
+  let labels;
+
+  // This classic script is loaded before technician.js. Queue its first render until
+  // the local Public presentation modules are ready, without changing script order.
+  Promise.all([
+    import('../../assets/js/map-presentation.js'),
+    import('../../assets/js/navigation.js'),
+    import('../../assets/js/user-location.js'),
+    import('../../assets/js/labels.js')
+  ]).then(modules => {
+    [presentation, navigation, userLocation, labels] = modules;
+    if (!initRequested) return;
+    if (!initializeMap()) return;
+    if (pendingRender) {
+      const [systems, filtered] = pendingRender;
+      pendingRender = null;
+      renderNow(systems, filtered);
+    }
+    if (pendingFocus !== null) {
+      const id = pendingFocus;
+      pendingFocus = null;
+      focus(id);
+    }
+  }).catch(() => {
+    const empty = document.getElementById('technicianMapEmpty');
+    if (empty && initRequested) {
+      empty.textContent = 'ไม่สามารถโหลดแผนที่ได้ในขณะนี้';
+      empty.classList.remove('hidden');
+    }
+  });
 
   function coordinates(system) {
-    if (system?.latitude == null || system?.longitude == null || String(system.latitude).trim() === '' || String(system.longitude).trim() === '') return null;
+    if (system?.latitude == null || system?.longitude == null ||
+        String(system.latitude).trim() === '' || String(system.longitude).trim() === '') return null;
     const lat = Number(system.latitude);
     const lng = Number(system.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+        lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
     return [lat, lng];
   }
 
-  function color(system) {
-    if (system.operational_status === 'NOT_WORKING') return '#dc2626';
-    if (system.water_quantity === 'INSUFFICIENT') return '#d97706';
-    if (system.drinking_water_quality === 'FAIL') return '#e11d48';
-    if (system.operational_status === 'WORKING') return '#059669';
-    return '#64748b';
-  }
-
-  function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  }
-
-  function name(system) { return String(system.system_name || system.village?.village_name || 'ระบบประปาหมู่บ้าน'); }
-
-  function popup(system) {
-    const village = system.village || {};
-    const status = system.operational_status === 'NOT_WORKING' ? 'ใช้งานไม่ได้' : system.operational_status === 'WORKING' ? 'ใช้งานได้' : 'ไม่มีข้อมูล';
-    const quantity = system.water_quantity === 'INSUFFICIENT' ? 'ไม่เพียงพอ' : system.water_quantity === 'SUFFICIENT' ? 'เพียงพอ' : 'ไม่มีข้อมูล';
-    const quality = system.drinking_water_quality === 'FAIL' ? 'ไม่ผ่าน' : system.drinking_water_quality === 'PASS' ? 'ผ่าน' : 'ไม่มีข้อมูล';
-    const visibility = system.publicVisible === false ? 'ไม่แสดงใน Public Dashboard' : system.publicVisible === true ? 'แสดงใน Public Dashboard' : 'ไม่ทราบสถานะการแสดง Public';
-    const point = coordinates(system);
-    const suspicious = point && (point[0] < PHAYAO.minLat || point[0] > PHAYAO.maxLat || point[1] < PHAYAO.minLng || point[1] > PHAYAO.maxLng);
-    return `<div class="map-popup technician-map-popup">
-      <strong>${escapeHtml(name(system))}</strong>
-      <div class="popup-muted">${escapeHtml(village.village_name || 'ไม่ระบุหมู่บ้าน')}</div>
-      <div class="popup-muted">${escapeHtml([village.subdistrict && `ต.${village.subdistrict}`, village.district && `อ.${village.district}`].filter(Boolean).join(' · ') || '-')}</div>
-      <hr><div>สถานะระบบ: ${status}</div><div>ปริมาณน้ำ: ${quantity}</div><div>คุณภาพน้ำดื่ม: ${quality}</div>
-      <div>การแสดง Public: ${visibility}</div>${suspicious?'<div class="map-coordinate-warning">พิกัดอยู่นอกพื้นที่จังหวัดพะเยา โปรดตรวจสอบ</div>':''}
-      <div class="map-popup-actions"><button type="button" class="map-popup-action map-popup-action-primary" data-technician-map-detail="${escapeHtml(system.system_id)}">ดูรายละเอียด</button></div>
-    </div>`;
-  }
-
-  function legend() {
-    const Legend = L.Control.extend({
-      options: { position: 'bottomright' },
-      onAdd() {
-        const element = L.DomUtil.create('div', 'map-legend');
-        element.innerHTML = '<strong>สถานะจุด</strong>' + [
-          ['#dc2626', 'ใช้งานไม่ได้'], ['#d97706', 'น้ำไม่เพียงพอ'],
-          ['#e11d48', 'น้ำดื่มไม่ผ่าน'], ['#059669', 'ใช้งานได้'], ['#64748b', 'ไม่มีข้อมูล']
-        ].map(([value, label]) => `<div class="map-legend-row"><span class="map-legend-dot" style="background:${value}"></span><span>${label}</span></div>`).join('');
-        return element;
-      }
-    });
-    new Legend().addTo(map);
-  }
-
-  function init(detailHandler, locationErrorHandler) {
+  function init(detailHandler, systemLookup, villageLookup) {
     onDetail = detailHandler;
-    onLocationError = locationErrorHandler;
+    findSystem = systemLookup;
+    villageForSystem = villageLookup;
+    initRequested = true;
+    if (presentation) return initializeMap();
+    return true;
+  }
+
+  function initializeMap() {
     if (map) return true;
     if (!window.L) {
-      document.getElementById('technicianMapEmpty').textContent = 'ไม่สามารถโหลดแผนที่ได้ในขณะนี้';
-      document.getElementById('technicianMapEmpty').classList.remove('hidden');
+      const empty = document.getElementById('technicianMapEmpty');
+      empty.textContent = 'ไม่สามารถโหลดแผนที่ได้ในขณะนี้';
+      empty.classList.remove('hidden');
       return false;
     }
-    map = L.map('technicianWaterMap', { zoomControl: true, minZoom: 7, preferCanvas: false }).setView(HOME, 13);
+    map = L.map('technicianWaterMap', { zoomControl: true, minZoom: 7, preferCanvas: false })
+      .setView(presentation.HOME_VIEW.center, presentation.HOME_VIEW.zoom);
     const satellite = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
     }).addTo(map);
@@ -86,98 +87,170 @@
     });
     L.control.layers({ 'ดาวเทียม': satellite, 'แผนที่ถนน': street }, null, { position: 'topright', collapsed: true }).addTo(map);
     markerLayer = L.layerGroup().addTo(map);
+    focusLayer = L.layerGroup().addTo(map);
     userLocationLayer = L.layerGroup().addTo(map);
-    legend();
+    presentation.addMapLegend(map);
     document.getElementById('technicianWaterMap').addEventListener('click', event => {
-      const button = event.target.closest('[data-technician-map-detail]');
-      if (button) { map.closePopup(); onDetail?.(button.dataset.technicianMapDetail); }
+      const button = event.target.closest('[data-map-action]');
+      if (!button || button.disabled) return;
+      const system = findSystem?.(button.dataset.systemId);
+      if (!system) return;
+      if (button.dataset.mapAction === 'detail') {
+        map.closePopup();
+        onDetail?.(String(system.system_id));
+      } else if (button.dataset.mapAction === 'navigate') {
+        navigation.openNavigation({
+          latitude: system.latitude,
+          longitude: system.longitude,
+          label: labels.systemDisplayName(system, villageForSystem?.(system))
+        });
+      }
     });
-    document.getElementById('technicianMapFit').addEventListener('click', () => fit());
+    document.getElementById('technicianMapFit').addEventListener('click', fit);
     document.getElementById('technicianMapLocate').addEventListener('click', locate);
     resizeObserver = new ResizeObserver(() => requestAnimationFrame(() => map?.invalidateSize({ pan: false })));
     resizeObserver.observe(document.getElementById('technicianWaterMap'));
     return true;
   }
 
-  function locate() {
-    if (locationPending) return;
-    if (!navigator.geolocation || !window.isSecureContext) {
-      onLocationError?.('ตำแหน่งฉันต้องใช้เบราว์เซอร์ที่รองรับและการเชื่อมต่อแบบ HTTPS หรือ localhost');
-      return;
-    }
-    const button = document.getElementById('technicianMapLocate');
-    locationPending = true;
-    button.disabled = true;
-    button.setAttribute('aria-busy', 'true');
-    button.querySelector('span').textContent = 'กำลังค้นหา...';
-    const finish = () => { locationPending = false; button.disabled = false; button.setAttribute('aria-busy', 'false'); button.querySelector('span').textContent = 'ตำแหน่งฉัน'; };
-    try { navigator.geolocation.getCurrentPosition(position => {
-      const lat = position.coords?.latitude, lng = position.coords?.longitude;
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) { onLocationError?.('ไม่พบพิกัดตำแหน่งปัจจุบันที่ใช้ได้'); finish(); return; }
-      userLocationLayer.clearLayers();
-      L.circleMarker([lat, lng], { radius: 8.5, weight: 3, color: '#fff', fillColor: '#0284c7', fillOpacity: 1, className: 'user-location-marker' })
-        .bindPopup('ตำแหน่งของคุณ').addTo(userLocationLayer).openPopup();
-      map.setView([lat, lng], 16, { animate: false });
-      finish();
-    }, error => {
-      const message = error?.code === 1 ? 'ไม่ได้รับอนุญาตให้ใช้ตำแหน่งปัจจุบัน' : error?.code === 2 ? 'ไม่สามารถระบุตำแหน่งปัจจุบันได้' : error?.code === 3 ? 'การค้นหาตำแหน่งใช้เวลานานเกินไป' : 'ไม่สามารถใช้ตำแหน่งปัจจุบันได้';
-      onLocationError?.(message);
-      finish();
-    }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 }); }
-    catch (_) { onLocationError?.('ไม่สามารถใช้ตำแหน่งปัจจุบันได้'); finish(); }
+  function popup(system) {
+    const point = coordinates(system);
+    const outside = point && !presentation.inPhayao({ lat: point[0], lng: point[1] });
+    const warning = outside
+      ? '<div class="map-coordinate-warning">พิกัดอยู่นอกพื้นที่จังหวัดพะเยา โปรดตรวจสอบ</div>' : '';
+    return presentation.buildMapPopup(system, villageForSystem?.(system), Boolean(point), warning);
   }
 
-  function fit(preferLocal = false) {
-    if (!map) return;
-    const all = [...markers.values()].map(marker => marker.getLatLng());
-    const local = all.filter(point => point.lat >= PHAYAO.minLat && point.lat <= PHAYAO.maxLat && point.lng >= PHAYAO.minLng && point.lng <= PHAYAO.maxLng);
-    const bounds = preferLocal && local.length ? local : all;
-    if (!bounds.length) { map.setView(HOME, 13, { animate: false }); return; }
-    if (bounds.length === 1) map.setView(bounds[0], 15, { animate: false });
-    else map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14, animate: false });
+  function createMarker(system, point) {
+    const marker = L.circleMarker(point, presentation.systemMarkerOptions(system))
+      .bindPopup(popup(system), presentation.SYSTEM_POPUP_OPTIONS);
+    return marker;
+  }
+
+  function addMarker(marker, layer, system) {
+    marker.addTo(layer);
+    const element = marker.getElement();
+    if (!element) return marker;
+    element.dataset.systemId = String(system.system_id);
+    element.setAttribute('tabindex', '0');
+    element.setAttribute('role', 'button');
+    element.setAttribute('aria-label', `ดูตำแหน่ง ${labels.systemDisplayName(system, villageForSystem?.(system))}`);
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        marker.openPopup();
+      }
+    });
+    return marker;
   }
 
   function render(systems, filtered = false) {
-    if (!map) return;
+    if (!initRequested || !map) {
+      pendingRender = [systems, filtered];
+      return;
+    }
+    renderNow(systems, filtered);
+  }
+
+  function renderNow(systems, filtered) {
     markerLayer.clearLayers();
+    focusLayer.clearLayers();
     markers = new Map();
     for (const system of systems) {
       const point = coordinates(system);
       if (!point || !system.system_id || markers.has(String(system.system_id))) continue;
-      const marker = L.circleMarker(point, {
-        radius: 6.5, weight: 2.2, color: '#fff', opacity: 1,
-        fillColor: color(system), fillOpacity: .95, className: 'water-system-marker'
-      }).bindPopup(popup(system), { maxWidth: 350, minWidth: 230, autoPanPadding: [24, 24] });
-      marker.addTo(markerLayer);
-      const element = marker.getElement();
-      if (element) {
-        element.dataset.systemId = String(system.system_id);
-        element.setAttribute('tabindex', '0');
-        element.setAttribute('role', 'button');
-        element.setAttribute('aria-label', `ดูตำแหน่ง ${name(system)}`);
-        element.addEventListener('keydown', event => {
-          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); marker.openPopup(); }
-        });
-      }
+      const marker = addMarker(createMarker(system, point), markerLayer, system);
       markers.set(String(system.system_id), marker);
     }
     const count = markers.size;
-    document.getElementById('technicianMapScope').textContent = `${filtered ? 'กรองตามรายการปัจจุบัน · ' : 'แสดงทุกระบบ · '}${count.toLocaleString('th-TH')} จุดที่มีพิกัดใช้งานได้ รวมรายการที่ไม่แสดงใน Public`;
+    document.getElementById('technicianMapScope').textContent =
+      `${filtered ? 'กรองตามรายการปัจจุบัน · ' : 'แสดงทุกระบบ · '}${count.toLocaleString('th-TH')} จุดที่มีพิกัดใช้งานได้ รวมรายการที่ไม่แสดงใน Public`;
     document.getElementById('technicianMapEmpty').classList.toggle('hidden', count > 0);
-    fit(true);
+
+    const local = [...markers.values()].map(marker => marker.getLatLng()).filter(presentation.inPhayao);
+    if (filtered && local.length) presentation.fitMapPoints(map, local);
+    else goHome();
     requestAnimationFrame(() => map.invalidateSize({ pan: false }));
   }
 
+  function goHome() {
+    map?.setView(presentation.HOME_VIEW.center, presentation.HOME_VIEW.zoom, { animate: false });
+  }
+
+  function fit() {
+    if (!map) return;
+    const local = [...markers.values()].map(marker => marker.getLatLng()).filter(presentation.inPhayao);
+    if (local.length) presentation.fitMapPoints(map, local);
+    else goHome();
+  }
+
   function focus(systemId) {
-    const marker = markers.get(String(systemId));
-    if (!marker) return false;
+    const system = findSystem?.(systemId);
+    const point = coordinates(system);
+    if (!initRequested || !system || !point) return false;
+    if (!map) {
+      pendingFocus = systemId;
+      return true;
+    }
+    focusLayer.clearLayers();
+    const marker = markers.get(String(systemId)) || addMarker(createMarker(system, point), focusLayer, system);
     requestAnimationFrame(() => {
+      if (!initRequested || findSystem?.(systemId) !== system) return;
       map.invalidateSize({ pan: false });
-      map.setView(marker.getLatLng(), 16, { animate: false });
+      map.setView(marker.getLatLng(), 16, { animate: true });
       marker.openPopup();
     });
     return true;
   }
 
-  window.VWSTechnicianMap = { init, render, fit, focus, invalidate: () => map?.invalidateSize({ pan: false }), coordinates, markerCount: () => markers.size, point: id => markers.get(String(id))?.getLatLng() || null };
+  async function locate() {
+    if (!map || locationPending) return false;
+    const button = document.getElementById('technicianMapLocate');
+    const generation = locationGeneration;
+    locationPending = true;
+    presentation.setUserLocationButtonBusy(button, true);
+    try {
+      const position = await userLocation.requestCurrentUserPosition();
+      if (generation !== locationGeneration) return false;
+      const lat = Number(position.latitude);
+      const lng = Number(position.longitude);
+      userLocationLayer.clearLayers();
+      const marker = L.circleMarker([lat, lng], presentation.userLocationMarkerOptions())
+        .bindPopup(presentation.userLocationPopup(position), { maxWidth: 310, minWidth: 240 })
+        .addTo(userLocationLayer);
+      map.setView([lat, lng], 16, { animate: true });
+      marker.openPopup();
+      return true;
+    } catch (error) {
+      if (generation === locationGeneration) {
+        presentation.showUserLocationError(error, userLocation.userLocationErrorMessage);
+      }
+      return false;
+    } finally {
+      if (generation === locationGeneration) {
+        locationPending = false;
+        presentation.setUserLocationButtonBusy(button, false);
+      }
+    }
+  }
+
+  function clear() {
+    initRequested = false;
+    pendingRender = null;
+    pendingFocus = null;
+    locationGeneration++;
+    locationPending = false;
+    if (presentation) presentation.setUserLocationButtonBusy(document.getElementById('technicianMapLocate'), false);
+    markerLayer?.clearLayers();
+    focusLayer?.clearLayers();
+    userLocationLayer?.clearLayers();
+    markers = new Map();
+  }
+
+  window.VWSTechnicianMap = {
+    init, render, fit, focus, clear, coordinates,
+    invalidate: () => map?.invalidateSize({ pan: false }),
+    markerCount: () => markers.size,
+    point: id => markers.get(String(id))?.getLatLng() || null
+  };
 })();

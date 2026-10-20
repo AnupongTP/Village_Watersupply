@@ -187,7 +187,6 @@ textarea { resize: vertical; }
 .technician-section-anchor { min-height: 1px; }
 #technicianWaterMap { width: 100%; height: 100%; }
 .technician-map-empty { margin: 8px 0 0; color: #475569; font-size: 13px; }
-.technician-map-popup { min-width: 210px; }
 
 /* Centered management dialogs. */
 .modal { position: fixed; inset: 0; width: min(560px, calc(100vw - 24px)); max-width: calc(100vw - 24px); height: fit-content; max-height: min(88vh, 820px); max-height: min(88dvh, 820px); margin: auto; border: 0; border-radius: 14px; background: transparent; padding: 0; overflow: visible; }
@@ -269,7 +268,6 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
 }
 
 @media (max-width: 767px) {
-  #technicianWaterMap .map-legend { display: block; max-width: 110px; padding: 5px 7px; }
   .topbar-actions { gap: 5px; }
   .topbar-actions .btn { width: 44px; min-height: 44px; padding: 0; }
   .desktop-label { display: none; }

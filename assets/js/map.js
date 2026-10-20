@@ -1,18 +1,15 @@
 import { AppState } from './state.js';
-import {
-  operationalStatusLabel,
-  qualityLabel,
-  quantityLabel,
-  systemTypeLabel,
-  systemDisplayName,
-  villageDisplayName,
-  safeDisplayText
-} from './labels.js';
+import { systemDisplayName } from './labels.js';
 import { scrollToSectionById } from './ui.js';
 import { openDrawer } from './drawer.js';
 import { buildSystemDetailHtml } from './system-detail.js';
 import { openNavigation } from './navigation.js';
 import { requestCurrentUserPosition, userLocationErrorMessage } from './user-location.js';
+import {
+  HOME_VIEW, PHAYAO_BOUNDS, SYSTEM_POPUP_OPTIONS, systemMarkerOptions,
+  buildMapPopup, addMapLegend, fitMapPoints, userLocationMarkerOptions,
+  userLocationPopup, setUserLocationButtonBusy, showUserLocationError
+} from './map-presentation.js';
 
 let map;
 let markerLayer;
@@ -21,15 +18,6 @@ let userLocationMarker;
 let markerBySystemId = new Map();
 let mapActionsBound = false;
 let userLocationRequestInFlight = false;
-
-const HOME_VIEW = { center: [19.171194, 99.874972], zoom: 13 };
-
-const PHAYAO_BOUNDS = {
-  minLat: 18.70,
-  maxLat: 20.00,
-  minLng: 99.40,
-  maxLng: 100.70
-};
 
 export function initMap() {
   if (map) return;
@@ -65,7 +53,7 @@ export function initMap() {
 
   markerLayer = L.layerGroup().addTo(map);
   userLocationLayer = L.layerGroup().addTo(map);
-  addLegend();
+  addMapLegend(map);
   bindMapActions();
 
   const resizeObserver = new ResizeObserver(() => {
@@ -89,21 +77,9 @@ export function renderMap() {
     const lat = Number(system.latitude);
     const lng = Number(system.longitude);
 
-    const marker = L.circleMarker([lat, lng], {
-      radius: 6.5,
-      weight: 2.2,
-      color: '#ffffff',
-      opacity: 1,
-      fillColor: getMarkerColor(system),
-      fillOpacity: .95,
-      className: 'water-system-marker'
-    });
-
-    marker.bindPopup(buildPopup(system), {
-      maxWidth: 350,
-      minWidth: 260,
-      autoPanPadding: [24, 24]
-    });
+    const village = AppState.data.villages.find(v => v.village_id === system.village_id);
+    const marker = L.circleMarker([lat, lng], systemMarkerOptions(system));
+    marker.bindPopup(buildMapPopup(system, village, hasUsableCoordinate(system)), SYSTEM_POPUP_OPTIONS);
 
     marker.addTo(markerLayer);
     markerBySystemId.set(String(system.system_id), marker);
@@ -111,7 +87,7 @@ export function renderMap() {
   });
 
   if (hasActiveMapFilter() && bounds.length) {
-    fitBoundsFromArray(bounds);
+    fitMapPoints(map, bounds);
   } else {
     goHome();
   }
@@ -133,7 +109,7 @@ export async function locateUser() {
     showUserLocation(position);
     return true;
   } catch (error) {
-    showUserLocationError(error);
+    showUserLocationError(error, userLocationErrorMessage);
     return false;
   } finally {
     userLocationRequestInFlight = false;
@@ -148,26 +124,8 @@ export function showUserLocation(position) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
 
   userLocationLayer?.clearLayers();
-  userLocationMarker = L.circleMarker([lat, lng], {
-    radius: 8.5,
-    weight: 3,
-    color: '#ffffff',
-    opacity: 1,
-    fillColor: '#0284c7',
-    fillOpacity: 1,
-    className: 'user-location-marker'
-  });
-
-  const accuracy = Number(position?.accuracy);
-  const accuracyText = Number.isFinite(accuracy)
-    ? `<div class="popup-muted">ความแม่นยำโดยประมาณ ${formatDistance(accuracy)}</div>`
-    : '';
-
-  userLocationMarker.bindPopup(`
-    <div class="map-popup user-location-popup">
-      <strong>ตำแหน่งของคุณ</strong>
-      ${accuracyText}
-    </div>`, { maxWidth: 310, minWidth: 240 });
+  userLocationMarker = L.circleMarker([lat, lng], userLocationMarkerOptions());
+  userLocationMarker.bindPopup(userLocationPopup(position), { maxWidth: 310, minWidth: 240 });
 
   userLocationMarker.addTo(userLocationLayer);
   map.setView([lat, lng], 16, { animate: true });
@@ -192,7 +150,7 @@ export function fitVisiblePoints() {
     return;
   }
 
-  fitBoundsFromArray(bounds);
+  fitMapPoints(map, bounds);
 }
 
 export function focusSystem(systemId) {
@@ -284,21 +242,6 @@ function findSystem(systemId) {
   return AppState.data.waterSystems.find(system => String(system.system_id) === String(systemId));
 }
 
-function fitBoundsFromArray(bounds) {
-  if (!map || !bounds.length) return;
-
-  if (bounds.length === 1) {
-    map.setView(bounds[0], 15, { animate: false });
-    return;
-  }
-
-  map.fitBounds(bounds, {
-    padding: [28, 28],
-    maxZoom: 14,
-    animate: false
-  });
-}
-
 function hasActiveMapFilter() {
   const f = AppState.filters || {};
   return Boolean(
@@ -312,133 +255,7 @@ function hasActiveMapFilter() {
   );
 }
 
-function getMarkerColor(system) {
-  if (system.operational_status === 'NOT_WORKING') return '#dc2626';
-  if (system.water_quantity === 'INSUFFICIENT') return '#d97706';
-  if (system.drinking_water_quality === 'FAIL') return '#e11d48';
-  if (system.operational_status === 'WORKING') return '#059669';
-  return '#64748b';
-}
-
-function buildPopup(system) {
-  const village = AppState.data.villages.find(v => v.village_id === system.village_id);
-  const displayName = systemDisplayName(system, village);
-  const usableCoordinate = hasUsableCoordinate(system);
-
-  return `
-    <div class="map-popup">
-      <strong>${escapeHtml(displayName)}</strong>
-      <div class="popup-muted">${escapeHtml(villageDisplayName(village))}</div>
-      <div class="popup-muted">${escapeHtml(areaLabel(village))}</div>
-      <hr>
-      <div>ประเภทระบบ: ${escapeHtml(systemTypeLabel(system.system_type))}</div>
-      <div>สถานะระบบ: ${escapeHtml(operationalStatusLabel(system.operational_status))}</div>
-      <div>คุณภาพน้ำดื่ม: ${escapeHtml(qualityLabel(system.drinking_water_quality))}</div>
-      <div>ปริมาณน้ำ: ${escapeHtml(quantityLabel(system.water_quantity))}</div>
-      <div>ครัวเรือนรับน้ำ: ${formatNumber(system.households_served)}</div>
-      <div class="map-popup-actions">
-        <button
-          type="button"
-          class="map-popup-action map-popup-action-secondary"
-          data-map-action="detail"
-          data-system-id="${escapeHtml(system.system_id)}"
-          aria-label="ดูรายละเอียด ${escapeHtml(displayName)}"
-        >
-          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
-          รายละเอียด
-        </button>
-        <button
-          type="button"
-          class="map-popup-action map-popup-action-primary"
-          data-map-action="navigate"
-          data-system-id="${escapeHtml(system.system_id)}"
-          ${usableCoordinate ? '' : 'disabled'}
-          aria-label="นำทางไปยัง ${escapeHtml(displayName)}"
-        >
-          <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i>
-          นำทาง
-        </button>
-      </div>
-    </div>`;
-}
-
-function addLegend() {
-  const Legend = L.Control.extend({
-    options: { position: 'bottomright' },
-
-    onAdd() {
-      const div = L.DomUtil.create('div', 'map-legend');
-      div.innerHTML = `
-        <strong>สถานะจุด</strong>
-        ${legendRow('#dc2626', 'ใช้การไม่ได้')}
-        ${legendRow('#d97706', 'น้ำไม่เพียงพอ')}
-        ${legendRow('#e11d48', 'น้ำดื่มไม่ผ่าน')}
-        ${legendRow('#059669', 'ใช้การได้')}
-        ${legendRow('#64748b', 'ไม่มีข้อมูล')}`;
-      return div;
-    }
-  });
-
-  map.addControl(new Legend());
-}
-
-function legendRow(color, label) {
-  return `<div class="map-legend-row"><span class="map-legend-dot" style="background:${color}"></span><span>${label}</span></div>`;
-}
-
-function areaLabel(village) {
-  const parts = [];
-  if (village?.district) parts.push(`อ.${safeDisplayText(village.district)}`);
-  if (village?.local_authority) parts.push(safeDisplayText(village.local_authority));
-  return parts.join(' • ') || '-';
-}
-
-function formatNumber(value) {
-  if (isBlank(value)) return '-';
-  const n = Number(value);
-  return Number.isFinite(n) ? n.toLocaleString('th-TH') : escapeHtml(value);
-}
-
-function formatDistance(meters) {
-  const value = Math.max(0, Number(meters) || 0);
-  if (value >= 1000) return `${(value / 1000).toLocaleString('th-TH', { maximumFractionDigits: 1 })} กม.`;
-  return `${Math.round(value).toLocaleString('th-TH')} ม.`;
-}
-
-function setUserLocationButtonBusy(button, busy) {
-  if (!button) return;
-  button.disabled = busy;
-  button.setAttribute('aria-busy', String(busy));
-  const icon = button.querySelector('i');
-  const label = button.querySelector('[data-user-location-label]');
-  icon?.classList.toggle('fa-spin', busy);
-  if (label) label.textContent = busy ? 'กำลังค้นหา...' : 'ตำแหน่งฉัน';
-}
-
-function showUserLocationError(error) {
-  const text = userLocationErrorMessage(error);
-  if (window.Swal) {
-    Swal.fire({
-      icon: 'info',
-      title: 'ไม่สามารถใช้ตำแหน่งปัจจุบันได้',
-      text,
-      confirmButtonText: 'ปิด',
-      confirmButtonColor: '#0369a1'
-    });
-    return;
-  }
-  window.alert(text);
-}
-
 function isBlank(value) {
   return value === '' || value === null || value === undefined;
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}

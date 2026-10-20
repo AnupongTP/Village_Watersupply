@@ -118,7 +118,7 @@
   }
   function unwrap(response){ if (!response || response.success !== true){ const err=new Error(response?.error?.message || 'คำขอไม่สำเร็จ'); err.code=response?.error?.code || 'UNKNOWN'; err.details=response?.error?.details || {}; throw err; } return response.data || {}; }
   function authPayload(extra={}){ return Object.assign({token:state.token},extra); }
-  function clearSession(){ state.token='';state.user=null;state.bootstrap=null;state.dashboard=null;storageRemove(TOKEN_KEY); }
+  function clearSession(){ state.token='';state.user=null;state.bootstrap=null;state.dashboard=null;window.VWSTechnicianMap?.clear();storageRemove(TOKEN_KEY); }
   function closeBootOperation(){if(bootOperation){hideBusy(bootOperation);bootOperation=null;}}
   function showLogin(){ state.selectionRequest++;bootOperation=null;clearBusy();closeSystemActionMenu(false);document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value='';scheduleBackToTop(); }
   function showApp(){ closeBootOperation();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');scheduleBackToTop(); }
@@ -198,7 +198,11 @@
     state.villageById=new Map((d.villages||[]).map(v=>[v.village_id,v]));
     $('generatedAt').textContent=fmtDate(d.generatedAt);
     populateFilters();
-    window.VWSTechnicianMap?.init(id=>openSystem(id),message=>toast(message,'error'));
+    window.VWSTechnicianMap?.init(
+      id=>openSystem(id),
+      id=>(state.dashboard?.waterSystems||[]).find(s=>String(s.system_id)===String(id)),
+      villageForSystem
+    );
     window.VWSTechnicianAnalytics?.render(d,analyticsLabel);
   }
 
