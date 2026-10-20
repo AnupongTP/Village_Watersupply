@@ -8,6 +8,7 @@
   const titles = {search:'ค้นหา',waterQuantity:'ความเพียงพอของน้ำ',district:'อำเภอ',localAuthority:'อปท.',systemType:'ประเภทระบบ',operationalStatus:'สถานะระบบ',drinkingWaterQuality:'คุณภาพน้ำดื่ม'};
   const colors = {blue:'#0284c7',amber:'#d97706',green:'#059669',red:'#dc2626',gray:'#94a3b8'};
   const fill = {blue:'rgba(2,132,199,.72)',amber:'rgba(217,119,6,.82)',green:'rgba(5,150,105,.82)',red:'rgba(220,38,38,.82)',gray:'rgba(148,163,184,.82)'};
+  const dimFill = {blue:'rgba(2,132,199,.18)',amber:'rgba(217,119,6,.18)',green:'rgba(5,150,105,.18)',red:'rgba(220,38,38,.18)',gray:'rgba(148,163,184,.18)'};
   const filters = Object.fromEntries(keys.map(key => [key,'']));
   const charts = new Map();
   let dataset = {villages:[],waterSystems:[]}, label = value => value, onChange = () => {}, bound = false;
@@ -78,7 +79,11 @@
     $('scopeLabel').textContent=filters.district ? `อำเภอ${filters.district}` : 'จังหวัดพะเยา';
     const chips=$('activeFilterChips');
     chips.classList.toggle('hidden',!active.length);
-    chips.innerHTML=active.map(key=>`<button class="filter-chip" type="button" data-filter-remove="${key}" aria-label="ล้างตัวกรอง${esc(titles[key])}">${esc(titles[key])}: ${esc(key==='search'?filters[key]:label(filters[key]))} <span aria-hidden="true">×</span></button>`).join('');
+    const chipOrder=['search','district','localAuthority','systemType','operationalStatus','drinkingWaterQuality','waterQuantity'];
+    chips.innerHTML=active.length?`<span class="text-[10px] font-semibold text-slate-400">ตัวกรองที่ใช้งาน</span>${chipOrder.filter(key=>filters[key]).map(key=>{
+      const text=`${titles[key]}: ${key==='search'?`“${filters[key]}”`:label(filters[key])}`;
+      return `<button class="btn btn-outline" type="button" data-filter-remove="${key}" aria-label="ล้างตัวกรอง ${esc(text)}"><span>${esc(text)}</span><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>`;
+    }).join('')}`:'';
     $('alerts').querySelectorAll('[data-filter-toggle-key]').forEach(button=>{
       const key=button.dataset.filterToggleKey;
       button.setAttribute('aria-pressed',String(filters[key]===button.dataset.filterToggleValue));
@@ -137,11 +142,13 @@
     canvas.hidden=false;
     const narrow=matchMedia('(max-width: 767px)').matches;
     const onClick=options.onClick;
-    const chartOptions={responsive:true,maintainAspectRatio:false,animation:{duration:180},indexAxis:options.horizontal||narrow&&id==='districtChart'?'y':'x',cutout:type==='doughnut'?'66%':undefined,
+    const indexAxis=options.horizontal||narrow&&id==='districtChart'?'y':'x';
+    const font={size:narrow?12:13,family:'Sarabun'};
+    const chartOptions={responsive:true,maintainAspectRatio:false,animation:{duration:180},indexAxis,cutout:type==='doughnut'?'66%':undefined,
       onClick:(_event,elements)=>{const hit=elements?.[0];if(hit&&onClick)setTimeout(()=>onClick(hit.index),0);},
       onHover:(event,elements)=>{if(event?.native?.target?.style)event.native.target.style.cursor=elements?.length?'pointer':'default';},
-      plugins:{legend:{display:options.legend!==false,position:'bottom',labels:{usePointStyle:true,boxWidth:10,padding:16,color:'#334155',font:{size:narrow?12:13,family:'Sarabun'}},onClick:type==='doughnut'?(_event,item)=>{if(Number.isInteger(item?.index)&&onClick)setTimeout(()=>onClick(item.index),0);}:undefined},tooltip:{titleFont:{family:'Sarabun'},bodyFont:{family:'Sarabun'}}},
-      scales:type==='bar'?{x:{beginAtZero:true,ticks:{precision:0,color:'#475569'}},y:{beginAtZero:true,ticks:{precision:0,color:'#475569'}}}:undefined};
+      plugins:{legend:{display:options.legend!==false,position:'bottom',labels:{usePointStyle:true,boxWidth:10,boxHeight:10,padding:16,color:'#334155',font},onClick:type==='doughnut'?(_event,item)=>{if(Number.isInteger(item?.index)&&onClick)setTimeout(()=>onClick(item.index),0);}:undefined},tooltip:{displayColors:true,titleFont:{family:'Sarabun'},bodyFont:{family:'Sarabun'}}},
+      scales:type==='bar'?{x:{beginAtZero:true,grid:{color:'rgba(226, 232, 240, .75)'},ticks:{color:'#475569',font,maxRotation:indexAxis==='x'?30:0,minRotation:0},border:{color:'#e2e8f0'}},y:{beginAtZero:true,grid:{color:indexAxis==='y'?'transparent':'rgba(226, 232, 240, .75)'},ticks:{color:'#475569',font},border:{color:'#e2e8f0'}}}:undefined};
     charts.set(id,new Chart(canvas,{type,data:{labels,datasets},options:chartOptions}));
   }
   function renderCharts() {
@@ -152,23 +159,23 @@
     for(const s of district.systems){const key=villageOf(s,map).district||'ไม่ระบุ';systems[key]=(systems[key]||0)+1;}
     const districts=sorted([...Object.keys(villages),...Object.keys(systems)]);
     makeChart('districtChart','bar',district.villages.length||!district.systems.length?districts:[],[
-      {label:'หมู่บ้าน',data:districts.map(k=>villages[k]||0),backgroundColor:districts.map(k=>filters.district&&k!==filters.district?'rgba(2,132,199,.18)':fill.blue),borderColor:colors.blue,borderWidth:1,borderRadius:5,maxBarThickness:34},
-      {label:'ระบบประปา',data:districts.map(k=>systems[k]||0),backgroundColor:districts.map(k=>filters.district&&k!==filters.district?'rgba(217,119,6,.18)':fill.amber),borderColor:colors.amber,borderWidth:1,maxBarThickness:34}
+      {label:'หมู่บ้าน',data:districts.map(k=>villages[k]||0),backgroundColor:districts.map(k=>filters.district&&k!==filters.district?dimFill.blue:fill.blue),borderColor:colors.blue,borderWidth:districts.map(k=>filters.district&&k===filters.district?2:1),borderRadius:5,pointStyle:'rectRounded',maxBarThickness:34},
+      {label:'ระบบประปา',data:districts.map(k=>systems[k]||0),backgroundColor:districts.map(k=>filters.district&&k!==filters.district?dimFill.amber:fill.amber),borderColor:colors.amber,borderWidth:districts.map(k=>filters.district&&k===filters.district?2:1),borderRadius:0,pointStyle:'rect',maxBarThickness:34}
     ],{onClick:i=>setFilter('district',districts[i],true)});
     if(!district.villages.length&&district.systems.length)$('districtChart').parentElement.querySelector('.chart-empty').textContent='ข้อมูลหมู่บ้านรายอำเภอไม่พร้อมใช้';
-    for(const [id,key,codes,names,palette] of [
-      ['qualityChart','drinkingWaterQuality',['PASS','FAIL','NO_DATA'],['ผ่านเกณฑ์','ไม่ผ่านเกณฑ์','ไม่มีข้อมูล'],[fill.green,fill.red,fill.gray]],
-      ['quantityChart','waterQuantity',['SUFFICIENT','INSUFFICIENT','NO_DATA'],['เพียงพอ','ไม่เพียงพอ','ไม่มีข้อมูล'],[fill.blue,fill.amber,fill.gray]]
+    for(const [id,key,codes,names,palette,dimPalette] of [
+      ['qualityChart','drinkingWaterQuality',['PASS','FAIL','NO_DATA'],['ผ่านเกณฑ์','ไม่ผ่านเกณฑ์','ไม่มีข้อมูล'],[fill.green,fill.red,fill.gray],[dimFill.green,dimFill.red,dimFill.gray]],
+      ['quantityChart','waterQuantity',['SUFFICIENT','INSUFFICIENT','NO_DATA'],['เพียงพอ','ไม่เพียงพอ','ไม่มีข้อมูล'],[fill.blue,fill.amber,fill.gray],[dimFill.blue,dimFill.amber,dimFill.gray]]
     ]) {
       const rows=snapshot([key]).systems;
       const counts=Object.fromEntries(codes.map(code=>[code,0]));
       for(const s of rows){const code=normal(key,s[fields[key]]);counts[Object.hasOwn(counts,code)?code:'NO_DATA']++;}
-      makeChart(id,'doughnut',rows.length?names:[],[{data:codes.map(code=>counts[code]),backgroundColor:codes.map((code,i)=>filters[key]&&filters[key]!==code?'rgba(148,163,184,.18)':palette[i]),borderColor:'#fff',borderWidth:3,hoverOffset:4}],{onClick:i=>setFilter(key,codes[i],true)});
+      makeChart(id,'doughnut',rows.length?names:[],[{data:codes.map(code=>counts[code]),backgroundColor:codes.map((code,i)=>filters[key]&&filters[key]!==code?dimPalette[i]:palette[i]),borderColor:'#fff',borderWidth:3,hoverOffset:4}],{onClick:i=>setFilter(key,codes[i],true)});
     }
     const typeCounts=Object.create(null);
     for(const s of snapshot(['systemType']).systems){const code=s.system_type||'UNKNOWN';typeCounts[code]=(typeCounts[code]||0)+1;}
     const types=Object.keys(typeCounts).sort((a,b)=>typeCounts[b]-typeCounts[a]||a.localeCompare(b,'th'));
-    makeChart('systemTypeChart','bar',types.map(label),[{label:'จำนวนระบบ',data:types.map(k=>typeCounts[k]),backgroundColor:types.map(k=>filters.systemType&&filters.systemType!==k?'rgba(2,132,199,.18)':fill.blue),borderColor:colors.blue,borderWidth:1,borderRadius:5,maxBarThickness:28}],{horizontal:true,legend:false,onClick:i=>setFilter('systemType',types[i],true)});
+    makeChart('systemTypeChart','bar',types.map(label),[{label:'จำนวนระบบ',data:types.map(k=>typeCounts[k]),backgroundColor:types.map(k=>filters.systemType&&filters.systemType!==k?dimFill.blue:fill.blue),borderColor:colors.blue,borderWidth:types.map(k=>filters.systemType&&k===filters.systemType?2:1),borderRadius:5,maxBarThickness:28}],{horizontal:true,legend:false,onClick:i=>setFilter('systemType',types[i],true)});
   }
   function render(nextDataset=dataset,nextLabel=label) {
     dataset=nextDataset||dataset;label=nextLabel||label;

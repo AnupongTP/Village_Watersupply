@@ -2,16 +2,37 @@
 (() => {
   'use strict';
   const operations = new Map();
+  let closingPopup = false;
   const overlay = () => document.getElementById('busyOverlay');
   const nativeDialogs = () => [...document.querySelectorAll('dialog[open]')].filter(dialog => dialog !== overlay());
+
+  function finishClosing(dialog) {
+    if (operations.size) { paint(); return; }
+    if (dialog.open) dialog.close();
+    // SweetAlert normally clears these during its close lifecycle. Guard the
+    // cleanup in case an interrupted close left its body scroll lock behind.
+    if (!document.querySelector('.swal2-container:not(#bootView)')) {
+      for (const node of [document.documentElement, document.body]) {
+        node.classList.remove('swal2-shown', 'swal2-height-auto');
+      }
+    }
+  }
 
   function paint() {
     const dialog = overlay();
     if (!operations.size) {
-      if (window.Swal?.isVisible()) window.Swal.close();
-      if (dialog.open) dialog.close();
+      if (closingPopup) return;
+      // Keep the native top-layer dialog alive until SweetAlert has removed
+      // its popup and body classes, including after an animated close.
+      if (dialog.querySelector('.swal2-popup') && window.Swal) {
+        closingPopup = true;
+        window.Swal.close();
+        return;
+      }
+      finishClosing(dialog);
       return;
     }
+    if (closingPopup) return;
     const message = [...operations.values()].at(-1);
     // The target dialog is in the browser top layer. SweetAlert inside it stays
     // above edit/password dialogs without closing them or changing their data.
@@ -21,12 +42,20 @@
     const title = popup?.querySelector('.swal2-title');
     // A previous popup can remain in its hide animation after a completed operation.
     if (title && !popup.classList.contains('swal2-hide')) { title.textContent = message; return; }
-    if (window.Swal.isVisible()) window.Swal.close();
+    if (popup) {
+      closingPopup = true;
+      window.Swal.close();
+      return;
+    }
     window.Swal.fire({
       target: dialog, title: message, showConfirmButton: false,
       allowOutsideClick: false, allowEscapeKey: false,
-      hideClass: { popup: '' },
-      didOpen: () => window.Swal.showLoading()
+      didOpen: () => window.Swal.showLoading(),
+      didClose: () => {
+        closingPopup = false;
+        if (operations.size) paint();
+        else finishClosing(dialog);
+      }
     });
   }
 

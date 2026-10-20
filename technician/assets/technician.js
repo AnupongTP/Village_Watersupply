@@ -120,8 +120,8 @@
   function authPayload(extra={}){ return Object.assign({token:state.token},extra); }
   function clearSession(){ state.token='';state.user=null;state.bootstrap=null;state.dashboard=null;storageRemove(TOKEN_KEY); }
   function closeBootOperation(){if(bootOperation){hideBusy(bootOperation);bootOperation=null;}}
-  function showLogin(){ state.selectionRequest++;bootOperation=null;clearBusy();closeSystemActionMenu(false);document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value=''; }
-  function showApp(){ closeBootOperation();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden'); }
+  function showLogin(){ state.selectionRequest++;bootOperation=null;clearBusy();closeSystemActionMenu(false);document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value='';scheduleBackToTop(); }
+  function showApp(){ closeBootOperation();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');scheduleBackToTop(); }
   function showBoot(message='กำลังตรวจสอบการเข้าสู่ระบบ...',retry=false){document.documentElement.classList.add('has-session','boot-handoff');$('skipLink').href='#bootView';$('loginView').classList.add('hidden');$('appView').classList.add('hidden');$('bootTitle').textContent=message;$('bootError').textContent=retry?'ไม่สามารถตรวจสอบ Session ได้ในขณะนี้ โปรดลองอีกครั้ง':'';$('bootError').classList.toggle('hidden',!retry);$('retryResumeButton').classList.toggle('hidden',!retry);$('bootView').querySelector('.boot-actions').classList.toggle('hidden',retry);if(retry||!window.Swal){closeBootOperation();$('bootView').classList.add('swal2-container');$('bootView').classList.remove('hidden');}else{$('bootView').classList.remove('swal2-container');if(bootOperation)window.VWSTechnicianUI.updateLoading(message,bootOperation);else bootOperation=showBusy(message);$('bootView').classList.add('hidden');}}
 
   async function login(username,password){
@@ -323,6 +323,25 @@
   let dashboardScrollY=0;
   let activeWorkspace='dashboard';
   let lastDashboardId='overview';
+  let backToTopRaf=0;
+  function scheduleBackToTop(){if(backToTopRaf)return;backToTopRaf=requestAnimationFrame(updateBackToTop);}
+  function updateBackToTop(){
+    backToTopRaf=0;
+    const button=$('btnBackToTop');
+    const visible=!$('appView').classList.contains('hidden')&&window.scrollY>Math.max(480,window.innerHeight*.85);
+    button.classList.toggle('hidden',!visible);button.classList.toggle('flex',visible);button.setAttribute('aria-hidden',String(!visible));
+    button.style.transform='';
+    if(!visible)return;
+    requestAnimationFrame(()=>{
+      if(button.classList.contains('hidden'))return;
+      const rect=button.getBoundingClientRect();let shift=0;
+      for(const control of document.querySelectorAll('#technicianWaterMap .leaflet-bottom.leaflet-right')){
+        const other=control.getBoundingClientRect();
+        if(rect.left<other.right&&rect.right>other.left&&rect.top<other.bottom&&rect.bottom>other.top)shift=Math.max(shift,rect.bottom-other.top+12);
+      }
+      if(shift>0)button.style.transform=`translateY(-${Math.ceil(shift)}px)`;
+    });
+  }
   function sectionAllowed(id){return sectionIds.includes(id)&&(id!=='techniciansPanel'||hasPermission('MANAGE_TECHNICIANS'));}
   function setActiveSection(id){document.querySelectorAll('.tabs .section-link').forEach(link=>{const active=link.hash==='#'+(id==='technicianManagementSection'?'watchlist':id);link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});$('technicianToolsButton').classList.toggle('active',id==='technicianManagementSection'||Boolean(workspaceTargets[id]));$('technicianToolsMenu').querySelectorAll('a').forEach(link=>{if(link.hash==='#'+id)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});}
   function closeTools(restoreFocus=false){$('technicianToolsMenu').classList.add('hidden');$('technicianToolsButton').setAttribute('aria-expanded','false');if(restoreFocus)$('technicianToolsButton').focus();}
@@ -366,7 +385,7 @@
   }
   async function changePassword(){const cur=$('currentPassword').value,next=$('newPassword').value,confirm=$('confirmNewPassword').value;if(next!==confirm){setError('passwordError','รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');return;}if(!beginMutation($('passwordDialog')))return;const busy=showBusy('กำลังเปลี่ยนรหัสผ่าน...');try{unwrap(await api('auth.changePassword',authPayload({request:{currentPassword:cur,newPassword:next,clientInfo:clientInfo()}})));const me=unwrap(await api('auth.me',{token:state.token}));state.user=me.user;['currentPassword','newPassword','confirmNewPassword'].forEach(id=>$(id).value='');$('passwordDialog').close();toast('เปลี่ยนรหัสผ่านแล้ว');await bootstrapAndLoad();}catch(e){setError('passwordError',e.message);}finally{hideBusy(busy);endMutation($('passwordDialog'));}}
   async function performLogout(){const token=state.token;clearSession();$('mobileAccountMenu').classList.add('hidden');$('mobileAccountButton').setAttribute('aria-expanded','false');showLogin();try{await api('auth.logout',{token});}catch(_){}}
-  function handleApiError(e){if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED'].includes(e.code)){clearSession();document.querySelectorAll('dialog[open]').forEach(d=>d.close());showLogin();toast('Session สิ้นสุด กรุณาเข้าสู่ระบบใหม่','error');return;}toast(e.message||'เกิดข้อผิดพลาด','error');}
+  function handleApiError(e){if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED'].includes(e.code)){clearSession();document.querySelectorAll('dialog[open]:not(#busyOverlay)').forEach(d=>d.close());showLogin();toast('Session สิ้นสุด กรุณาเข้าสู่ระบบใหม่','error');return;}toast(e.message||'เกิดข้อผิดพลาด','error');}
 
   function bind(){
     bindDialogDismissal();
@@ -390,8 +409,9 @@
     $('technicianToolsButton').addEventListener('click',()=>{const menu=$('technicianToolsMenu'),open=menu.classList.toggle('hidden');$('technicianToolsButton').setAttribute('aria-expanded',String(!open));});
     document.addEventListener('click',event=>{if(!event.target.closest('.technician-tools'))closeTools();});
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('technicianToolsMenu').classList.contains('hidden')){event.preventDefault();closeTools(true);}});
-    window.addEventListener('scroll',()=>{positionSystemActionMenu();requestAnimationFrame(syncActiveSection);},{passive:true});
-    window.addEventListener('resize',()=>{closeSystemActionMenu(false);updateHeaderOffset();requestAnimationFrame(syncActiveSection);},{passive:true});
+    $('btnBackToTop').addEventListener('click',()=>{$('appHeader').focus({preventScroll:true});window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});});
+    window.addEventListener('scroll',()=>{positionSystemActionMenu();requestAnimationFrame(syncActiveSection);scheduleBackToTop();},{passive:true});
+    window.addEventListener('resize',()=>{closeSystemActionMenu(false);updateHeaderOffset();requestAnimationFrame(syncActiveSection);scheduleBackToTop();},{passive:true});
     window.addEventListener('hashchange',restoreSection);window.addEventListener('popstate',restoreSection);
     if('ResizeObserver'in window)new ResizeObserver(updateHeaderOffset).observe($('appHeader'));
     ['searchInput','districtFilter','statusFilter','publicFilter'].forEach(id=>$(id).addEventListener(id==='searchInput'?'input':'change',applyFilters));
