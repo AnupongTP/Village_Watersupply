@@ -19,6 +19,14 @@ async function captureParity(page,name,fullPage=false) {
   fs.mkdirSync(directory,{recursive:true});
   await page.screenshot({path:path.join(directory,`${name}.png`),fullPage});
 }
+async function captureStage(page, name, locator = null, fullPage = false) {
+  const directory = process.env.VWS_STAGE_SCREENSHOTS;
+  if (!directory) return;
+  fs.mkdirSync(directory, { recursive: true });
+  const output = path.join(directory, `${name}.png`);
+  if (locator) await page.locator(locator).screenshot({ path: output });
+  else await page.screenshot({ path: output, fullPage });
+}
 const token = `MGT-${'a'.repeat(64)}`;
 const user = { username: 'synthetic-technician', displayName: 'Synthetic Technician', role: 'TECHNICIAN' };
 const system = {
@@ -142,7 +150,7 @@ for (const viewport of [
       await expect(page.locator('#appView')).toBeVisible();
       await expect(page.locator('#currentUserName')).toHaveText(user.displayName);
       await expect(page.locator('#kpiSystems')).toHaveText('1');
-      await expect(page.locator('#systemsTableBody')).toContainText(system.system_name);
+      await expect(page.locator('#allSystemsCount')).toHaveText('1');
       expect(network.calls.map(call => call.action)).toEqual(['auth.login', 'data.bootstrap', 'data.dashboard']);
       expect(network.calls[0].payload).toMatchObject({ username: user.username, password: 'synthetic-password' });
       expect(network.calls[1].payload.token).toBe(token);
@@ -171,7 +179,7 @@ test('loads a mocked system detail and logs out locally', async ({ page }) => {
   await submitSyntheticLogin(page);
   await expect(page.locator('#appView')).toBeVisible();
   await openToolSection(page, 'systems');
-  await page.locator('#systemsTableBody [data-action="view"]').first().click();
+  await clickSystemAction(page, 'view');
   await expect(page.locator('#systemDialog')).toBeVisible();
   await expect(page.locator('#systemDialogTitle')).toHaveText(system.system_name);
   await expect(page.locator('#systemDialogBody')).toContainText(system.system_id);
@@ -250,6 +258,486 @@ async function openManagement(page, overrides = {}, start = 'management') {
   if (start === 'management') await openToolSection(page, 'systems');
   return network;
 }
+async function clickSystemAction(page, action, rowSelector = '#systemsTableBody tr[data-system-id]') {
+  await page.locator(rowSelector).first().locator('[data-action-trigger]').click();
+  await page.locator(`#systemActionMenu [data-action="${action}"]`).click();
+}
+
+test('unified table uses one Dashboard section and two restorable modes', async ({ page }) => {
+  const network = await openManagement(page, scrollDataset());
+  await expect(page.locator('#watchlist')).toBeVisible();
+  await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(28);
+  await expect(page.locator('#managementWorkspace')).toHaveCount(0);
+  await expect(page.locator('#problemList')).toHaveCount(0);
+  await page.locator('a[href="#watchlist"]').click();
+  await expect(page.locator('#systemsModeMonitoring')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/#watchlist$/);
+  await page.goBack();
+  await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/#technicianManagementSection$/);
+  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(1);
+  expect(network.blocked).toEqual([]);
+});
+
+function scrollDataset() {
+  const waterSystems = Array.from({ length: 28 }, (_, index) => ({
+    ...editableSystem,
+    system_id: `QA-SCROLL-${index + 1}`,
+    village_id: `QA-VILLAGE-${index + 1}`,
+    system_name: `ระบบประปาหมู่บ้านทดสอบ ${index + 1}`,
+    operational_status: 'NOT_WORKING',
+    water_quantity: 'INSUFFICIENT'
+  }));
+  const villages = waterSystems.map((item, index) => ({
+    village_id: item.village_id, village_name: `หมู่บ้านทดสอบ ${index + 1}`, district: 'จุน'
+  }));
+  const technicians = Array.from({ length: 28 }, (_, index) => ({
+    userId: `QA-TECH-${index + 1}`, username: `synthetic-account-${index + 1}`,
+    displayName: `Synthetic Account ${index + 1}`, status: 'ACTIVE', recordVersion: 'v1'
+  }));
+  const history = Array.from({ length: 28 }, (_, index) => ({
+    action: 'UPDATE_SYSTEM', username: `synthetic-account-${index + 1}`,
+    role: 'ADMIN', timestamp: '2026-01-01T00:00:00Z', status: 'COMMITTED', changedFields: ['system_name']
+  }));
+  return {
+    'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages, waterSystems, waterSources: [] }),
+    'data.entityHistory': success({ history }),
+    'technicians.list': success({ technicians })
+  };
+}
+
+function unifiedTableDataset() {
+  const waterSystems = Array.from({ length: 75 }, (_, index) => ({
+    ...editableSystem,
+    system_id: `QA-UNIFIED-${String(index + 1).padStart(3, '0')}`,
+    village_id: `QA-UNIFIED-VILLAGE-${index + 1}`,
+    system_name: `ระบบทดสอบ ${index + 1}`,
+    operational_status: index % 3 === 0 ? 'NOT_WORKING' : 'WORKING',
+    water_quantity: index === 0 ? 'INSUFFICIENT' : 'SUFFICIENT',
+    drinking_water_quality: index === 0 ? 'FAIL' : 'PASS',
+    publicVisible: index % 3 === 0 ? false : index % 3 === 1 ? true : null,
+    households_served: index === 2 ? null : index + 1,
+    latitude: index === 2 ? '' : 19.2 + index / 1000,
+    longitude: index === 2 ? '' : 100.1 + index / 1000
+  }));
+  const villages = waterSystems.map((item, index) => ({
+    village_id: item.village_id, village_name: `บ้านทดสอบ ${index + 1}`,
+    district: index < 40 ? 'จุน' : 'เชียงคำ', subdistrict: 'ตำบลทดสอบ'
+  }));
+  return { waterSystems, villages, overrides: {
+    'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages, waterSystems, waterSources: [] }),
+    'data.waterSystem': envelope => success({ system: waterSystems.find(item => item.system_id === envelope.payload.systemId) }),
+    'data.entityHistory': success({ history: [] })
+  } };
+}
+
+for (const width of [1440, 768, 390]) {
+  test(`unified table scopes, paginates, filters and uses matching mobile records at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const fixture = unifiedTableDataset();
+    const network = await openManagement(page, fixture.overrides);
+    if (width < 768) await page.locator('#filterToggleButton').click();
+    const rowIds = () => page.locator('#systemsTableBody tr[data-system-id]').evaluateAll(rows => rows.map(row => row.dataset.systemId));
+    const cardIds = () => page.locator('#systemsMobileList article[data-system-id]').evaluateAll(rows => rows.map(row => row.dataset.systemId));
+    await expect(page.locator('#allSystemsCount')).toHaveText('75');
+    await expect(page.locator('#monitoringSystemsCount')).toHaveText('25');
+    await expect(page.locator('#resultCount')).toHaveText('แสดง 75 จาก 75 ระบบ');
+    await captureStage(page, `unified-all-${width}`);
+    if (width === 1440) await captureStage(page, 'unified-dashboard-full-1440', null, true);
+    await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(50);
+    expect(await rowIds()).toEqual(await cardIds());
+    await expect(page.locator('#pageStatus')).toHaveText('หน้า 1/2');
+    await page.locator('#nextPage').click();
+    await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(25);
+    expect(await rowIds()).toEqual(await cardIds());
+    expect(new Set(await rowIds()).size).toBe(25);
+    await page.locator('#systemsModeMonitoring').click();
+    await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(25);
+    await captureStage(page, `unified-monitoring-${width}`);
+    await expect(page.locator('#pageStatus')).toHaveText('หน้า 1/1');
+    const monitored = await rowIds();
+    expect(monitored).toContain('QA-UNIFIED-001');
+    expect(monitored).not.toContain('QA-UNIFIED-002');
+    expect(new Set(monitored).size).toBe(25);
+    await expect(page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-001"] .system-issue-badges .badge')).toHaveCount(3);
+    await page.locator('#publicFilter').selectOption('HIDDEN');
+    await expect(page.locator('#resultCount')).toHaveText('แสดง 25 จาก 25 ระบบ');
+    await page.locator('#publicFilter').selectOption('UNKNOWN');
+    await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 25 ระบบ');
+    await page.locator('#publicFilter').selectOption('');
+    await page.locator('#searchInput').fill('QA-UNIFIED-004');
+    await expect(page.locator('#resultCount')).toHaveText('แสดง 1 จาก 25 ระบบ');
+    await page.locator('#searchInput').fill('ไม่มีระบบนี้');
+    await expect(page.locator(width < 768 ? '#systemsMobileList .empty-state' : '#systemsTableBody .empty-row')).toBeVisible();
+    await page.locator('#clearFiltersButton').click();
+    await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(25);
+    await page.locator('#systemsModeAll').click();
+    await page.locator('#publicFilter').selectOption('UNKNOWN');
+    await expect(page.locator('#resultCount')).toHaveText('แสดง 25 จาก 75 ระบบ');
+    await expect(page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-003"]')).toContainText('ไม่ทราบ');
+    await page.locator('#clearFiltersButton').click();
+    expect(await rowIds()).toEqual(await cardIds());
+    expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(1);
+    expect(mutations(network)).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+}
+
+test('unified row menu routes all five actions with synthetic IDs and safe confirmation', async ({ page }) => {
+  const fixture = unifiedTableDataset();
+  const network = await openManagement(page, fixture.overrides);
+  const row = '#systemsTableBody tr[data-system-id="QA-UNIFIED-001"]';
+  await page.locator(`${row} [data-action-trigger]`).click();
+  await expect(page.locator('#systemActionMenu button[data-action]')).toHaveCount(5);
+  const menuAccessibility = await new AxeBuilder({ page }).include('#systemActionMenu').analyze();
+  expect(menuAccessibility.violations).toEqual([]);
+  await captureStage(page, 'unified-action-menu-1440');
+  await expect(page.locator(`${row} [data-action-trigger]`)).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#systemActionMenu')).toBeHidden();
+  await expect(page.locator(`${row} [data-action-trigger]`)).toBeFocused();
+  await clickSystemAction(page, 'view', row);
+  await expect(page.locator('#systemDialog')).toBeVisible();
+  await expect(page.locator('#systemDialogTitle')).toHaveText('ระบบทดสอบ 1');
+  await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+  await clickSystemAction(page, 'edit', row);
+  await expect(page.locator('#editDialog')).toBeVisible();
+  await captureStage(page, 'unified-edit-action-1440');
+  await page.locator('#editDialog [data-dismiss-dialog]').first().click();
+  await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+  await clickSystemAction(page, 'delete', row);
+  await expect(page.locator('#deleteDialog')).toBeVisible();
+  await page.locator('#deleteDialog [data-dismiss-dialog]').first().click();
+  await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+  await clickSystemAction(page, 'history', row);
+  await expect(page.locator('#historyPanel')).toBeVisible();
+  await captureStage(page, 'unified-history-action-1440');
+  await expect(page.locator('#historySystemId')).toHaveValue('QA-UNIFIED-001');
+  expect(network.calls.filter(call => call.action === 'data.entityHistory')).toHaveLength(1);
+  await openToolSection(page, 'systems');
+  await clickSystemAction(page, 'map', row);
+  await expect(page.locator('#map-section')).toBeVisible();
+  await expect(page.locator('.technician-map-popup')).toContainText('ระบบทดสอบ 1');
+  expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-UNIFIED-001')?.lat)).toBeCloseTo(19.2);
+  await openToolSection(page, 'systems');
+  await page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-003"] [data-action-trigger]').click();
+  await expect(page.locator('#systemActionMenu [data-action="map"]')).toBeDisabled();
+  expect(mutations(network)).toEqual([]);
+});
+
+test('global and local table filters intersect; hashes restore modes after Back, Forward and reload', async ({ page }) => {
+  const fixture = unifiedTableDataset();
+  const network = await openManagement(page, fixture.overrides, 'dashboard');
+  await page.locator('#filterDistrict').selectOption('จุน');
+  await expect(page.locator('#kpiSystems')).toHaveText('40');
+  await openToolSection(page, 'systems');
+  await expect(page.locator('#allSystemsCount')).toHaveText('40');
+  await expect(page.locator('#monitoringSystemsCount')).toHaveText('14');
+  await expect(page.locator('#systemsScopeNote')).toContainText('ตัวกรอง Dashboard');
+  await page.locator('#districtFilter').selectOption('เชียงคำ');
+  await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 40 ระบบ');
+  await page.locator('#systemsModeMonitoring').click();
+  await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 14 ระบบ');
+  await page.goBack();
+  await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#districtFilter')).toHaveValue('เชียงคำ');
+  await page.goForward();
+  await expect(page.locator('#systemsModeMonitoring')).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(page.locator('#appView')).toBeVisible();
+  await expect(page.locator('#systemsModeMonitoring')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/#watchlist$/);
+  await expect(page.locator('#allSystemsCount')).toHaveText('75');
+  await expect(page.locator('#monitoringSystemsCount')).toHaveText('25');
+  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(2);
+  expect(mutations(network)).toEqual([]);
+});
+
+test('mobile last-row menu stays inside viewport with a long Thai system name', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const fixture = unifiedTableDataset();
+  fixture.waterSystems[74].system_name = 'ระบบประปาหมู่บ้านทดสอบชื่อยาวมากเพื่อยืนยันว่าข้อความไม่ทับปุ่มจัดการและไม่ทำให้หน้าจอเลื่อนด้านข้าง';
+  const network = await openManagement(page, fixture.overrides);
+  await page.locator('#nextPage').click();
+  const card = page.locator('#systemsMobileList article[data-system-id="QA-UNIFIED-075"]');
+  await card.locator('[data-action-trigger]').click();
+  await expect(page.locator('#systemActionMenu button[data-action]')).toHaveCount(5);
+  const geometry = await page.locator('#systemActionMenu').evaluate(menu => {
+    const box = menu.getBoundingClientRect();
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: innerWidth, height: innerHeight };
+  });
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.width);
+  expect(geometry.top).toBeGreaterThanOrEqual(0);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await captureStage(page, 'unified-mobile-last-row-menu-390');
+  await page.locator('#systemsMobileList .system-name').last().click();
+  await expect(page.locator('#systemActionMenu')).toBeHidden();
+  expect(mutations(network)).toEqual([]);
+});
+
+test('confirmed deletion refreshes unified counts once and preserves the current mode', async ({ page }) => {
+  const fixture = unifiedTableDataset();
+  let rows = [...fixture.waterSystems];
+  const network = await openManagement(page, {
+    ...fixture.overrides,
+    'data.dashboard': () => success({ generatedAt: '2026-01-01T00:00:00Z', villages: fixture.villages, waterSystems: rows, waterSources: [] }),
+    'data.deleteWaterSystem': envelope => {
+      expect(envelope.payload.request).toMatchObject({ systemId: 'QA-UNIFIED-001', expectedVersion: editableSystem.recordVersion, reason: 'Synthetic deletion reason' });
+      rows = rows.filter(item => item.system_id !== envelope.payload.request.systemId);
+      return success();
+    }
+  });
+  await page.locator('#systemsModeMonitoring').click();
+  await expect(page.locator('#monitoringSystemsCount')).toHaveText('25');
+  await clickSystemAction(page, 'delete', '#systemsTableBody tr[data-system-id="QA-UNIFIED-001"]');
+  await expect(page.locator('#deleteDialog')).toBeVisible();
+  expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(0);
+  await page.locator('#deleteReason').fill('Synthetic deletion reason');
+  await page.locator('#deleteConfirmInput').fill('QA-UNIFIED-001');
+  await page.locator('#confirmDeleteButton').click();
+  await expect(page.locator('#deleteDialog')).toBeHidden();
+  await expect(page.locator('#monitoringSystemsCount')).toHaveText('24');
+  await expect(page.locator('#allSystemsCount')).toHaveText('74');
+  await expect(page.locator('#systemsModeMonitoring')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-001"]')).toHaveCount(0);
+  expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(1);
+});
+
+function sharedVillageDataset() {
+  const villages = Array.from({ length: 321 }, (_, index) => {
+    const number = index + 1;
+    return { village_id: `QA-VILLAGE-${number}`, village_name: number === 5 || number === 6 ? 'บ้านชื่อซ้ำ' : `บ้านทดสอบ ${number}`, village_no: number, subdistrict: number === 5 ? 'ตำบลเหนือ' : 'ตำบลใต้', district: number === 5 ? 'จุน' : 'เชียงคำ', province: 'พะเยา' };
+  });
+  const selected = { ...editableSystem, shared_villages_json: '[{"village_id":"QA-VILLAGE-250"},{"village_id":"LEGACY-VILLAGE"}]' };
+  return { selected, overrides: {
+    'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages, waterSystems: [selected], waterSources: [] }),
+    'data.waterSystem': success({ system: selected }),
+    'data.updateWaterSystem': success({ system: selected })
+  } };
+}
+
+test('shared-village selector clearly shows an empty original selection', async ({ page }) => {
+  const fixture = sharedVillageDataset();
+  const empty = { ...fixture.selected, shared_villages_json: '[]' };
+  const network = await openManagement(page, {
+    ...fixture.overrides,
+    'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages: Array.from({ length: 321 }, (_, index) => ({ village_id: `QA-VILLAGE-${index + 1}`, village_name: `บ้านทดสอบ ${index + 1}` })), waterSystems: [empty], waterSources: [] }),
+    'data.waterSystem': success({ system: empty })
+  });
+  await openEditFromTable(page);
+  await expect(page.locator('#sharedVillageCount')).toContainText('0');
+  await captureStage(page, 'shared-villages-empty-1440', '#edit_shared_villages_json');
+  await page.locator('#editDialog [data-dismiss-dialog]').first().click();
+  expect(mutations(network)).toEqual([]);
+});
+
+for (const width of [1440, 390]) {
+  test(`searchable shared villages retain every selected ID at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const fixture = sharedVillageDataset();
+    const network = await openManagement(page, fixture.overrides);
+    await openEditFromTable(page, width === 390);
+    await expect(page.locator('#sharedVillageOptions input')).toHaveCount(20);
+    await expect(page.locator('#sharedVillageCount')).toContainText('2');
+    await captureStage(page, `shared-villages-selected-${width}`, '#edit_shared_villages_json');
+    await expect(page.locator('#sharedVillageChips [data-remove-village="QA-VILLAGE-250"]')).toBeVisible();
+    await expect(page.locator('#sharedVillageChips [data-remove-village="LEGACY-VILLAGE"]')).toContainText('ไม่อยู่ในรายชื่อปัจจุบัน');
+    await page.locator('#sharedVillageMore').click();
+    await expect(page.locator('#sharedVillageOptions input')).toHaveCount(40);
+    await page.locator('#sharedVillageSearch').fill('บ้านชื่อซ้ำ');
+    await expect(page.locator('#sharedVillageOptions input')).toHaveCount(2);
+    await captureStage(page, `shared-villages-search-${width}`, '#edit_shared_villages_json');
+    await expect(page.locator('#sharedVillageOptions')).toContainText('ตำบลเหนือ');
+    await expect(page.locator('#sharedVillageOptions')).toContainText('ตำบลใต้');
+    await page.locator('#sharedVillageSearch').fill('QA-VILLAGE-5');
+    await page.locator('#sharedVillageOptions input[value="QA-VILLAGE-5"]').check();
+    await page.locator('#sharedVillageSearch').fill('QA-VILLAGE-300');
+    await page.locator('#sharedVillageOptions input[value="QA-VILLAGE-300"]').check();
+    await captureStage(page, `shared-villages-persistent-${width}`, '#edit_shared_villages_json');
+    await expect(page.locator('#sharedVillageCount')).toContainText('4');
+    await expect(page.locator('#sharedVillageChips [data-remove-village="QA-VILLAGE-5"]')).toBeVisible();
+    await expect(page.locator('#sharedVillageChips [data-remove-village="QA-VILLAGE-250"]')).toBeVisible();
+    await page.locator('#sharedVillageChips [data-remove-village="QA-VILLAGE-5"]').click();
+    await expect(page.locator('#sharedVillageCount')).toContainText('3');
+    await page.locator('#sharedVillageSearch').fill('');
+    await expect(page.locator('#sharedVillageResultsCount')).toContainText('320');
+    await expect(page.locator('#sharedVillageOptions input')).toHaveCount(20);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    const directory = process.env.VWS_STAGE_SCREENSHOTS;
+    if (directory) { fs.mkdirSync(directory, { recursive: true }); await page.locator('#edit_shared_villages_json').screenshot({ path: path.join(directory, `shared-villages-${width}.png`) }); }
+    await page.locator('#saveEditButton').click();
+    await expect(page.locator('#editDialog')).toBeHidden();
+    const updates = network.calls.filter(call => call.action === 'data.updateWaterSystem');
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload.request.expectedVersion).toBe(fixture.selected.recordVersion);
+    expect(updates[0].payload.request.patch.shared_villages_json).toEqual([
+      { village_id: 'LEGACY-VILLAGE' }, { village_id: 'QA-VILLAGE-250' }, { village_id: 'QA-VILLAGE-300' }
+    ]);
+    expect(network.blocked).toEqual([]);
+  });
+}
+
+test('shared-village search and pagination stay pristine; discard and conflict remain safe', async ({ page }) => {
+  const fixture = sharedVillageDataset();
+  const network = await openManagement(page, { ...fixture.overrides, 'data.updateWaterSystem': failure('CONFLICT', 'Synthetic conflict') });
+  await openEditFromTable(page);
+  await page.locator('#sharedVillageSearch').fill('เชียงคำ 250');
+  await page.locator('#sharedVillageSearch').fill('');
+  await page.locator('#sharedVillageMore').click();
+  await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editError')).toContainText('ไม่มีข้อมูลที่เปลี่ยนแปลง');
+  expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toEqual([]);
+  await page.locator('#sharedVillageSearch').fill('QA-VILLAGE-250');
+  await page.locator('#sharedVillageOptions input[value="QA-VILLAGE-250"]').uncheck();
+  await page.locator('#sharedVillageOptions input[value="QA-VILLAGE-250"]').check();
+  await page.locator('#editDialog [data-dismiss-dialog]').first().click();
+  await expect(page.locator('#editDialog')).toBeHidden();
+  await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+  await openEditFromTable(page);
+  await page.locator('#sharedVillageChips [data-remove-village="LEGACY-VILLAGE"]').click();
+  await page.locator('#editDialog [data-dismiss-dialog]').first().click();
+  await expect(page.locator('#discardDialog')).toBeVisible();
+  await page.locator('#continueEditingButton').click();
+  await expect(page.locator('#sharedVillageCount')).toContainText('1');
+  await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editDialog')).toBeVisible();
+  await expect(page.locator('#editError')).toContainText('ข้อมูลถูกแก้');
+  expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toHaveLength(1);
+  await page.locator('#editDialog [data-dismiss-dialog]').first().click();
+  await page.locator('#confirmDiscardButton').click();
+  expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toHaveLength(1);
+});
+
+async function wheelChangesPage(page, delta, direction) {
+  const before = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, delta);
+  if (direction === 'down') await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before);
+  else await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(before);
+  return { before, after: await page.evaluate(() => scrollY) };
+}
+
+for (const width of [1440, 768, 390]) {
+  test(`unified systems table lets wheel input continue through the Dashboard at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const network = await openManagement(page, scrollDataset(), 'dashboard');
+    await page.locator('a[href="#watchlist"]').click();
+    const row = width < 768 ? page.locator('#systemsMobileList .system-mobile-card').first() : page.locator('#systemsTableBody tr[data-system-id]').first();
+    await expect(row).toBeVisible();
+    await expect(page.locator('#busyOverlay')).toBeHidden();
+    expect(await page.evaluate(() => ({ html: getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflowY }))).toEqual({ html: 'visible', body: 'visible' });
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.locator('#overview .kpi-card').first().hover();
+    await wheelChangesPage(page, 430, 'down');
+    await row.hover();
+    const down = await wheelChangesPage(page, 480, 'down');
+    const lastRow = width < 768 ? page.locator('#systemsMobileList .system-mobile-card').last() : page.locator('#systemsTableBody tr[data-system-id]').last();
+    await lastRow.hover();
+    const up = await wheelChangesPage(page, -480, 'up');
+    console.log(`SYSTEMS_WHEEL ${width} ${JSON.stringify({ down, up })}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    expect(network.blocked).toEqual([]);
+  });
+
+  test(`Management workspaces and edit dialog preserve scroll boundaries at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const network = await openManagement(page, scrollDataset(), 'dashboard');
+    await page.locator('a[href="#areas"]').click();
+    await expect(page.locator('#areas')).toBeInViewport();
+    await openToolSection(page, 'systems');
+    await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed', 'true');
+    const table = page.locator('.desktop-table-wrap');
+    if (width >= 768) {
+      await table.hover();
+      expect(await table.evaluate(el => getComputedStyle(el).overscrollBehaviorY)).toBe('auto');
+      expect(await table.evaluate(el => getComputedStyle(el).overflowX)).toBe('auto');
+      if (await table.evaluate(el => el.scrollWidth > el.clientWidth)) {
+        await page.mouse.wheel(300, 0);
+        await expect.poll(() => table.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+      }
+    }
+    const systemRow = width < 768 ? page.locator('#systemsMobileList [data-action-trigger]').first() : page.locator('#systemsTableBody tr').first();
+    await page.evaluate(() => scrollTo(0, 0));
+    await systemRow.hover();
+    await wheelChangesPage(page, 380, 'down');
+    await clickSystemAction(page, 'edit',width < 768 ? '#systemsMobileList .system-mobile-card' : '#systemsTableBody tr[data-system-id]');
+    await expect(page.locator('#editDialog')).toBeVisible();
+    const body = page.locator('#editDialog .modal-body');
+    const bodySize = await body.evaluate(el => ({ scroll: el.scrollHeight, client: el.clientHeight }));
+    expect(bodySize.scroll).toBeGreaterThan(bodySize.client);
+    await body.hover();
+    const pageWhileModal = await page.evaluate(() => scrollY);
+    await page.mouse.wheel(0, 500);
+    await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => scrollY)).toBe(pageWhileModal);
+    const villageOptions = page.locator('#editDialog .village-options');
+    await villageOptions.scrollIntoViewIfNeeded();
+    const optionsSize = await villageOptions.evaluate(el => ({ scroll: el.scrollHeight, client: el.clientHeight }));
+    expect(optionsSize.scroll).toBeGreaterThan(optionsSize.client);
+    await villageOptions.hover();
+    await page.mouse.wheel(0, 320);
+    await expect.poll(() => villageOptions.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => scrollY)).toBe(pageWhileModal);
+    await body.evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await body.hover();
+    await page.mouse.wheel(0, 420);
+    expect(await page.evaluate(() => scrollY)).toBe(pageWhileModal);
+    await page.locator('#editDialog [data-dismiss-dialog]').first().click();
+    await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+    await openToolSection(page, 'history');
+    await page.locator('#historySystemId').fill('QA-SCROLL-1');
+    await page.locator('#historySearchButton').click();
+    await expect(page.locator('#historyList .history-card')).toHaveCount(28);
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.locator('#historyList .history-card').first().hover();
+    await wheelChangesPage(page, 400, 'down');
+    await page.locator('#historyPanel [data-return-dashboard]').click();
+    await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#watchlist')).toBeVisible();
+    await openToolSection(page, 'technicians');
+    await expect(page.locator('#techniciansPanel')).toBeVisible();
+    const accountTarget = width < 768 ? page.locator('.technician-mobile-card').first() : page.locator('#techniciansTableBody tr').first();
+    await page.evaluate(() => scrollTo(0, 0));
+    await accountTarget.hover();
+    await wheelChangesPage(page, 400, 'down');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.locator('#techniciansPanel [data-return-dashboard]').click();
+    await page.locator('#overview .kpi-card').first().hover();
+    await page.evaluate(() => scrollTo(0, 0));
+    await wheelChangesPage(page, 400, 'down');
+    expect(await page.evaluate(() => document.querySelectorAll('dialog[open]').length)).toBe(0);
+    expect(network.calls.filter(call => /^(data\.(update|delete)|technicians\.(create|update|disable|enable|delete|resetPassword))/.test(call.action))).toEqual([]);
+  });
+
+  test(`Thai Header has unclipped line boxes and clear controls at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await openManagement(page, scrollDataset(), 'dashboard');
+    const title = page.locator('.header-title');
+    await expect(title).toHaveText('ระบบข้อมูลประปาหมู่บ้าน');
+    const geometry = await page.evaluate(() => {
+      const title = document.querySelector('.header-title');
+      const subtitle = document.querySelector('.header-subtitle');
+      const controls = document.querySelector('.topbar-actions');
+      const style = getComputedStyle(title);
+      const box = el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
+      return { title: box(title), subtitle: box(subtitle), controls: box(controls), overflow: style.overflow, fontSize: parseFloat(style.fontSize), lineHeight: parseFloat(style.lineHeight), scrollHeight: title.scrollHeight, scrollWidth: title.scrollWidth, font: style.fontFamily, subtitleVisible: getComputedStyle(subtitle).display !== 'none', pageWidth: document.documentElement.scrollWidth };
+    });
+    expect(geometry.overflow).toBe('visible');
+    expect(geometry.lineHeight / geometry.fontSize).toBeGreaterThanOrEqual(1.5);
+    expect(geometry.title.height).toBeGreaterThanOrEqual(geometry.scrollHeight - 1);
+    expect(geometry.title.right).toBeLessThanOrEqual(geometry.controls.left - 4);
+    if (geometry.subtitleVisible) expect(geometry.subtitle.top).toBeGreaterThanOrEqual(geometry.title.bottom);
+    expect(geometry.pageWidth).toBeLessThanOrEqual(width + 1);
+    const directory = process.env.VWS_SCROLL_SCREENSHOTS;
+    if (directory) {
+      fs.mkdirSync(directory, { recursive: true });
+      await page.locator('#appHeader').screenshot({ path: path.join(directory, `header-after-${width}.png`) });
+    }
+    console.log(`THAI_HEADER ${width} ${JSON.stringify(geometry)}`);
+  });
+}
 
 test('Public-style Dashboard is continuous and tools open exclusive authenticated workspaces', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -257,7 +745,8 @@ test('Public-style Dashboard is continuous and tools open exclusive authenticate
   await captureArchitecture(page, 'technician-1440-overview');
   const analytical = ['overview','map-section','areas','quality','system-structure','watchlist'];
   for (const id of analytical) await expect(page.locator(`#${id}`)).toBeVisible();
-  for (const id of ['managementWorkspace','historyPanel','techniciansPanel']) await expect(page.locator(`#${id}`)).toBeHidden();
+  for (const id of ['historyPanel','techniciansPanel']) await expect(page.locator(`#${id}`)).toBeHidden();
+  await expect(page.locator('#managementWorkspace')).toHaveCount(0);
   await expect(page.locator('#overview .kpi-card')).toHaveCount(4);
   await expect(page.locator('#kpiWithWaterworks')).toHaveText('ไม่พร้อมใช้');
   expect(await page.locator('.tabs a.section-link').count()).toBe(6);
@@ -269,24 +758,25 @@ test('Public-style Dashboard is continuous and tools open exclusive authenticate
   await captureArchitecture(page, 'technician-1440-area');
   await expect(page.locator('#quality')).toBeVisible();
   await openToolSection(page, 'systems');
-  await expect(page.locator('#managementWorkspace')).toBeVisible();
-  await expect(page.locator('#dashboardWorkspace')).toBeHidden();
+  await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#dashboardWorkspace')).toBeVisible();
   await captureArchitecture(page, 'technician-1440-management');
   await page.goBack();
   await expect(page).toHaveURL(/#areas$/);
   await expect(page.locator('#areas')).toBeVisible();
   await expect(page.locator('#filterSearch')).toHaveValue('Synthetic');
   await page.goForward();
-  await expect(page.locator('#managementWorkspace')).toBeVisible();
-  await page.locator('#managementWorkspace [data-return-dashboard]').click();
+  await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed','true');
+  await page.locator('a[href="#areas"]').click();
   await expect(page.locator('#dashboardWorkspace')).toBeVisible();
   await expect(page.locator('#filterSearch')).toHaveValue('Synthetic');
   await expect(page.locator('#areas')).toBeInViewport();
   await openToolSection(page, 'history');
   await expect(page.locator('#historyPanel')).toBeVisible();
-  await expect(page.locator('#managementWorkspace')).toBeHidden();
+  await expect(page.locator('#dashboardWorkspace')).toBeHidden();
   await page.locator('#historyPanel [data-return-dashboard]').click();
   await expect(page.locator('#dashboardWorkspace')).toBeVisible();
+  await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#filterSearch')).toHaveValue('Synthetic');
   await openToolSection(page, 'technicians');
   await expect(page.locator('#techniciansPanel')).toBeVisible();
@@ -336,13 +826,13 @@ for (const width of [1440,768,390]) {
     await captureParity(page,`technician-${width}-dashboard`,true);
     await openToolSection(page,'systems');
     await captureParity(page,`technician-${width}-management`);
-    const list=width<768?'#systemsMobileList':'#systemsTableBody';
-    await page.locator(`${list} [data-action="edit"]`).first().click();
+    const list=width<768?'#systemsMobileList .system-mobile-card':'#systemsTableBody tr[data-system-id]';
+    await clickSystemAction(page,'edit',list);
     await expect(page.locator('#editDialog')).toBeVisible();
     await captureParity(page,`technician-${width}-edit`);
     await page.locator('#editDialog [data-dismiss-dialog]').first().click();
     await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
-    await page.locator(`${list} [data-action="delete"]`).first().click();
+    await clickSystemAction(page,'delete',list);
     await expect(page.locator('#deleteDialog')).toBeVisible();
     await captureParity(page,`technician-${width}-delete`);
     await page.locator('#deleteDialog [data-dismiss-dialog]').first().click();
@@ -372,8 +862,11 @@ test('tablet Management tables chain vertical wheel and retain horizontal scroll
     const canScroll = await page.evaluate(() => document.documentElement.scrollHeight > innerHeight + 1);
     if (canScroll) {
       const beforeY = await page.evaluate(() => scrollY);
+      await page.mouse.wheel(0, -300);
+      await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(beforeY);
+      const movedY = await page.evaluate(() => scrollY);
       await page.mouse.wheel(0, 300);
-      await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(beforeY);
+      await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(movedY);
     } else {
       expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true);
     }
@@ -408,8 +901,8 @@ test('saved session deep link waits for verification and rejects unauthorized ac
   expect(network.blocked).toEqual([]);
 });
 async function openEditFromTable(page, mobile = false) {
-  if (await page.locator('#managementWorkspace').isHidden()) await openToolSection(page, 'systems');
-  await page.locator(`${mobile ? '#systemsMobileList' : '#systemsTableBody'} [data-action="edit"]`).first().click();
+  await openToolSection(page, 'systems');
+  await clickSystemAction(page, 'edit', mobile ? '#systemsMobileList .system-mobile-card' : '#systemsTableBody tr[data-system-id]');
   await expect(page.locator('#editDialog')).toBeVisible();
 }
 function mutations(network) { return network.calls.filter(call => /^(data\.(update|delete)|technicians\.|auth\.changePassword)/.test(call.action)); }
@@ -545,14 +1038,14 @@ for (const viewport of [
       if (viewport.width < 768) await page.locator('#filterToggleButton').click();
       await page.locator('#publicFilter').selectOption('HIDDEN');
       await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
-      await expect(page.locator('#resultCount')).toHaveText('1 รายการ');
+      await expect(page.locator('#resultCount')).toHaveText('แสดง 1 จาก 5 ระบบ');
       await page.locator('#clearFiltersButton').click();
       await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
-      await expect(page.locator('#resultCount')).toHaveText('5 รายการ');
+      await expect(page.locator('#resultCount')).toHaveText('แสดง 5 จาก 5 ระบบ');
       await expect(page.locator('#technicianMapScope')).toContainText('แสดงทุกระบบ');
       await page.locator('#searchInput').fill('Visible Synthetic System');
       await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
-      await expect(page.locator('#resultCount')).toHaveText('1 รายการ');
+      await expect(page.locator('#resultCount')).toHaveText('แสดง 1 จาก 5 ระบบ');
       await page.locator('[data-tab="overview"]').click();
       if (viewport.width < 768) await page.locator('#btnFilterToggle').click();
       await page.locator('#filterSearch').fill('Visible Synthetic System');
@@ -577,7 +1070,7 @@ test('Technician map refresh, update and physical deletion replace markers witho
     'data.deleteWaterSystem': () => { systems = systems.filter(item => item.system_id !== hiddenMapSystem.system_id); return success(); }
   });
   await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(2);
-  await page.locator('#systemsTableBody [data-system-id="QA-MAP-VISIBLE"] [data-action="edit"]').click();
+  await clickSystemAction(page,'edit','#systemsTableBody [data-system-id="QA-MAP-VISIBLE"]');
   await page.locator('#edit_system_name').fill('Updated Synthetic Name');
   await page.locator('#saveEditButton').click();
   await expect(page.locator('#editDialog')).toBeHidden();
@@ -585,7 +1078,7 @@ test('Technician map refresh, update and physical deletion replace markers witho
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-MAP-VISIBLE').lat)).toBeCloseTo(19.45);
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-MAP-VISIBLE').lng)).toBeCloseTo(100.35);
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
-  await page.locator('#systemsTableBody [data-system-id="QA-MAP-HIDDEN"] [data-action="delete"]').click();
+  await clickSystemAction(page,'delete','#systemsTableBody [data-system-id="QA-MAP-HIDDEN"]');
   await page.locator('#deleteReason').fill('Synthetic removal');
   await page.locator('#deleteConfirmInput').fill(hiddenMapSystem.system_id);
   await page.locator('#confirmDeleteButton').click();
@@ -645,9 +1138,10 @@ test('later Technician detail selection wins over a stale response', async ({ pa
     'data.dashboard': mapDashboard([visibleMapSystem, hiddenMapSystem]),
     'data.waterSystem': envelope => envelope.payload.systemId === visibleMapSystem.system_id ? first.respond() : second.respond()
   });
-  await page.locator('#systemsTableBody [data-system-id="QA-MAP-VISIBLE"] [data-action="view"]').click();
+  await clickSystemAction(page,'view','#systemsTableBody [data-system-id="QA-MAP-VISIBLE"]');
   await expectBusyDialog(page, 'กำลังโหลดข้อมูลระบบ...');
-  await page.locator('#systemsTableBody [data-system-id="QA-MAP-HIDDEN"] [data-action="view"]').evaluate(button => button.click());
+  await page.locator('#systemsTableBody [data-system-id="QA-MAP-HIDDEN"] [data-action-trigger]').evaluate(button => button.click());
+  await page.locator('#systemActionMenu [data-action="view"]').evaluate(button => button.click());
   second.release();
   await expect(page.locator('#systemDialogTitle')).toHaveText(hiddenMapSystem.system_name);
   first.release();
@@ -882,7 +1376,7 @@ test('refresh, account listing, detail and history use the shared busy dialog', 
   await expectBusyDialog(page, 'กำลังรีเฟรชข้อมูล...');
   refresh.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
-  await page.locator('#systemsTableBody [data-action="view"]').first().click();
+  await clickSystemAction(page, 'view');
   await expectBusyDialog(page, 'กำลังโหลดข้อมูลระบบ...');
   detail.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
@@ -918,7 +1412,7 @@ test('edit, delete, account mutation and password loading remain above their dia
   edit.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
-  await page.locator('#systemsTableBody [data-action="delete"]').first().click();
+  await clickSystemAction(page, 'delete');
   await expect(page.locator('#deleteDialog')).toBeVisible();
   await page.locator('#deleteReason').fill('Synthetic deletion reason');
   await page.locator('#deleteConfirmInput').fill(system.system_id);
@@ -1032,7 +1526,7 @@ test('global Dashboard filters cascade, keep their own state, and leave Manageme
   await openToolSection(page,'systems');
   await expect(page.locator('#searchInput')).toHaveValue('');
   await page.locator('#searchInput').fill('Synthetic B');
-  await expect(page.locator('#resultCount')).toHaveText('1 รายการ');
+  await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 1 ระบบ');
   await page.locator('[data-tab="overview"]').click();
   await expect(page.locator('#filterDistrict')).toHaveValue('เมือง');
   await expect(page.locator('#kpiSystems')).toHaveText('1');
@@ -1063,7 +1557,7 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
       await expect(page.locator('#alertInsufficient')).toHaveText('1');
       await expect(page.locator('#alertQualityFail')).toHaveText('1');
       await expect(page.locator('#watchlistTotal')).toHaveText('1');
-      await expect(page.locator('#problemList .watch-card')).toHaveCount(1);
+      await expect(page.locator('#systemsMobileList [data-system-id]')).toHaveCount(1);
       for (const [tab, panel] of [['area','areas'],['quality','quality'],['types','system-structure'],['monitoring','watchlist']]) {
         await page.locator(`[data-tab="${tab}"]`).click();
         await expect(page.locator(`#${panel}`)).toBeVisible();
@@ -1080,7 +1574,7 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
       await expect(page.locator('#kpiSystems')).toHaveText('1');
       await expect(page.locator('#watchlistTotal')).toHaveText('0');
       await openToolSection(page, 'systems');
-      await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(3);
+      await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(1);
       await page.locator('[data-tab="overview"]').click();
       await expect(page.locator('#filterDistrict')).toHaveValue('เมือง');
       expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(1);
@@ -1103,7 +1597,7 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
       expect(geometry.iconTop).toBeGreaterThan(geometry.top);
       expect(geometry.iconBottom).toBeLessThan(geometry.bottom);
       await page.locator('#searchInput').fill('Synthetic Water');
-      await expect(page.locator('#resultCount')).toHaveText('1 รายการ');
+      await expect(page.locator('#resultCount')).toHaveText('แสดง 1 จาก 1 ระบบ');
     });
   });
 }
@@ -1141,6 +1635,7 @@ test('coordinate edit uses archive-verified ranges, paired blank semantics and e
   const update = network.calls.find(call => call.action === 'data.updateWaterSystem');
   expect(update.payload.request.expectedVersion).toBe(editableSystem.recordVersion);
   expect(update.payload.request.patch).toMatchObject({ latitude: 19.4, longitude: 100.3 });
+  await page.waitForFunction(() => window.VWSTechnicianMap.point('QA-SYSTEM-1')?.lat === 19.4);
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-SYSTEM-1').lat)).toBeCloseTo(19.4);
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
   await openEditFromTable(page);
@@ -1152,6 +1647,7 @@ test('coordinate edit uses archive-verified ranges, paired blank semantics and e
   await page.locator('#saveEditButton').click();
   await expect(page.locator('#editDialog')).toBeHidden();
   expect(network.calls.filter(call => call.action === 'data.updateWaterSystem').at(-1).payload.request.patch).toMatchObject({ latitude: '', longitude: '' });
+  await page.waitForFunction(() => window.VWSTechnicianMap.point('QA-SYSTEM-1') === null);
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-SYSTEM-1'))).toBeNull();
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
   await openEditFromTable(page);
@@ -1160,6 +1656,7 @@ test('coordinate edit uses archive-verified ranges, paired blank semantics and e
   await page.locator('#saveEditButton').click();
   await expect(page.locator('#editDialog')).toBeHidden();
   expect(network.calls.filter(call => call.action === 'data.updateWaterSystem').at(-1).payload.request.patch).toMatchObject({ latitude: 19.2, longitude: 100.1 });
+  await page.waitForFunction(() => window.VWSTechnicianMap.point('QA-SYSTEM-1')?.lat === 19.2);
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-SYSTEM-1').lat)).toBeCloseTo(19.2);
 });
 
@@ -1291,7 +1788,7 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
 
 test('delete X and Cancel never delete after confirmation; explicit Delete validates ID', async ({ page }) => {
   const network = await openManagement(page);
-  await page.locator('#systemsTableBody [data-action="delete"]').click();
+  await clickSystemAction(page, 'delete');
   await expect(page.locator('#deleteDialog')).toBeVisible();
   await page.locator('#deleteReason').fill('Synthetic reason');
   await page.locator('#deleteConfirmInput').fill(system.system_id);
@@ -1359,10 +1856,11 @@ test('forced password change cannot be dismissed with Escape or backdrop', async
 test('restricted role cannot open edit or delete from desktop or mobile actions', async ({ page }) => {
   const network = await openManagement(page, { 'data.bootstrap': success({ user, permissions: [], enumCatalog: {} }) });
   for (const parent of ['#systemsTableBody', '#systemsMobileList']) {
-    await expect(page.locator(`${parent} [data-action="edit"]`)).toBeDisabled();
-    await expect(page.locator(`${parent} [data-action="delete"]`)).toBeDisabled();
+    await page.locator(`${parent} [data-action-trigger]`).first().evaluate(button => button.click());
+    await expect(page.locator('#systemActionMenu [data-action="edit"]')).toBeDisabled();
+    await expect(page.locator('#systemActionMenu [data-action="delete"]')).toBeDisabled();
   }
-  await page.locator('#systemsTableBody [data-action="view"]').click();
+  await clickSystemAction(page, 'view');
   await expect(page.locator('#editSystemButton')).toBeDisabled();
   await expect(page.locator('#deleteSystemButton')).toBeDisabled();
   expect(network.calls.filter(call => /^(data\.update|data\.delete)/.test(call.action))).toEqual([]);
@@ -1552,7 +2050,7 @@ test('Phase B service values serialize exactly and shared villages support touch
   const network = await openManagement(page);
   await openEditFromTable(page);
   for (const [key, value] of Object.entries({ beneficiaries: '125', monthly_production_cost: '1300.5', monthly_service_revenue: '900', water_tariff: '9.25', service_agency: 'หน่วยงานใหม่' })) await page.locator(`#edit_${key}`).fill(value);
-  await page.locator('#edit_shared_villages_json input').uncheck();
+  await page.locator('#edit_shared_villages_json input[name="shared_villages_json"]').uncheck();
   await page.locator('#saveEditButton').click();
   await expect(page.locator('#editDialog')).toBeHidden();
   const updates = network.calls.filter(call => call.action === 'data.updateWaterSystem');
@@ -1633,9 +2131,11 @@ test('Phase B displays every rendered field from a synthetic existing record wit
   const network = await openManagement(page, { 'data.waterSystem': success({ system: existing }) });
   await openEditFromTable(page);
   for (const [key, value] of Object.entries(scalar)) await expect(page.locator(`#edit_${key}`), key).toHaveValue(value);
-  for (const [key, selected] of Object.entries({ usage_types_json: ['DOMESTIC', 'LEGACY_USE'], quality_failure_categories_json: ['LEGACY_QUALITY'], available_months_json: ['JAN', 'MAR'], shared_villages_json: ['LEGACY-VILLAGE'] })) {
+  for (const [key, selected] of Object.entries({ usage_types_json: ['DOMESTIC', 'LEGACY_USE'], quality_failure_categories_json: ['LEGACY_QUALITY'], available_months_json: ['JAN', 'MAR'] })) {
     for (const value of selected) await expect(page.locator(`input[name="${key}"][value="${value}"]`), `${key}:${value}`).toBeChecked();
   }
+  await expect(page.locator('#sharedVillageCount')).toContainText('1');
+  await expect(page.locator('#sharedVillageChips [data-remove-village="LEGACY-VILLAGE"]')).toContainText('ไม่อยู่ในรายชื่อปัจจุบัน');
   await page.locator('#saveEditButton').click();
   await expect(page.locator('#editError')).not.toBeEmpty();
   expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toEqual([]);
@@ -1661,7 +2161,7 @@ for (const width of [1440, 768, 390]) {
     await scan('edit validation error');
     await page.locator('#editDialog [data-dismiss-dialog]').first().click();
     await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
-    await page.locator(`${width === 390 ? '#systemsMobileList' : '#systemsTableBody'} [data-action="delete"]`).first().click();
+    await clickSystemAction(page, 'delete', `${width === 390 ? '#systemsMobileList' : '#systemsTableBody'} [data-system-id]`);
     await scan('delete');
     await page.locator('#deleteDialog [data-dismiss-dialog]').first().click();
     await page.locator('#systemDialog [data-dismiss-dialog]').first().click();

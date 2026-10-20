@@ -10,7 +10,7 @@
   const fill = {blue:'rgba(2,132,199,.72)',amber:'rgba(217,119,6,.82)',green:'rgba(5,150,105,.82)',red:'rgba(220,38,38,.82)',gray:'rgba(148,163,184,.82)'};
   const filters = Object.fromEntries(keys.map(key => [key,'']));
   const charts = new Map();
-  let dataset = {villages:[],waterSystems:[]}, label = value => value, onChange = () => {}, onSystem = () => {}, onMap = () => {}, bound = false;
+  let dataset = {villages:[],waterSystems:[]}, label = value => value, onChange = () => {}, bound = false;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const number = value => Number(value || 0).toLocaleString('th-TH');
   const sorted = values => [...new Set(values.filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b),'th'));
@@ -23,7 +23,8 @@
     }
     return String(value || '').trim();
   };
-  const isWatch = s => s.operational_status === 'NOT_WORKING' || normal('waterQuantity',s.water_quantity) === 'INSUFFICIENT' || normal('drinkingWaterQuality',s.drinking_water_quality) === 'FAIL';
+  const monitoringIssues = s => [s.operational_status === 'NOT_WORKING' && 'NOT_WORKING',normal('waterQuantity',s.water_quantity) === 'INSUFFICIENT' && 'INSUFFICIENT',normal('drinkingWaterQuality',s.drinking_water_quality) === 'FAIL' && 'FAIL'].filter(Boolean);
+  const isWatch = s => monitoringIssues(s).length > 0;
   const textSearch = (s,v) => [s.system_name,v.village_name,v.district,v.subdistrict,v.local_authority,s.responsible_agency,s.establishment_agency,s.transfer_agency,s.shared_village_name,label(s.system_type),label(s.operational_status),label(s.drinking_water_quality),label(s.water_quantity)].join(' ').normalize('NFKC').toLocaleLowerCase('th-TH');
   function snapshot(exclude = [], ignoreSearch = false) {
     const omitted = new Set(exclude), map = villageMap();
@@ -94,7 +95,7 @@
     render();
   }
   function bind(handlers={}) {
-    onChange=handlers.onChange||onChange;onSystem=handlers.onSystem||onSystem;onMap=handlers.onMap||onMap;
+    onChange=handlers.onChange||onChange;
     if(bound)return;
     bound=true;
     for(const key of keys)$(ids[key]).addEventListener(key==='search'?'input':'change',e=>setFilter(key,e.target.value));
@@ -102,7 +103,6 @@
     $('btnFilterToggle').addEventListener('click',()=>{const panel=$('dashboardFilterPanel'),open=panel.classList.toggle('hidden');$('btnFilterToggle').setAttribute('aria-expanded',String(!open));});
     $('activeFilterChips').addEventListener('click',e=>{const b=e.target.closest('[data-filter-remove]');if(b)setFilter(b.dataset.filterRemove,'');});
     $('alerts').addEventListener('click',e=>{const b=e.target.closest('[data-filter-toggle-key]');if(b)setFilter(b.dataset.filterToggleKey,b.dataset.filterToggleValue,true);});
-    $('problemList').addEventListener('click',e=>{const b=e.target.closest('[data-watch-action]');if(b){if(b.dataset.watchAction==='map')onMap(b.dataset.id);else onSystem(b.dataset.id);}});
   }
   function waterworks(v) {return [true,1,'1','YES','มีประปาหมู่บ้าน'].includes(v.has_village_waterworks);}
   function summarize(source, systems=source?.waterSystems||[]) {
@@ -170,25 +170,13 @@
     const types=Object.keys(typeCounts).sort((a,b)=>typeCounts[b]-typeCounts[a]||a.localeCompare(b,'th'));
     makeChart('systemTypeChart','bar',types.map(label),[{label:'จำนวนระบบ',data:types.map(k=>typeCounts[k]),backgroundColor:types.map(k=>filters.systemType&&filters.systemType!==k?'rgba(2,132,199,.18)':fill.blue),borderColor:colors.blue,borderWidth:1,borderRadius:5,maxBarThickness:28}],{horizontal:true,legend:false,onClick:i=>setFilter('systemType',types[i],true)});
   }
-  function renderWatchlist(systems) {
-    const map=villageMap();
-    const rows=systems.filter(isWatch).sort((a,b)=>((b.operational_status==='NOT_WORKING')*100+(b.water_quantity==='INSUFFICIENT')*30+(b.drinking_water_quality==='FAIL')*20)-((a.operational_status==='NOT_WORKING')*100+(a.water_quantity==='INSUFFICIENT')*30+(a.drinking_water_quality==='FAIL')*20));
-    const root=$('problemList');
-    if(!rows.length){root.innerHTML='<div class="empty-state"><strong>ไม่พบระบบที่เข้าเงื่อนไขเฝ้าระวัง</strong><span>ตามขอบเขตและตัวกรองปัจจุบัน</span></div>';return;}
-    const badges=s=>[s.operational_status==='NOT_WORKING'&&'<span class="badge badge-danger">ใช้การไม่ได้</span>',normal('waterQuantity',s.water_quantity)==='INSUFFICIENT'&&'<span class="badge badge-warning">น้ำไม่เพียงพอ</span>',normal('drinkingWaterQuality',s.drinking_water_quality)==='FAIL'&&'<span class="badge badge-rose">น้ำดื่มไม่ผ่านเกณฑ์</span>'].filter(Boolean).join('');
-    const name=s=>s.system_name||villageOf(s,map).village_name||'ระบบประปาหมู่บ้าน';
-    const actions=s=>`<button class="action-button" type="button" data-watch-action="map" data-id="${esc(s.system_id)}" ${window.VWSTechnicianMap?.coordinates(s)?'':'disabled'}>แผนที่</button><button class="action-button" type="button" data-watch-action="detail" data-id="${esc(s.system_id)}">รายละเอียด</button>`;
-    root.innerHTML=`<div class="problem-summary"><div>พบ <strong>${number(rows.length)}</strong> ระบบ ที่เข้าเงื่อนไขเฝ้าระวังอย่างน้อย 1 ประเด็น</div><span>${rows.length>8?'เลื่อนดูรายการทั้งหมดภายในกล่อง':'แสดงรายการทั้งหมด'}</span></div>
-      <div class="hidden lg:block"><div class="watchlist-scroll" role="region" aria-label="ตารางระบบที่ควรติดตามสถานการณ์" tabindex="0"><table class="problem-table"><thead><tr><th>หมู่บ้าน / ระบบ</th><th>อำเภอ</th><th>ประเด็นเฝ้าระวัง</th><th>ครัวเรือน</th><th class="align-right">ดูข้อมูล</th></tr></thead><tbody>${rows.map(s=>`<tr><td><span class="system-main">${esc(villageOf(s,map).village_name||'ไม่ระบุหมู่บ้าน')}</span><span class="system-sub">${esc(name(s))}</span></td><td>${esc(villageOf(s,map).district||'-')}</td><td><div class="watch-badges">${badges(s)}</div></td><td>${esc(s.households_served??'-')}</td><td><div class="row-actions">${actions(s)}</div></td></tr>`).join('')}</tbody></table></div></div>
-      <div class="watchlist-mobile lg:hidden" role="region" aria-label="รายการระบบที่ควรติดตามสถานการณ์" tabindex="0">${rows.map(s=>`<article class="watch-card"><h3 class="watch-card-title">${esc(villageOf(s,map).village_name||'ไม่ระบุหมู่บ้าน')}</h3><p class="watch-card-system">${esc(name(s))}</p><div class="watch-badges">${badges(s)}</div><div class="watch-card-actions">${actions(s)}</div></article>`).join('')}</div>`;
-  }
   function render(nextDataset=dataset,nextLabel=label) {
     dataset=nextDataset||dataset;label=nextLabel||label;
     updateControls();
     const current=snapshot();
-    renderMetrics(current);renderCharts();renderWatchlist(current.systems);
+    renderMetrics(current);renderCharts();
     onChange(current.systems,keys.some(key=>filters[key]));
     return current;
   }
-  window.VWSTechnicianAnalytics={bind,render,snapshot,summarize,filters,chartCount:()=>charts.size,resize:()=>charts.forEach(chart=>chart.resize()),setFilter};
+  window.VWSTechnicianAnalytics={bind,render,snapshot,summarize,filters,monitoringIssues,isWatch,chartCount:()=>charts.size,resize:()=>charts.forEach(chart=>chart.resize()),setFilter};
 })();

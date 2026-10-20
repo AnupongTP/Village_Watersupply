@@ -333,18 +333,13 @@
       <article class="chart-card"><div class="chart-canvas-wrap h-[25rem] sm:h-[27rem]"><canvas id="systemTypeChart"></canvas></div></article>
     </section>
 
-    <!-- Watchlist -->
+    <!-- One authenticated systems list with All and Monitoring modes. -->
     <section id="watchlist" class="dashboard-section scroll-target mt-7" data-scroll-target>
-      <div class="section-heading"><div><p class="eyebrow">รายการเฝ้าระวัง</p><h2 class="m-0 text-base font-extrabold leading-relaxed text-slate-900 sm:text-lg">ระบบที่ควรติดตามสถานการณ์</h2><p class="section-description">ระบบที่ใช้การไม่ได้ น้ำไม่เพียงพอ หรือคุณภาพน้ำดื่มไม่ผ่านเกณฑ์</p></div></div>
-      <div id="problemList" class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" aria-live="polite"><p class="text-sm text-slate-500">กำลังประมวลผลข้อมูล...</p></div>
-    </section>
-
-    <footer class="mt-8 border-t border-slate-200 py-5 text-center text-[11px] text-slate-600">ระบบรายงานสถานการณ์ระบบประปา</footer>
+      <div class="section-heading"><div><p class="eyebrow">รายการระบบ</p><h2 class="m-0 text-base font-extrabold leading-relaxed text-slate-900 sm:text-lg">รายการระบบประปาและเฝ้าระวัง</h2><p class="section-description">ค้นหาและจัดการระบบประปาตามสิทธิ์ของบัญชี</p></div></div>
+      <div class="system-mode-switch" role="group" aria-label="โหมดรายการระบบประปา">
+        <button id="systemsModeAll" class="system-mode-button" type="button" data-system-mode="all" aria-pressed="false">ระบบทั้งหมด (<span id="allSystemsCount">0</span>)</button>
+        <button id="systemsModeMonitoring" class="system-mode-button" type="button" data-system-mode="monitoring" aria-pressed="true">เฝ้าระวัง (<span id="monitoringSystemsCount">0</span>)</button>
       </div>
-
-      <section id="managementWorkspace" class="dashboard-section management-section hidden" data-workspace="management" aria-label="จัดการข้อมูลระบบประปา">
-        <div class="section-heading page-heading"><div><p class="eyebrow">เครื่องมือช่าง</p><h2>จัดการข้อมูล</h2><p class="section-description">ค้นหา ดู และจัดการระบบประปาตามสิทธิ์ของบัญชี</p></div><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับ Dashboard</button></div>
-        <!-- Filter composition follows the Public Dashboard mobile/desktop pattern. -->
         <section id="technicianManagementSection" class="filter-shell technician-section-anchor" aria-label="ตัวกรองระบบประปา">
           <div class="filter-mobile-head">
             <div><p class="eyebrow">ตัวกรองข้อมูล</p><p class="filter-mobile-summary">ค้นหาและจำกัดรายการระบบประปา</p></div>
@@ -358,26 +353,29 @@
             </label>
             <label class="filter-field">อำเภอ<select id="districtFilter"><option value="">ทั้งหมด</option></select></label>
             <label class="filter-field">สถานะระบบ<select id="statusFilter"><option value="">ทั้งหมด</option></select></label>
-            <label class="filter-field">การแสดง Public<select id="publicFilter"><option value="">ทั้งหมด</option><option value="VISIBLE">แสดง Public</option><option value="HIDDEN">ไม่แสดง Public</option></select></label>
+            <label class="filter-field">การแสดง Public<select id="publicFilter"><option value="">ทั้งหมด</option><option value="VISIBLE">แสดง Public</option><option value="HIDDEN">ไม่แสดง Public</option><option value="UNKNOWN">ไม่ทราบ</option></select></label>
             <button id="clearFiltersButton" class="btn btn-ghost clear-filter" type="button"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i><span>ล้างตัวกรอง</span></button>
           </div>
         </section>
 
         <section class="data-card" aria-labelledby="systemsListTitle">
           <div class="table-head-meta">
-            <div><p class="eyebrow">รายการระบบ</p><strong id="systemsListTitle"><span id="resultCount">0 รายการ</span></strong></div>
+            <div><p class="eyebrow">ผลรายการ</p><strong id="systemsListTitle"><span id="resultCount">0 รายการ</span></strong><small id="systemsScopeNote" class="muted"></small></div>
             <span id="pageStatus" class="muted"></span>
           </div>
           <div class="table-scroll desktop-table-wrap" tabindex="0" aria-label="ตารางระบบประปา เลื่อนแนวนอนได้เมื่อจำเป็น">
             <table class="management-table">
-              <thead><tr><th>ระบบ</th><th>หมู่บ้าน / พื้นที่</th><th>ประเภท</th><th>สถานะ</th><th>Public</th><th class="actions-column">จัดการ</th></tr></thead>
+              <thead><tr><th>ระบบ</th><th>หมู่บ้าน / พื้นที่</th><th>ประเภท</th><th>สถานะ</th><th>ประเด็นเฝ้าระวัง</th><th>Public</th><th>ครัวเรือน</th><th>จัดการ</th></tr></thead>
               <tbody id="systemsTableBody"></tbody>
             </table>
           </div>
           <div id="systemsMobileList" class="systems-mobile-list" aria-live="polite"></div>
           <div class="pager"><button id="prevPage" class="btn btn-outline" type="button"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>ก่อนหน้า</span></button><button id="nextPage" class="btn btn-outline" type="button"><span>ถัดไป</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>
         </section>
-      </section>
+    </section>
+
+    <footer class="mt-8 border-t border-slate-200 py-5 text-center text-[11px] text-slate-600">ระบบรายงานสถานการณ์ระบบประปา</footer>
+      </div>
 
       <section id="historyPanel" class="dashboard-section hidden" data-workspace="history">
         <div class="section-heading page-heading"><div><p class="eyebrow">Audit Log</p><h2>ประวัติการแก้ไข</h2><p class="section-description muted">ค้นด้วยรหัสระบบเพื่อดูว่าใครแก้ไขหรือลบข้อมูล เมื่อใด และด้วยเหตุผลอะไร</p></div><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับ Dashboard</button></div>
@@ -405,6 +403,7 @@
     </main>
   </div>
 
+  <div id="systemActionMenu" class="system-action-menu hidden" role="group" aria-label="การจัดการระบบประปา"></div>
   <dialog id="busyOverlay" class="busy-overlay" aria-label="กำลังประมวลผล"></dialog>
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
