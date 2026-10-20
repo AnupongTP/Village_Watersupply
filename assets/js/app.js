@@ -3,7 +3,7 @@ import { AppState } from './state.js';
 import { buildTemporaryPublicScope } from './public-scope.js';
 import { applyFilters, bindFilterEvents, buildFilterOptions } from './filters.js';
 import { renderDashboard } from './dashboard.js';
-import { initMap, renderMap, fitVisiblePoints, locateUser, locateUserAutomatically } from './map.js';
+import { initMap, renderMap, locateUserAutomatically } from './map.js';
 import { bindChartFilterEvents, renderCharts } from './charts.js';
 import { renderProblemList } from './problem-list.js';
 import { initDrawer } from './drawer.js';
@@ -35,8 +35,6 @@ async function initApp() {
   bindChartFilterEvents(renderAll);
 
   document.getElementById('btnRefresh')?.addEventListener('click', reloadData);
-  document.getElementById('btnUserLocation')?.addEventListener('click', locateUser);
-  document.getElementById('btnMapFit')?.addEventListener('click', fitVisiblePoints);
 
   await reloadData();
 }

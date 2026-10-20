@@ -340,8 +340,15 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* SweetAlert2 keeps its Public animation behavior, including the loader. */
-  *:not(.swal2-container, .swal2-container *), *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  /* Keep Public's Leaflet and SweetAlert2 motion; reduce unrelated Management UI motion. */
+  *:not(.swal2-container, .swal2-container *, .leaflet-container, .leaflet-container *),
+  *:not(.swal2-container, .swal2-container *, .leaflet-container, .leaflet-container *)::before,
+  *:not(.swal2-container, .swal2-container *, .leaflet-container, .leaflet-container *)::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* Mobile account menu: prevents the management-only actions from crowding the Public-style header. */
