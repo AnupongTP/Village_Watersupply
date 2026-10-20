@@ -34,8 +34,12 @@ export async function requestCurrentUserPosition({
 }
 
 export function normalizeUserPosition(position) {
-  const latitude = Number(position?.coords?.latitude);
-  const longitude = Number(position?.coords?.longitude);
+  const rawLatitude = position?.coords?.latitude;
+  const rawLongitude = position?.coords?.longitude;
+  if (rawLatitude == null || rawLongitude == null ||
+      String(rawLatitude).trim() === '' || String(rawLongitude).trim() === '') return null;
+  const latitude = Number(rawLatitude);
+  const longitude = Number(rawLongitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
 

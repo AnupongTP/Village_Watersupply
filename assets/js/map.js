@@ -7,7 +7,7 @@ import { openNavigation } from './navigation.js';
 import { requestCurrentUserPosition, userLocationErrorMessage } from './user-location.js';
 import {
   HOME_VIEW, PHAYAO_BOUNDS, SYSTEM_POPUP_OPTIONS, systemMarkerOptions,
-  buildMapPopup, addMapLegend, fitMapPoints, userLocationMarkerOptions,
+  buildMapPopup, addMapLegend, fitMapPoints, fitOverviewPoints, userLocationMarkerOptions,
   userLocationPopup, setUserLocationButtonBusy, showUserLocationError
 } from './map-presentation.js';
 
@@ -18,6 +18,25 @@ let userLocationMarker;
 let markerBySystemId = new Map();
 let mapActionsBound = false;
 let userLocationRequestInFlight = false;
+let currentPositionRequest = null;
+let automaticLocationAttempted = false;
+let mapInteractionRevision = 0;
+
+function invalidatePendingLocation() {
+  mapInteractionRevision++;
+}
+
+function requestPositionOnce() {
+  if (!currentPositionRequest) {
+    const request = requestCurrentUserPosition();
+    currentPositionRequest = request;
+    request.then(
+      () => { if (currentPositionRequest === request) currentPositionRequest = null; },
+      () => { if (currentPositionRequest === request) currentPositionRequest = null; }
+    );
+  }
+  return currentPositionRequest;
+}
 
 export function initMap() {
   if (map) return;
@@ -61,11 +80,17 @@ export function initMap() {
   });
 
   const mapEl = document.getElementById('waterMap');
-  if (mapEl) resizeObserver.observe(mapEl);
+  if (mapEl) {
+    resizeObserver.observe(mapEl);
+    for (const eventName of ['pointerdown', 'wheel', 'keydown']) {
+      mapEl.addEventListener(eventName, invalidatePendingLocation);
+    }
+  }
 }
 
 export function renderMap() {
   if (!map) initMap();
+  invalidatePendingLocation();
 
   markerLayer.clearLayers();
   markerBySystemId = new Map();
@@ -101,19 +126,37 @@ export async function locateUser() {
   if (userLocationRequestInFlight) return false;
 
   const button = document.getElementById('btnUserLocation');
+  invalidatePendingLocation();
+  const revision = mapInteractionRevision;
   userLocationRequestInFlight = true;
   setUserLocationButtonBusy(button, true);
 
   try {
-    const position = await requestCurrentUserPosition();
+    const position = await requestPositionOnce();
+    if (revision !== mapInteractionRevision) return false;
     showUserLocation(position);
     return true;
   } catch (error) {
-    showUserLocationError(error, userLocationErrorMessage);
+    if (revision === mapInteractionRevision) showUserLocationError(error, userLocationErrorMessage);
     return false;
   } finally {
     userLocationRequestInFlight = false;
     setUserLocationButtonBusy(button, false);
+  }
+}
+
+export async function locateUserAutomatically() {
+  if (automaticLocationAttempted) return false;
+  automaticLocationAttempted = true;
+  if (!map) initMap();
+  const revision = mapInteractionRevision;
+  try {
+    const position = await requestPositionOnce();
+    if (revision !== mapInteractionRevision) return false;
+    return showUserLocation(position);
+  } catch (_) {
+    if (revision === mapInteractionRevision) goHome();
+    return false;
   }
 }
 
@@ -140,17 +183,13 @@ export function goHome() {
 
 export function fitVisiblePoints() {
   if (!map) return;
+  invalidatePendingLocation();
 
   const bounds = AppState.filtered.waterSystems
     .filter(hasUsableCoordinate)
     .map(system => [Number(system.latitude), Number(system.longitude)]);
 
-  if (!bounds.length) {
-    goHome();
-    return;
-  }
-
-  fitMapPoints(map, bounds);
+  fitOverviewPoints(map, bounds);
 }
 
 export function focusSystem(systemId) {
@@ -158,12 +197,15 @@ export function focusSystem(systemId) {
 
   const marker = markerBySystemId.get(String(systemId));
   if (!marker) return false;
+  invalidatePendingLocation();
+  const revision = mapInteractionRevision;
 
   scrollToSectionById('map-section', true);
   const latLng = marker.getLatLng();
 
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
+      if (revision !== mapInteractionRevision) return;
       map.invalidateSize({ pan: false });
       map.setView(latLng, 16, { animate: true });
       marker.openPopup();

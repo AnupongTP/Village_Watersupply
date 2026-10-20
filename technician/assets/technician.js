@@ -179,7 +179,7 @@
     $('techniciansTab').classList.toggle('hidden',!canManageAccounts);
     $('techniciansPanel').classList.add('hidden');
     if(!canManageAccounts&&location.hash==='#techniciansPanel')history.replaceState(null,'',location.pathname+location.search);
-    showApp(); renderDashboard(); requestAnimationFrame(()=>restoreSection());
+    showApp(); renderDashboard(); window.VWSTechnicianMap?.locateAutomatically(); requestAnimationFrame(()=>restoreSection());
   }
 
   async function resume(){

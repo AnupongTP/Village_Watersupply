@@ -95,6 +95,54 @@ export function fitMapPoints(map, bounds) {
   map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14, animate: false });
 }
 
+// User-triggered overview only. Tune the minimum sample size and retained share
+// to change outlier resistance without changing markers or filter-driven fitting.
+const OVERVIEW_MIN_POINTS_FOR_CORE = 10;
+const OVERVIEW_CORE_SHARE = 0.8;
+const OVERVIEW_MAX_ZOOM = 14;
+const OVERVIEW_SINGLE_ZOOM = 14;
+
+export function fitOverviewPoints(map, points) {
+  if (!map) return;
+  const local = points.map(point => {
+    const lat = Number(Array.isArray(point) ? point[0] : point?.lat);
+    const lng = Number(Array.isArray(point) ? point[1] : point?.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) && inPhayao({ lat, lng }) ? [lat, lng] : null;
+  }).filter(Boolean);
+
+  if (!local.length) {
+    map.setView(HOME_VIEW.center, HOME_VIEW.zoom, { animate: false });
+    return;
+  }
+  if (local.length === 1) {
+    map.setView(local[0], OVERVIEW_SINGLE_ZOOM, { animate: false });
+    return;
+  }
+
+  let cameraPoints = local;
+  if (local.length >= OVERVIEW_MIN_POINTS_FOR_CORE) {
+    const median = values => {
+      const sorted = values.sort((a, b) => a - b);
+      const middle = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    };
+    const centerLat = median(local.map(point => point[0]));
+    const centerLng = median(local.map(point => point[1]));
+    const lngScale = Math.cos(centerLat * Math.PI / 180);
+    cameraPoints = local.map((point, index) => ({
+      point, index,
+      distance: (point[0] - centerLat) ** 2 + ((point[1] - centerLng) * lngScale) ** 2
+    })).sort((a, b) => a.distance - b.distance || a.index - b.index)
+      .slice(0, Math.ceil(local.length * OVERVIEW_CORE_SHARE))
+      .map(item => item.point);
+  }
+
+  // Leaflet fits the same geographic core to each actual viewport size.
+  const size = map.getSize();
+  const padding = [size.x, size.y].map(length => Math.max(20, Math.min(36, Math.round(length * 0.05))));
+  map.fitBounds(cameraPoints, { padding, maxZoom: OVERVIEW_MAX_ZOOM, animate: false });
+}
+
 export function userLocationMarkerOptions() {
   return {
     radius: 8.5, weight: 3, color: '#ffffff', opacity: 1,

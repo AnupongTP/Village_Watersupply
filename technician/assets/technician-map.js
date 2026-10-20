@@ -16,6 +16,10 @@
   let pendingFocus = null;
   let locationPending = false;
   let locationGeneration = 0;
+  let currentPositionRequest = null;
+  let automaticLocationAttempted = false;
+  let automaticLocationQueued = false;
+  let mapInteractionRevision = 0;
   let presentation;
   let navigation;
   let userLocation;
@@ -42,6 +46,10 @@
       pendingFocus = null;
       focus(id);
     }
+    if (automaticLocationQueued) {
+      automaticLocationQueued = false;
+      void runAutomaticLocation();
+    }
   }).catch(() => {
     const empty = document.getElementById('technicianMapEmpty');
     if (empty && initRequested) {
@@ -58,6 +66,23 @@
     if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
         lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
     return [lat, lng];
+  }
+
+  function invalidatePendingLocation() {
+    mapInteractionRevision++;
+    automaticLocationQueued = false;
+  }
+
+  function requestPositionOnce() {
+    if (!currentPositionRequest) {
+      const request = userLocation.requestCurrentUserPosition();
+      currentPositionRequest = request;
+      request.then(
+        () => { if (currentPositionRequest === request) currentPositionRequest = null; },
+        () => { if (currentPositionRequest === request) currentPositionRequest = null; }
+      );
+    }
+    return currentPositionRequest;
   }
 
   function init(detailHandler, systemLookup, villageLookup) {
@@ -77,7 +102,9 @@
       empty.classList.remove('hidden');
       return false;
     }
-    map = L.map('technicianWaterMap', { zoomControl: true, minZoom: 7, preferCanvas: false })
+    // Reduced motion uses Leaflet's immediate zoom path rather than a CSS-suppressed transition.
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    map = L.map('technicianWaterMap', { zoomControl: true, minZoom: 7, preferCanvas: false, zoomAnimation: !reduceMotion })
       .setView(presentation.HOME_VIEW.center, presentation.HOME_VIEW.zoom);
     const satellite = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
@@ -108,6 +135,9 @@
     });
     document.getElementById('technicianMapFit').addEventListener('click', fit);
     document.getElementById('technicianMapLocate').addEventListener('click', locate);
+    for (const eventName of ['pointerdown', 'wheel', 'keydown']) {
+      document.getElementById('technicianWaterMap').addEventListener(eventName, invalidatePendingLocation);
+    }
     resizeObserver = new ResizeObserver(() => requestAnimationFrame(() => map?.invalidateSize({ pan: false })));
     resizeObserver.observe(document.getElementById('technicianWaterMap'));
     return true;
@@ -145,6 +175,7 @@
   }
 
   function render(systems, filtered = false) {
+    if (automaticLocationQueued) invalidatePendingLocation();
     if (!initRequested || !map) {
       pendingRender = [systems, filtered];
       return;
@@ -153,6 +184,7 @@
   }
 
   function renderNow(systems, filtered) {
+    mapInteractionRevision++;
     markerLayer.clearLayers();
     focusLayer.clearLayers();
     markers = new Map();
@@ -179,15 +211,17 @@
 
   function fit() {
     if (!map) return;
+    invalidatePendingLocation();
     const local = [...markers.values()].map(marker => marker.getLatLng()).filter(presentation.inPhayao);
-    if (local.length) presentation.fitMapPoints(map, local);
-    else goHome();
+    presentation.fitOverviewPoints(map, local);
   }
 
   function focus(systemId) {
     const system = findSystem?.(systemId);
     const point = coordinates(system);
     if (!initRequested || !system || !point) return false;
+    invalidatePendingLocation();
+    const revision = mapInteractionRevision;
     if (!map) {
       pendingFocus = systemId;
       return true;
@@ -195,7 +229,7 @@
     focusLayer.clearLayers();
     const marker = markers.get(String(systemId)) || addMarker(createMarker(system, point), focusLayer, system);
     requestAnimationFrame(() => {
-      if (!initRequested || findSystem?.(systemId) !== system) return;
+      if (!initRequested || revision !== mapInteractionRevision || findSystem?.(systemId) !== system) return;
       map.invalidateSize({ pan: false });
       map.setView(marker.getLatLng(), 16, { animate: true });
       marker.openPopup();
@@ -207,22 +241,16 @@
     if (!map || locationPending) return false;
     const button = document.getElementById('technicianMapLocate');
     const generation = locationGeneration;
+    invalidatePendingLocation();
+    const revision = mapInteractionRevision;
     locationPending = true;
     presentation.setUserLocationButtonBusy(button, true);
     try {
-      const position = await userLocation.requestCurrentUserPosition();
-      if (generation !== locationGeneration) return false;
-      const lat = Number(position.latitude);
-      const lng = Number(position.longitude);
-      userLocationLayer.clearLayers();
-      const marker = L.circleMarker([lat, lng], presentation.userLocationMarkerOptions())
-        .bindPopup(presentation.userLocationPopup(position), { maxWidth: 310, minWidth: 240 })
-        .addTo(userLocationLayer);
-      map.setView([lat, lng], 16, { animate: true });
-      marker.openPopup();
-      return true;
+      const position = await requestPositionOnce();
+      if (generation !== locationGeneration || revision !== mapInteractionRevision) return false;
+      return showUserLocation(position);
     } catch (error) {
-      if (generation === locationGeneration) {
+      if (generation === locationGeneration && revision === mapInteractionRevision) {
         presentation.showUserLocationError(error, userLocation.userLocationErrorMessage);
       }
       return false;
@@ -234,11 +262,50 @@
     }
   }
 
+  function showUserLocation(position) {
+    const lat = Number(position.latitude);
+    const lng = Number(position.longitude);
+    userLocationLayer.clearLayers();
+    const marker = L.circleMarker([lat, lng], presentation.userLocationMarkerOptions())
+      .bindPopup(presentation.userLocationPopup(position), { maxWidth: 310, minWidth: 240 })
+      .addTo(userLocationLayer);
+    map.setView([lat, lng], 16, { animate: true });
+    marker.openPopup();
+    return true;
+  }
+
+  function locateAutomatically() {
+    if (!initRequested || automaticLocationAttempted) return false;
+    automaticLocationAttempted = true;
+    if (!map) {
+      automaticLocationQueued = true;
+      return true;
+    }
+    void runAutomaticLocation();
+    return true;
+  }
+
+  async function runAutomaticLocation() {
+    const generation = locationGeneration;
+    const revision = mapInteractionRevision;
+    try {
+      const position = await requestPositionOnce();
+      if (generation !== locationGeneration || revision !== mapInteractionRevision || !initRequested) return false;
+      return showUserLocation(position);
+    } catch (_) {
+      if (generation === locationGeneration && revision === mapInteractionRevision && initRequested) goHome();
+      return false;
+    }
+  }
+
   function clear() {
     initRequested = false;
     pendingRender = null;
     pendingFocus = null;
     locationGeneration++;
+    invalidatePendingLocation();
+    automaticLocationAttempted = false;
+    currentPositionRequest = null;
     locationPending = false;
     if (presentation) presentation.setUserLocationButtonBusy(document.getElementById('technicianMapLocate'), false);
     markerLayer?.clearLayers();
@@ -248,7 +315,7 @@
   }
 
   window.VWSTechnicianMap = {
-    init, render, fit, focus, clear, coordinates,
+    init, render, fit, focus, clear, coordinates, locateAutomatically,
     invalidate: () => map?.invalidateSize({ pan: false }),
     markerCount: () => markers.size,
     point: id => markers.get(String(id))?.getLatLng() || null
