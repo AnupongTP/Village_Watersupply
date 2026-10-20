@@ -122,7 +122,39 @@
   function closeBootOperation(){if(bootOperation){hideBusy(bootOperation);bootOperation=null;}}
   function showLogin(){ state.selectionRequest++;bootOperation=null;clearBusy();closeSystemActionMenu(false);document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value='';scheduleBackToTop(); }
   function showApp(){ closeBootOperation();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');scheduleBackToTop(); }
-  function showBoot(message='กำลังตรวจสอบการเข้าสู่ระบบ...',retry=false){document.documentElement.classList.add('has-session','boot-handoff');$('skipLink').href='#bootView';$('loginView').classList.add('hidden');$('appView').classList.add('hidden');$('bootTitle').textContent=message;$('bootError').textContent=retry?'ไม่สามารถตรวจสอบ Session ได้ในขณะนี้ โปรดลองอีกครั้ง':'';$('bootError').classList.toggle('hidden',!retry);$('retryResumeButton').classList.toggle('hidden',!retry);$('bootView').querySelector('.boot-actions').classList.toggle('hidden',retry);if(retry||!window.Swal){closeBootOperation();$('bootView').classList.add('swal2-container');$('bootView').classList.remove('hidden');}else{$('bootView').classList.remove('swal2-container');if(bootOperation)window.VWSTechnicianUI.updateLoading(message,bootOperation);else bootOperation=showBusy(message);$('bootView').classList.add('hidden');}}
+  function showBoot(message='กำลังตรวจสอบการเข้าสู่ระบบ...',retry=false){
+    document.documentElement.classList.add('has-session','boot-handoff');
+    $('skipLink').href='#bootView';
+    $('loginView').classList.add('hidden');
+    $('appView').classList.add('hidden');
+    $('bootTitle').textContent=message;
+    $('bootError').textContent=retry?'ไม่สามารถตรวจสอบ Session ได้ในขณะนี้ โปรดลองอีกครั้ง':'';
+    $('bootError').classList.toggle('hidden',!retry);
+    $('retryResumeButton').classList.toggle('hidden',!retry);
+    const bootPopup=$('bootView').querySelector('.swal2-popup');
+    bootPopup.querySelector('.swal2-actions').classList.toggle('hidden',retry);
+    bootPopup.setAttribute('aria-busy',String(!retry));
+    if(retry)bootPopup.removeAttribute('data-loading');else bootPopup.setAttribute('data-loading','true');
+    if(retry){
+      closeBootOperation();
+      $('bootView').classList.remove('swal2-container');
+      $('bootView').classList.add('hidden');
+      window.VWSTechnicianUI.whenIdle().then(()=>{
+        if(!document.documentElement.classList.contains('boot-handoff')||$('retryResumeButton').classList.contains('hidden'))return;
+        $('bootView').classList.add('swal2-container');
+        $('bootView').classList.remove('hidden');
+      });
+    }else if(!window.Swal){
+      closeBootOperation();
+      $('bootView').classList.add('swal2-container');
+      $('bootView').classList.remove('hidden');
+    }else{
+      $('bootView').classList.remove('swal2-container');
+      if(bootOperation)window.VWSTechnicianUI.updateLoading(message,bootOperation);
+      else bootOperation=showBusy(message);
+      $('bootView').classList.add('hidden');
+    }
+  }
 
   async function login(username,password){
     const data=unwrap(await api('auth.login',{username,password,clientInfo:clientInfo()}));

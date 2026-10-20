@@ -36,9 +36,9 @@
   <a id="skipLink" class="skip-link" href="#loginView">ข้ามไปยังเนื้อหาหลัก</a>
 
   <div id="bootView" class="swal2-container swal2-center swal2-backdrop-show hidden" aria-live="polite" aria-labelledby="bootTitle">
-    <div class="swal2-popup swal2-modal swal2-show boot-popup" role="alertdialog" aria-modal="true" aria-labelledby="bootTitle">
+    <div class="swal2-popup swal2-modal swal2-show" style="display: grid" role="alertdialog" aria-modal="true" aria-labelledby="bootTitle" aria-busy="true" data-loading="true">
       <h2 id="bootTitle" class="swal2-title">กำลังตรวจสอบการเข้าสู่ระบบ...</h2>
-      <div class="swal2-actions boot-actions" aria-hidden="true"><div class="swal2-loader boot-loader"></div></div>
+      <div class="swal2-actions" style="display: flex" aria-hidden="true"><div class="swal2-loader" style="display: flex"></div></div>
       <p id="bootError" class="muted hidden" role="alert"></p>
       <button id="retryResumeButton" class="btn btn-primary hidden" type="button">ลองอีกครั้ง</button>
     </div>

@@ -2,6 +2,7 @@
 (() => {
   'use strict';
   const operations = new Map();
+  const idleWaiters = [];
   let closingPopup = false;
   const overlay = () => document.getElementById('busyOverlay');
   const nativeDialogs = () => [...document.querySelectorAll('dialog[open]')].filter(dialog => dialog !== overlay());
@@ -16,6 +17,7 @@
         node.classList.remove('swal2-shown', 'swal2-height-auto');
       }
     }
+    while (idleWaiters.length) idleWaiters.shift()();
   }
 
   function paint() {
@@ -75,6 +77,10 @@
     paint();
   }
   function clearLoading() { operations.clear(); paint(); }
+  function whenIdle() {
+    if (!operations.size && !closingPopup && !overlay().open) return Promise.resolve();
+    return new Promise(resolve => idleWaiters.push(resolve));
+  }
 
   function notify(message, type = 'success') {
     // Inline toast remains readable above an active native form dialog.
@@ -90,7 +96,7 @@
       timerProgressBar: true, showConfirmButton: false, icon: type,
       title: message, customClass: { popup: 'technician-swal-toast' } });
   }
-  window.VWSTechnicianUI = { showLoading, updateLoading, closeLoading, clearLoading,
+  window.VWSTechnicianUI = { showLoading, updateLoading, closeLoading, clearLoading, whenIdle,
     showSuccess: message => notify(message, 'success'),
     showError: message => notify(message, 'error'),
     showWarning: message => notify(message, 'warning') };

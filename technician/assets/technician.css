@@ -250,19 +250,13 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
 .auth-submit { width: 100%; margin-top: 2px; }
 .auth-footnote { margin: 14px 0 0; color: #475569; text-align: center; font-size: 12px; }
 
-/* First paint uses SweetAlert2's own popup, title and loader classes until its script is ready. */
-#bootView { background: var(--swal2-backdrop); }
-#bootView.hidden { display: none; }
-/* The Technician body uses 1.55; Public SweetAlert inherits Tailwind's 1.5. */
-#bootView .swal2-popup { line-height: 1.5; }
-.boot-popup { display: grid; }
-.boot-actions { display: flex; }
-.boot-loader { display: flex; }
+/* Match Public's inherited popup line height; the loader itself is styled by SweetAlert2. */
+#bootView .swal2-popup, #busyOverlay .swal2-popup { line-height: 1.5; }
 .busy-overlay { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; }
 .busy-overlay:not([open]) { display: none; }
 .busy-overlay::backdrop { background: transparent; }
 .technician-swal-toast { font-family: "Sarabun", sans-serif; font-size: 14px; }
-.boot-popup #bootError { margin: 1em 1.6em 0; font-size: 13px; }
+#bootView #bootError { margin: 1em 1.6em 0; font-size: 13px; }
 .toast-region { position: fixed; z-index: 11000; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: grid; gap: 7px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
 .toast { border: 1px solid #a7f3d0; border-radius: 10px; background: #ecfdf5; padding: 10px 12px; color: #065f46; font-size: 10px; font-weight: 700; box-shadow: 0 10px 30px rgba(15,23,42,.12); }
 .toast.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
@@ -348,8 +342,8 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-  .boot-loader, .busy-overlay .swal2-loader { animation: none !important; border-color: #2778c4 #bfdbfe #bfdbfe #bfdbfe; }
+  /* SweetAlert2 keeps its Public animation behavior, including the loader. */
+  *:not(.swal2-container, .swal2-container *), *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
 
 /* Mobile account menu: prevents the management-only actions from crowding the Public-style header. */
