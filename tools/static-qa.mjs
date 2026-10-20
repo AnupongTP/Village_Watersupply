@@ -27,7 +27,9 @@ assert(index.includes('assets/css/tailwind.css'), 'Production Tailwind CSS link 
 assert(index.includes('assets/css/app.css'), 'app.css link is required');
 assert(index.includes('id="filterSearch"'), 'Global Dashboard search control is required');
 assert(index.includes('id="activeFilterChips"'), 'Active filter chips container is required');
-assert(index.includes('คุณภาพน้ำและปริมาณน้ำโดยรวม'), 'Overall water quality/quantity heading is required');
+for (const heading of ['ข้อมูลรายอำเภอ', 'ประเภทระบบประปา', 'ความเพียงพอของน้ำ', 'คุณภาพน้ำดื่ม']) {
+  assert(index.includes(`<h2>${heading}</h2>`), `Analytical section heading is required: ${heading}`);
+}
 assert(index.includes('id="btnUserLocation"'), 'Map toolbar user-location action is required');
 assert(index.includes('id="btnBackToTop"'), 'Floating back-to-top control is required');
 assert(index.includes('id="btnRefresh"') && index.includes('aria-busy="false"'), 'Refresh control requires aria-busy state');
@@ -123,10 +125,12 @@ assert(chartSource.includes("pointStyle: 'rectRounded'"), 'District chart needs 
 assert(chartSource.includes("pointStyle: 'rect'"), 'District chart needs a non-color cue for water-system series');
 
 const mapSource = read('assets/js/map.js');
-assert(mapSource.includes('data-map-action="detail"'), 'Map popup must expose Details action');
-assert(mapSource.includes('data-map-action="navigate"'), 'Map popup must expose Navigate action');
+const mapPresentationSource = read('assets/js/map-presentation.js');
+const mapEngineSource = read('assets/js/map-engine.js');
+assert(mapPresentationSource.includes('data-map-action="detail"') && mapEngineSource.includes("button.dataset.mapAction === 'detail'"), 'Map popup must expose Details action');
+assert(mapPresentationSource.includes('data-map-action="navigate"') && mapEngineSource.includes("button.dataset.mapAction === 'navigate'"), 'Map popup must expose Navigate action');
 assert(mapSource.includes('buildSystemDetailHtml'), 'Map must use shared detail renderer');
-assert(mapSource.includes('requestCurrentUserPosition'), 'Map user-location action must use geolocation helper');
+assert(mapEngineSource.includes('requestCurrentUserPosition'), 'Map user-location action must use geolocation helper');
 
 const watchSource = read('assets/js/problem-list.js');
 assert(watchSource.includes('buildSystemDetailHtml'), 'Watchlist must use shared detail renderer');

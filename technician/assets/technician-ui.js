@@ -84,7 +84,7 @@
 
   function notify(message, type = 'success') {
     // Inline toast remains readable above an active native form dialog.
-    if (nativeDialogs().length || operations.size || !window.Swal) {
+    if (nativeDialogs().length || operations.size || closingPopup || overlay().open || !window.Swal) {
       const node = document.createElement('div');
       node.className = `toast ${type}`;
       node.textContent = message;

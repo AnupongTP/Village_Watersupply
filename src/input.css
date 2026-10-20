@@ -53,6 +53,15 @@
   .chart-canvas-wrap { @apply relative min-w-0 w-full; }
 
   .problem-summary { @apply mb-3 flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between; }
+  .public-list-modes { @apply mb-3 flex flex-wrap gap-2; }
+  .public-list-mode { @apply min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 transition hover:border-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500; }
+  .public-list-mode[aria-pressed="true"] { @apply border-sky-500 bg-sky-50 text-sky-800; }
+  .public-list-filters { @apply mb-3 grid grid-cols-1 items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto]; }
+  .public-list-clear { @apply min-h-10 whitespace-nowrap; }
+  .public-list-pager { @apply mt-3 flex flex-wrap items-center justify-end gap-2; }
+  .public-list-page-status { @apply mr-auto text-xs text-slate-500; }
+  .public-list-pager .action-button { @apply min-h-10; }
+  .public-list-pager .action-button:disabled { @apply opacity-40; }
   .problem-summary strong { @apply font-extrabold text-slate-800; }
   .problem-summary > span { @apply text-[11px] text-slate-400; }
   .watchlist-scroll { @apply max-h-[32rem] overflow-y-auto rounded-lg border border-slate-200; }

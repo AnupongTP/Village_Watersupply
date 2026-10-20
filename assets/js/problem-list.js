@@ -5,24 +5,56 @@ import { buildSystemDetailHtml } from './system-detail.js';
 import {
   systemDisplayName,
   villageDisplayName,
-  safeDisplayText
+  safeDisplayText,
+  systemTypeLabel,
+  operationalStatusLabel,
+  normalizeOperationalStatus
 } from './labels.js';
+
+const PAGE_SIZE = 20;
+const listState = { mode: 'all', search: '', district: '', type: '', status: '', page: 1, scopeKey: '' };
 
 export function renderProblemList() {
   const root = document.getElementById('problemList');
   if (!root) return;
 
   const villageById = new Map(AppState.data.villages.map(v => [v.village_id, v]));
-  const rows = AppState.filtered.waterSystems
-    .filter(isWatchSystem)
+  const scopeKey = JSON.stringify([AppState.meta.lastSuccessfulLoadAt, AppState.filters]);
+  if (scopeKey !== listState.scopeKey) {
+    listState.page = 1;
+    listState.scopeKey = scopeKey;
+  }
+  const scopeSystems = AppState.filtered.waterSystems;
+  const monitoringCount = scopeSystems.filter(isWatchSystem).length;
+  document.getElementById('publicListAllCount').textContent = formatNumber(scopeSystems.length);
+  document.getElementById('publicListMonitoringCount').textContent = formatNumber(monitoringCount);
+  document.getElementById('publicListAll').setAttribute('aria-pressed', String(listState.mode === 'all'));
+  document.getElementById('publicListMonitoring').setAttribute('aria-pressed', String(listState.mode === 'monitoring'));
+  populateListFilters(scopeSystems, villageById);
+  bindListControlsOnce();
+
+  const search = listState.search.trim().toLocaleLowerCase('th');
+  const rows = scopeSystems
+    .filter(system => listState.mode === 'all' || isWatchSystem(system))
     .map(system => ({ system, village: villageById.get(system.village_id) }))
-    .sort(compareSeverity);
+    .filter(({ system, village }) => (
+      (!listState.district || village?.district === listState.district) &&
+      (!listState.type || String(system.system_type || '').trim() === listState.type) &&
+      (!listState.status || normalizeOperationalStatus(system.operational_status) === listState.status) &&
+      (!search || [systemDisplayName(system, village), villageDisplayName(village), village?.district, village?.subdistrict, village?.local_authority]
+        .some(value => String(value || '').toLocaleLowerCase('th').includes(search)))
+    ))
+    .sort(listState.mode === 'monitoring' ? compareSeverity : compareName);
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  listState.page = Math.min(listState.page, pageCount);
+  const pageRows = rows.slice((listState.page - 1) * PAGE_SIZE, listState.page * PAGE_SIZE);
 
   if (!rows.length) {
     root.innerHTML = `
       <div class="empty-state">
         <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-        <strong>ไม่พบระบบที่เข้าเงื่อนไขเฝ้าระวัง</strong>
+        <strong>${listState.mode === 'all' ? 'ไม่พบระบบประปา' : 'ไม่พบระบบที่เข้าเงื่อนไขเฝ้าระวัง'}</strong>
         <span>ตามขอบเขตและตัวกรองปัจจุบัน</span>
       </div>`;
     bindActionsOnce(root, villageById);
@@ -31,12 +63,12 @@ export function renderProblemList() {
 
   root.innerHTML = `
     <div class="problem-summary">
-      <div>พบ <strong>${formatNumber(rows.length)}</strong> ระบบ ที่เข้าเงื่อนไขเฝ้าระวังอย่างน้อย 1 ประเด็น</div>
-      <span>${rows.length > 8 ? 'เลื่อนดูรายการทั้งหมดภายในกล่อง' : 'แสดงรายการทั้งหมด'}</span>
+      <div>พบ <strong>${formatNumber(rows.length)}</strong> ระบบ ตามตัวกรองรายการ</div>
+      <span>เลื่อนดูรายการภายในกล่อง และเปลี่ยนหน้าด้านล่าง</span>
     </div>
 
     <div class="hidden lg:block">
-      <div class="watchlist-scroll" role="region" aria-label="ตารางระบบที่ควรติดตามสถานการณ์" tabindex="0">
+      <div class="watchlist-scroll" role="region" aria-label="ตารางรายการระบบประปา" tabindex="0">
         <table class="problem-table">
           <thead>
             <tr>
@@ -47,16 +79,70 @@ export function renderProblemList() {
               <th class="align-right">ดูข้อมูล</th>
             </tr>
           </thead>
-          <tbody>${rows.map(({ system, village }) => tableRow(system, village)).join('')}</tbody>
+          <tbody>${pageRows.map(({ system, village }) => tableRow(system, village)).join('')}</tbody>
         </table>
       </div>
     </div>
 
-    <div class="watchlist-mobile lg:hidden" role="region" aria-label="รายการระบบที่ควรติดตามสถานการณ์" tabindex="0">
-      ${rows.map(({ system, village }) => mobileCard(system, village)).join('')}
+    <div class="watchlist-mobile lg:hidden" role="region" aria-label="รายการระบบประปา" tabindex="0">
+      ${pageRows.map(({ system, village }) => mobileCard(system, village)).join('')}
+    </div>
+    <div class="public-list-pager" role="group" aria-label="เปลี่ยนหน้ารายการระบบประปา">
+      <span id="publicListPageStatus" class="public-list-page-status">หน้า ${listState.page}/${pageCount}</span>
+      <button id="publicListPrevious" class="action-button" type="button" data-list-page="previous" ${listState.page === 1 ? 'disabled' : ''}>ก่อนหน้า</button>
+      <button id="publicListNext" class="action-button" type="button" data-list-page="next" ${listState.page === pageCount ? 'disabled' : ''}>ถัดไป</button>
     </div>`;
 
   bindActionsOnce(root, villageById);
+}
+
+function populateListFilters(systems, villageById) {
+  const choices = [
+    ['publicListDistrict', 'district', [...new Set(systems.map(s => villageById.get(s.village_id)?.district).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), value => value],
+    ['publicListType', 'type', [...new Set(systems.map(s => String(s.system_type || '').trim()).filter(Boolean))].sort((a, b) => systemTypeLabel(a).localeCompare(systemTypeLabel(b), 'th')), systemTypeLabel],
+    ['publicListStatus', 'status', [...new Set(systems.map(s => normalizeOperationalStatus(s.operational_status)))].sort((a, b) => operationalStatusLabel(a).localeCompare(operationalStatusLabel(b), 'th')), operationalStatusLabel]
+  ];
+  for (const [id, key, values, display] of choices) {
+    const select = document.getElementById(id);
+    if (listState[key] && !values.includes(listState[key])) listState[key] = '';
+    select.innerHTML = '<option value="">ทั้งหมด</option>' + values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(display(value))}</option>`).join('');
+    select.value = listState[key];
+  }
+}
+
+function bindListControlsOnce() {
+  const all = document.getElementById('publicListAll');
+  if (all.dataset.bound === '1') return;
+  all.dataset.bound = '1';
+  for (const [id, mode] of [['publicListAll', 'all'], ['publicListMonitoring', 'monitoring']]) {
+    document.getElementById(id).addEventListener('click', () => {
+      listState.mode = mode;
+      listState.page = 1;
+      renderProblemList();
+    });
+  }
+  document.getElementById('publicListSearch').addEventListener('input', event => {
+    listState.search = event.target.value;
+    listState.page = 1;
+    renderProblemList();
+  });
+  for (const [id, key] of [['publicListDistrict', 'district'], ['publicListType', 'type'], ['publicListStatus', 'status']]) {
+    document.getElementById(id).addEventListener('change', event => {
+      listState[key] = event.target.value;
+      listState.page = 1;
+      renderProblemList();
+    });
+  }
+  document.getElementById('publicListClear').addEventListener('click', () => {
+    Object.assign(listState, { search: '', district: '', type: '', status: '', page: 1 });
+    document.getElementById('publicListSearch').value = '';
+    renderProblemList();
+  });
+}
+
+function compareName(a, b) {
+  return villageDisplayName(a.village, '').localeCompare(villageDisplayName(b.village, ''), 'th') ||
+    systemDisplayName(a.system, a.village).localeCompare(systemDisplayName(b.system, b.village), 'th');
 }
 
 function tableRow(system, village) {
@@ -116,6 +202,12 @@ function bindActionsOnce(root, villageById) {
   root.dataset.actionsBound = '1';
 
   root.addEventListener('click', event => {
+    const pager = event.target.closest('[data-list-page]');
+    if (pager && !pager.disabled) {
+      listState.page += pager.dataset.listPage === 'next' ? 1 : -1;
+      renderProblemList();
+      return;
+    }
     const button = event.target.closest('[data-action]');
     if (!button || !root.contains(button) || button.disabled) return;
 
@@ -163,7 +255,7 @@ function watchBadges(system) {
   if (system.operational_status === 'NOT_WORKING') badges.push('<span class="badge badge-danger">ใช้การไม่ได้</span>');
   if (system.water_quantity === 'INSUFFICIENT') badges.push('<span class="badge badge-warning">น้ำไม่เพียงพอ</span>');
   if (system.drinking_water_quality === 'FAIL') badges.push('<span class="badge badge-rose">น้ำดื่มไม่ผ่านเกณฑ์</span>');
-  return badges.join('');
+  return badges.length ? badges.join('') : '<span class="badge badge-success">ไม่มีประเด็นเฝ้าระวัง</span>';
 }
 
 function formatNumber(value) {

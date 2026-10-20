@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f67b1">
   <meta name="color-scheme" content="light">
-  <title>Dashboard ช่าง — ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</title>
+  <title>แดชบอร์ดช่างเทคนิค — ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</title>
   <script>try { if (sessionStorage.getItem('vws_management_token_v2')) document.documentElement.classList.add('has-session'); } catch (_) {}</script>
   <style>.has-session #loginView { display: none !important; }.has-session:not(.boot-handoff) #bootView { display: grid !important; }</style>
 
@@ -51,7 +51,7 @@
         <div class="brand-mark" aria-hidden="true"><i class="fa-solid fa-droplet"></i><span class="icon-fallback">💧</span></div>
         <div>
           <p class="eyebrow">ระบบเจ้าหน้าที่</p>
-          <h1 id="loginTitle">Dashboard ช่าง</h1>
+          <h1 id="loginTitle">แดชบอร์ดช่างเทคนิค</h1>
           <p class="muted">ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</p>
         </div>
       </div>
@@ -68,7 +68,7 @@
         </button>
         <p id="loginError" class="form-error" role="alert"></p>
       </form>
-      <p class="auth-footnote">สำหรับ ADMIN และ TECHNICIAN ที่ได้รับสิทธิ์เท่านั้น</p>
+      <p class="auth-footnote">สำหรับผู้ดูแลระบบและช่างเทคนิคที่ได้รับสิทธิ์เท่านั้น</p>
     </div>
   </main>
 
@@ -84,39 +84,30 @@
           </div>
         </div>
         <div class="topbar-actions flex shrink-0 items-center gap-2">
-          <div class="header-sync hidden text-right sm:block">
-            <span class="block text-[10px] leading-relaxed text-slate-400">โหลดข้อมูลล่าสุด</span>
-            <strong id="generatedAt" class="mt-0.5 block text-[11px] font-semibold leading-relaxed text-slate-600">-</strong>
-          </div>
           <button id="refreshButton" class="btn btn-outline" type="button" aria-busy="false" title="รีเฟรชข้อมูล">
             <i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="desktop-label">รีเฟรช</span>
           </button>
-          <span class="management-mode-badge">Dashboard ช่าง</span>
-          <div class="user-chip" aria-label="ผู้ใช้งานปัจจุบัน">
-            <span id="currentUserName">-</span><small id="currentUserRole">-</small>
-          </div>
-          <button id="changePasswordButton" class="btn btn-outline compact-action" type="button" title="เปลี่ยนรหัสผ่าน">
-            <i class="fa-solid fa-key" aria-hidden="true"></i><span class="icon-fallback">🔑</span><span class="desktop-label">เปลี่ยนรหัสผ่าน</span>
-          </button>
-          <button id="logoutButton" class="btn btn-danger-soft compact-action" type="button" title="ออกจากระบบ">
-            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span class="icon-fallback">↪</span><span class="desktop-label">ออกจากระบบ</span>
-          </button>
-          <div class="mobile-account">
-            <button id="mobileAccountButton" class="btn btn-outline" type="button" aria-expanded="false" aria-controls="mobileAccountMenu" aria-label="เมนูผู้ใช้งาน">
+          <div class="mobile-account account-menu">
+            <button id="mobileAccountButton" class="account-trigger" type="button" aria-expanded="false" aria-controls="mobileAccountMenu" aria-label="เมนูบัญชีผู้ใช้">
               <i class="fa-solid fa-user" aria-hidden="true"></i><span class="icon-fallback">👤</span>
+              <span class="account-trigger-copy"><strong id="currentUserName">-</strong><small id="currentUserRole">-</small></span>
+              <i class="fa-solid fa-chevron-down account-chevron" aria-hidden="true"></i>
             </button>
             <div id="mobileAccountMenu" class="mobile-account-menu hidden">
               <div class="mobile-account-summary"><strong id="mobileCurrentUserName">-</strong><small id="mobileCurrentUserRole">-</small></div>
-              <button id="mobileChangePasswordButton" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i><span>เปลี่ยนรหัสผ่าน</span></button>
-              <button id="mobileLogoutButton" class="danger" type="button"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>ออกจากระบบ</span></button>
+              <div class="account-menu-sync"><span>โหลดข้อมูลล่าสุด</span><strong id="generatedAt">-</strong></div>
+              <button id="changePasswordButton" class="account-desktop-action" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i><span>เปลี่ยนรหัสผ่าน</span></button>
+              <button id="logoutButton" class="account-desktop-action danger" type="button"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>ออกจากระบบ</span></button>
+              <button id="mobileChangePasswordButton" class="account-mobile-action" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i><span>เปลี่ยนรหัสผ่าน</span></button>
+              <button id="mobileLogoutButton" class="account-mobile-action danger" type="button"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>ออกจากระบบ</span></button>
             </div>
           </div>
         </div>
       </div>
 
-      <nav class="border-t border-slate-100" aria-label="เมนูส่วนต่าง ๆ ของ Dashboard">
+      <nav class="border-t border-slate-100" aria-label="เมนูส่วนต่าง ๆ ของแดชบอร์ด">
         <div class="mx-auto flex max-w-[1600px] items-center gap-1 px-3 py-1.5 leading-relaxed sm:px-5 xl:px-6">
-          <div class="tabs section-nav-scroll flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          <div class="tabs section-nav-scroll flex min-w-0 gap-1 overflow-x-auto">
             <a class="section-link active" data-tab="overview" href="#overview">ภาพรวม</a>
             <a class="section-link" data-tab="map" href="#map-section">แผนที่</a>
             <a class="section-link" data-tab="area" href="#areas">รายพื้นที่</a>
@@ -130,7 +121,7 @@
             <div id="technicianToolsMenu" class="technician-tools-menu hidden">
               <a data-tab="systems" href="#technicianManagementSection">จัดการข้อมูล</a>
               <a data-tab="history" href="#historyPanel">ประวัติการแก้ไข</a>
-              <a id="techniciansTab" class="hidden" data-tab="technicians" href="#techniciansPanel">บัญชีช่าง</a>
+              <a id="techniciansTab" class="hidden" data-tab="technicians" href="#techniciansPanel">บัญชีช่างเทคนิค</a>
             </div>
           </div>
         </div>
@@ -156,7 +147,7 @@
       <div id="dashboardFilterPanel" class="hidden pt-3 md:block md:pt-0">
         <div class="mb-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <label class="filter-field">
-            <span>ค้นหาทั้ง Dashboard</span>
+            <span>ค้นหาทั้งแดชบอร์ด</span>
             <input id="filterSearch" class="filter-select font-sans" type="search" autocomplete="off" placeholder="ค้นหาชื่อระบบ หมู่บ้าน อำเภอ อปท. หรือหน่วยงาน">
           </label>
           <label class="filter-field">
@@ -256,7 +247,7 @@
                 data-filter-toggle-key="operationalStatus"
                 data-filter-toggle-value="NOT_WORKING"
                 aria-pressed="false"
-                title="กรองทั้ง Dashboard: ใช้การไม่ได้"
+                title="กรองทั้งแดชบอร์ด: ใช้การไม่ได้"
               >
                 <span class="watch-icon bg-red-50 text-red-600"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
                 <span class="min-w-0"><span class="watch-mini-label block overflow-visible whitespace-normal text-clip leading-relaxed">ใช้การไม่ได้</span><span class="block"><strong id="alertNotWorking">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
@@ -268,7 +259,7 @@
                 data-filter-toggle-key="waterQuantity"
                 data-filter-toggle-value="INSUFFICIENT"
                 aria-pressed="false"
-                title="กรองทั้ง Dashboard: น้ำไม่เพียงพอ"
+                title="กรองทั้งแดชบอร์ด: น้ำไม่เพียงพอ"
               >
                 <span class="watch-icon bg-amber-50 text-amber-600"><i class="fa-solid fa-droplet-slash" aria-hidden="true"></i></span>
                 <span class="min-w-0"><span class="watch-mini-label block overflow-visible whitespace-normal text-clip leading-relaxed">น้ำไม่เพียงพอ</span><span class="block"><strong id="alertInsufficient">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
@@ -280,7 +271,7 @@
                 data-filter-toggle-key="drinkingWaterQuality"
                 data-filter-toggle-value="FAIL"
                 aria-pressed="false"
-                title="กรองทั้ง Dashboard: น้ำดื่มไม่ผ่านเกณฑ์"
+                title="กรองทั้งแดชบอร์ด: น้ำดื่มไม่ผ่านเกณฑ์"
               >
                 <span class="watch-icon bg-rose-50 text-rose-600"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i></span>
                 <span class="min-w-0"><span class="watch-mini-label block overflow-visible whitespace-normal text-clip leading-relaxed">น้ำดื่มไม่ผ่านเกณฑ์</span><span class="block"><strong id="alertQualityFail">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
@@ -349,7 +340,7 @@
             </label>
             <label class="filter-field">อำเภอ<select id="districtFilter"><option value="">ทั้งหมด</option></select></label>
             <label class="filter-field">สถานะระบบ<select id="statusFilter"><option value="">ทั้งหมด</option></select></label>
-            <label class="filter-field">การแสดง Public<select id="publicFilter"><option value="">ทั้งหมด</option><option value="VISIBLE">แสดง Public</option><option value="HIDDEN">ไม่แสดง Public</option><option value="UNKNOWN">ไม่ทราบ</option></select></label>
+            <label class="filter-field">การแสดงบนหน้าสาธารณะ<select id="publicFilter"><option value="">ทั้งหมด</option><option value="VISIBLE">แสดงบนหน้าสาธารณะ</option><option value="HIDDEN">ไม่แสดงบนหน้าสาธารณะ</option><option value="UNKNOWN">ไม่ทราบ</option></select></label>
             <button id="clearFiltersButton" class="btn btn-ghost clear-filter" type="button"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i><span>ล้างตัวกรอง</span></button>
           </div>
         </section>
@@ -359,13 +350,13 @@
             <div><p class="eyebrow">ผลรายการ</p><strong id="systemsListTitle"><span id="resultCount">0 รายการ</span></strong><small id="systemsScopeNote" class="muted"></small></div>
             <span id="pageStatus" class="muted"></span>
           </div>
-          <div class="table-scroll desktop-table-wrap" tabindex="0" aria-label="ตารางระบบประปา เลื่อนแนวนอนได้เมื่อจำเป็น">
+          <div class="table-scroll desktop-table-wrap" tabindex="0" role="region" aria-label="ตารางระบบประปา เลื่อนดูรายการภายในกรอบได้">
             <table class="management-table">
-              <thead><tr><th>ระบบ</th><th>หมู่บ้าน / พื้นที่</th><th>ประเภท</th><th>สถานะ</th><th>ประเด็นเฝ้าระวัง</th><th>Public</th><th>ครัวเรือน</th><th>จัดการ</th></tr></thead>
+              <thead><tr><th>ระบบ</th><th>หมู่บ้าน / พื้นที่</th><th>ประเภท</th><th>สถานะ</th><th>ประเด็นเฝ้าระวัง</th><th>หน้าสาธารณะ</th><th>ครัวเรือน</th><th>จัดการ</th></tr></thead>
               <tbody id="systemsTableBody"></tbody>
             </table>
           </div>
-          <div id="systemsMobileList" class="systems-mobile-list" aria-live="polite"></div>
+          <div id="systemsMobileList" class="systems-mobile-list" role="region" aria-label="รายการระบบประปา เลื่อนดูภายในกรอบได้" aria-live="polite" tabindex="0"></div>
           <div class="pager"><button id="prevPage" class="btn btn-outline" type="button"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>ก่อนหน้า</span></button><button id="nextPage" class="btn btn-outline" type="button"><span>ถัดไป</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>
         </section>
     </section>
@@ -374,7 +365,7 @@
       </div>
 
       <section id="historyPanel" class="dashboard-section hidden" data-workspace="history">
-        <div class="section-heading page-heading"><div><p class="eyebrow">Audit Log</p><h2>ประวัติการแก้ไข</h2><p class="section-description muted">ค้นด้วยรหัสระบบเพื่อดูว่าใครแก้ไขหรือลบข้อมูล เมื่อใด และด้วยเหตุผลอะไร</p></div><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับ Dashboard</button></div>
+        <div class="section-heading page-heading"><div><p class="eyebrow">ประวัติการดำเนินการ</p><h2>ประวัติการแก้ไข</h2><p class="section-description muted">ค้นด้วยรหัสระบบเพื่อดูว่าใครแก้ไขหรือลบข้อมูล เมื่อใด และด้วยเหตุผลอะไร</p></div><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับแดชบอร์ด</button></div>
         <section class="filter-shell history-search-shell" aria-label="ค้นหาประวัติระบบ">
           <label class="filter-field search-field">รหัสระบบ
             <div class="input-with-icon"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="historySystemId" autocomplete="off" placeholder="เช่น PY-W-000733"></div>
@@ -386,11 +377,11 @@
 
       <section id="techniciansPanel" class="dashboard-section hidden" data-workspace="technicians">
         <div class="section-heading page-heading">
-          <div><p class="eyebrow">ADMIN</p><h2>บัญชีช่าง</h2><p class="section-description muted">จัดการบัญชี Technician โดยไม่เปิดเผยรหัสผ่านหรือข้อมูล Session ในหน้าจอ</p></div>
-          <div class="workspace-heading-actions"><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับ Dashboard</button><button id="createTechnicianButton" class="btn btn-primary" type="button"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>สร้างบัญชีช่าง</span></button></div>
+          <div><p class="eyebrow">ผู้ดูแลระบบ</p><h2>บัญชีช่างเทคนิค</h2><p class="section-description muted">จัดการบัญชีช่างเทคนิค โดยไม่แสดงรหัสผ่านหรือข้อมูลการเข้าสู่ระบบบนหน้าจอ</p></div>
+          <div class="workspace-heading-actions"><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับแดชบอร์ด</button><button id="createTechnicianButton" class="btn btn-primary" type="button"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>สร้างบัญชีช่างเทคนิค</span></button></div>
         </div>
         <section class="data-card">
-          <div class="table-scroll technicians-desktop-table" tabindex="0" aria-label="ตารางบัญชีช่าง">
+          <div class="table-scroll technicians-desktop-table" tabindex="0" aria-label="ตารางบัญชีช่างเทคนิค">
             <table class="management-table"><thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อแสดงผล</th><th>สถานะ</th><th>เข้าสู่ระบบล่าสุด</th><th class="actions-column">จัดการ</th></tr></thead><tbody id="techniciansTableBody"></tbody></table>
           </div>
           <div id="techniciansMobileList" class="technicians-mobile-list" aria-live="polite"></div>
@@ -433,14 +424,21 @@
   <dialog id="deleteDialog" class="modal danger-modal" aria-labelledby="deleteDialogTitle">
     <form id="deleteForm" class="modal-card" method="dialog">
       <header class="modal-header"><div><p class="eyebrow danger-text">ลบข้อมูลถาวร</p><h3 id="deleteDialogTitle">ลบระบบประปา</h3></div><button class="icon-btn" type="button" data-dismiss-dialog aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
-      <div class="modal-body stack"><div class="warning-box"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><div><strong>รายการนี้จะถูกลบจาก water_systems จริง</strong><p>Audit จะเก็บข้อมูลก่อนลบ ผู้ดำเนินการ เวลา และเหตุผลไว้ แต่ Dashboard ไม่มีปุ่ม Undo/Restore</p></div></div><label class="field-label">เหตุผลในการลบ<textarea id="deleteReason" rows="3" required placeholder="ระบุเหตุผลที่ตรวจสอบย้อนหลังได้"></textarea></label><label class="field-label">พิมพ์รหัสระบบ <strong id="deleteConfirmId">-</strong> เพื่อยืนยัน<input id="deleteConfirmInput" autocomplete="off" required></label><p id="deleteError" class="form-error" role="alert"></p></div>
-      <footer class="modal-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>ยกเลิก</button><button id="confirmDeleteButton" class="btn btn-danger" type="submit"><i class="fa-solid fa-trash" aria-hidden="true"></i><span>ลบระบบถาวร</span></button></footer>
+      <div class="modal-body stack"><div class="warning-box"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><div><strong>ระบบประปารายการนี้จะถูกลบถาวร</strong><p>ระบบจะบันทึกข้อมูลก่อนลบ ผู้ดำเนินการ วันเวลา และเหตุผลไว้ โดยไม่สามารถกู้คืนผ่านหน้าเว็บได้</p></div></div><label class="field-label">เหตุผลในการลบ<textarea id="deleteReason" rows="3" required placeholder="ระบุเหตุผลที่ตรวจสอบย้อนหลังได้"></textarea></label><label class="field-label">พิมพ์รหัสระบบ <strong id="deleteConfirmId">-</strong> เพื่อยืนยัน<input id="deleteConfirmInput" autocomplete="off" required></label><p id="deleteError" class="form-error" role="alert"></p></div>
+      <footer class="modal-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>ยกเลิก</button><button id="confirmDeleteButton" class="btn btn-danger" type="submit"><i class="fa-solid fa-trash" aria-hidden="true"></i><span>ยืนยัน</span></button></footer>
+    </form>
+  </dialog>
+  <dialog id="finalDeleteDialog" class="modal danger-modal" aria-labelledby="finalDeleteTitle" aria-describedby="finalDeleteDescription">
+    <form id="finalDeleteForm" class="modal-card" method="dialog">
+      <header class="modal-header"><div><p class="eyebrow danger-text">ยืนยันอีกครั้ง</p><h3 id="finalDeleteTitle">ยืนยันการลบระบบประปา</h3></div><button class="icon-btn" type="button" data-dismiss-dialog aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <div class="modal-body stack"><p id="finalDeleteDescription">โปรดตรวจสอบระบบที่จะลบอีกครั้ง การลบนี้ไม่สามารถกู้คืนผ่านหน้าเว็บได้</p><div class="warning-box"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><strong id="finalDeleteSystem">-</strong></div></div>
+      <footer class="modal-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>กลับไปตรวจสอบ</button><button class="btn btn-danger" type="submit"><i class="fa-solid fa-trash" aria-hidden="true"></i><span>ยืนยันลบถาวร</span></button></footer>
     </form>
   </dialog>
 
   <dialog id="technicianDialog" class="modal" aria-labelledby="technicianDialogTitle">
     <form id="technicianForm" class="modal-card" method="dialog">
-      <header class="modal-header"><div><p class="eyebrow">บัญชีช่าง</p><h3 id="technicianDialogTitle">สร้างบัญชีช่าง</h3></div><button class="icon-btn" type="button" data-dismiss-dialog aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <header class="modal-header"><div><p class="eyebrow">บัญชีช่างเทคนิค</p><h3 id="technicianDialogTitle">สร้างบัญชีช่างเทคนิค</h3></div><button class="icon-btn" type="button" data-dismiss-dialog aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
       <div class="modal-body stack"><label class="field-label">ชื่อผู้ใช้<input id="techUsername" autocomplete="off" required></label><label class="field-label">ชื่อแสดงผล<input id="techDisplayName" required></label><label id="techPasswordLabel" class="field-label">รหัสผ่านเริ่มต้น<input id="techPassword" type="password" autocomplete="new-password" minlength="8"></label><p id="technicianError" class="form-error" role="alert"></p></div>
       <footer class="modal-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>ยกเลิก</button><button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>บันทึก</span></button></footer>
     </form>

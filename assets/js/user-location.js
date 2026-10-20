@@ -63,7 +63,7 @@ export function normalizeGeolocationError(error) {
 export function userLocationErrorMessage(error) {
   switch (error?.locationCode) {
     case 'INSECURE_CONTEXT':
-      return 'เบราว์เซอร์อนุญาตการระบุตำแหน่งเฉพาะการเชื่อมต่อที่ปลอดภัย กรุณาเปิดผ่าน HTTPS หรือ localhost';
+      return 'เบราว์เซอร์อนุญาตให้ระบุตำแหน่งเฉพาะเมื่อเปิดเว็บไซต์ผ่านการเชื่อมต่อที่ปลอดภัย กรุณาเปิดเว็บไซต์ใหม่ด้วยการเชื่อมต่อที่ปลอดภัย';
     case 'UNSUPPORTED':
       return 'เบราว์เซอร์หรืออุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง';
     case 'PERMISSION_DENIED':

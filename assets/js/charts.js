@@ -212,7 +212,9 @@ function renderSystemTypeChart() {
 function toggleChartFilter(key, value) {
   if (value === undefined || value === null || value === '') return;
   setFilterValue(key, value, { toggle: true });
-  filterChangeHandler();
+  // Chart.js still runs afterEvent after onClick returns. Re-rendering here would
+  // destroy the chart while that event is in progress and throw from its plugins.
+  queueMicrotask(() => filterChangeHandler());
 }
 
 function countVillagesByDistrict(villages) {

@@ -384,12 +384,13 @@ for (const width of [1440, 768, 390]) {
   });
 }
 
-test('unified row menu routes all five actions with synthetic IDs and safe confirmation', async ({ page }) => {
+test('unified row controls route the direct map button and four menu actions safely', async ({ page }) => {
   const fixture = unifiedTableDataset();
   const network = await openManagement(page, fixture.overrides);
   const row = '#systemsTableBody tr[data-system-id="QA-UNIFIED-001"]';
   await page.locator(`${row} [data-action-trigger]`).click();
-  await expect(page.locator('#systemActionMenu button[data-action]')).toHaveCount(5);
+  await expect(page.locator('#systemActionMenu button[data-action]')).toHaveCount(4);
+  await expect(page.locator(`${row} .system-map-button`)).toBeEnabled();
   const menuAccessibility = await new AxeBuilder({ page }).include('#systemActionMenu').analyze();
   expect(menuAccessibility.violations).toEqual([]);
   await captureStage(page, 'unified-action-menu-1440');
@@ -416,13 +417,12 @@ test('unified row menu routes all five actions with synthetic IDs and safe confi
   await expect(page.locator('#historySystemId')).toHaveValue('QA-UNIFIED-001');
   expect(network.calls.filter(call => call.action === 'data.entityHistory')).toHaveLength(1);
   await openToolSection(page, 'systems');
-  await clickSystemAction(page, 'map', row);
+  await page.locator(`${row} .system-map-button`).click();
   await expect(page.locator('#map-section')).toBeVisible();
-  await expect(page.locator('.technician-map-popup')).toContainText('ระบบทดสอบ 1');
+  await expect(page.locator('#technicianWaterMap .leaflet-popup')).toContainText('ระบบทดสอบ 1');
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-UNIFIED-001')?.lat)).toBeCloseTo(19.2);
   await openToolSection(page, 'systems');
-  await page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-003"] [data-action-trigger]').click();
-  await expect(page.locator('#systemActionMenu [data-action="map"]')).toBeDisabled();
+  await expect(page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-003"] .system-map-button')).toBeDisabled();
   expect(mutations(network)).toEqual([]);
 });
 
@@ -434,7 +434,7 @@ test('global and local table filters intersect; hashes restore modes after Back,
   await openToolSection(page, 'systems');
   await expect(page.locator('#allSystemsCount')).toHaveText('40');
   await expect(page.locator('#monitoringSystemsCount')).toHaveText('14');
-  await expect(page.locator('#systemsScopeNote')).toContainText('ตัวกรอง Dashboard');
+  await expect(page.locator('#systemsScopeNote')).toContainText('ตัวกรองแดชบอร์ด');
   await page.locator('#districtFilter').selectOption('เชียงคำ');
   await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 40 ระบบ');
   await page.locator('#systemsModeMonitoring').click();
@@ -462,7 +462,7 @@ test('mobile last-row menu stays inside viewport with a long Thai system name', 
   await page.locator('#nextPage').click();
   const card = page.locator('#systemsMobileList article[data-system-id="QA-UNIFIED-075"]');
   await card.locator('[data-action-trigger]').click();
-  await expect(page.locator('#systemActionMenu button[data-action]')).toHaveCount(5);
+  await expect(page.locator('#systemActionMenu button[data-action]')).toHaveCount(4);
   const geometry = await page.locator('#systemActionMenu').evaluate(menu => {
     const box = menu.getBoundingClientRect();
     return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: innerWidth, height: innerHeight };
@@ -498,6 +498,9 @@ test('confirmed deletion refreshes unified counts once and preserves the current
   await page.locator('#deleteReason').fill('Synthetic deletion reason');
   await page.locator('#deleteConfirmInput').fill('QA-UNIFIED-001');
   await page.locator('#confirmDeleteButton').click();
+  await expect(page.locator('#finalDeleteDialog')).toBeVisible();
+  expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(0);
+  await page.locator('#finalDeleteForm button[type="submit"]').click();
   await expect(page.locator('#deleteDialog')).toBeHidden();
   await expect(page.locator('#monitoringSystemsCount')).toHaveText('24');
   await expect(page.locator('#allSystemsCount')).toHaveText('74');
@@ -632,10 +635,17 @@ for (const width of [1440, 768, 390]) {
     await page.locator('#overview .kpi-card').first().hover();
     await wheelChangesPage(page, 430, 'down');
     await row.hover();
-    const down = await wheelChangesPage(page, 480, 'down');
+    const scroller = page.locator(width < 768 ? '#systemsMobileList' : '#watchlist .desktop-table-wrap');
+    await scroller.evaluate(el => { el.scrollTop = 0; });
+    await page.mouse.wheel(0, 480);
+    await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    const down = await scroller.evaluate(el => el.scrollTop);
     const lastRow = width < 768 ? page.locator('#systemsMobileList .system-mobile-card').last() : page.locator('#systemsTableBody tr[data-system-id]').last();
     await lastRow.hover();
-    const up = await wheelChangesPage(page, -480, 'up');
+    const beforeUp = await scroller.evaluate(el => el.scrollTop);
+    await page.mouse.wheel(0, -480);
+    await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBeLessThan(beforeUp);
+    const up = await scroller.evaluate(el => el.scrollTop);
     console.log(`SYSTEMS_WHEEL ${width} ${JSON.stringify({ down, up })}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     expect(network.blocked).toEqual([]);
@@ -661,7 +671,10 @@ for (const width of [1440, 768, 390]) {
     const systemRow = width < 768 ? page.locator('#systemsMobileList [data-action-trigger]').first() : page.locator('#systemsTableBody tr').first();
     await page.evaluate(() => scrollTo(0, 0));
     await systemRow.hover();
-    await wheelChangesPage(page, 380, 'down');
+    const systemsScroller = page.locator(width < 768 ? '#systemsMobileList' : '#watchlist .desktop-table-wrap');
+    await systemsScroller.evaluate(el => { el.scrollTop = 0; });
+    await page.mouse.wheel(0, 380);
+    await expect.poll(() => systemsScroller.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
     await clickSystemAction(page, 'edit',width < 768 ? '#systemsMobileList .system-mobile-card' : '#systemsTableBody tr[data-system-id]');
     await expect(page.locator('#editDialog')).toBeVisible();
     const body = page.locator('#editDialog .modal-body');
@@ -714,11 +727,11 @@ for (const width of [1440, 768, 390]) {
   test(`Thai Header has unclipped line boxes and clear controls at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await openManagement(page, scrollDataset(), 'dashboard');
-    const title = page.locator('.header-title');
+    const title = page.locator('#appHeader h1');
     await expect(title).toHaveText('ระบบข้อมูลประปาหมู่บ้าน');
     const geometry = await page.evaluate(() => {
-      const title = document.querySelector('.header-title');
-      const subtitle = document.querySelector('.header-subtitle');
+      const title = document.querySelector('#appHeader h1');
+      const subtitle = document.querySelector('#appHeader h1 + p');
       const controls = document.querySelector('.topbar-actions');
       const style = getComputedStyle(title);
       const box = el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
@@ -727,7 +740,9 @@ for (const width of [1440, 768, 390]) {
     expect(geometry.overflow).toBe('visible');
     expect(geometry.lineHeight / geometry.fontSize).toBeGreaterThanOrEqual(1.5);
     expect(geometry.title.height).toBeGreaterThanOrEqual(geometry.scrollHeight - 1);
-    expect(geometry.title.right).toBeLessThanOrEqual(geometry.controls.left - 4);
+    if (geometry.title.top < geometry.controls.bottom && geometry.controls.top < geometry.title.bottom) {
+      expect(geometry.title.right).toBeLessThanOrEqual(geometry.controls.left - 4);
+    }
     if (geometry.subtitleVisible) expect(geometry.subtitle.top).toBeGreaterThanOrEqual(geometry.title.bottom);
     expect(geometry.pageWidth).toBeLessThanOrEqual(width + 1);
     const directory = process.env.VWS_SCROLL_SCREENSHOTS;
@@ -749,7 +764,7 @@ test('Public-style Dashboard is continuous and tools open exclusive authenticate
   await expect(page.locator('#managementWorkspace')).toHaveCount(0);
   await expect(page.locator('#overview .kpi-card')).toHaveCount(4);
   await expect(page.locator('#kpiWithWaterworks')).toHaveText('ไม่พร้อมใช้');
-  expect(await page.locator('.tabs a.section-link').count()).toBe(6);
+  expect(await page.locator('.tabs a.section-link').count()).toBe(7);
   await page.locator('#filterSearch').fill('Synthetic');
   const reads = network.calls.filter(call => call.action === 'data.dashboard').length;
   await page.locator('a[href="#areas"]').click();
@@ -967,7 +982,7 @@ for (const viewport of [
 }
 
 const visibleMapSystem = { ...editableSystem, system_id: 'QA-MAP-VISIBLE', system_name: 'Visible Synthetic System', latitude: 19.2, longitude: 100.1, publicVisible: true };
-const hiddenMapSystem = { ...editableSystem, system_id: 'QA-MAP-HIDDEN', system_name: 'Hidden Synthetic System', latitude: '19.3', longitude: '100.2', publicVisible: false, operational_status: 'NOT_WORKING' };
+const hiddenMapSystem = { ...editableSystem, system_id: 'QA-MAP-HIDDEN', system_name: 'Hidden Synthetic System', latitude: '19.175', longitude: '99.88', publicVisible: false, operational_status: 'NOT_WORKING' };
 const missingMapSystem = { ...editableSystem, system_id: 'QA-MAP-MISSING', system_name: 'Missing Coordinate System', latitude: '', longitude: null };
 const malformedMapSystem = { ...editableSystem, system_id: 'QA-MAP-MALFORMED', system_name: 'Malformed Coordinate System', latitude: 'not-a-number', longitude: '100.3' };
 const outlierMapSystem = { ...editableSystem, system_id: 'QA-MAP-OUTLIER', system_name: 'Outlier Coordinate System', latitude: 9.218651, longitude: 99.832377 };
@@ -984,7 +999,7 @@ for (const viewport of [
     test('header navigation reaches implemented views without page overflow', async ({ page }) => {
       await openManagement(page, { 'data.dashboard': mapDashboard(mapSystems) });
       const header = await page.locator('#appHeader').boundingBox();
-      const brand = await page.locator('.brand-inline').boundingBox();
+      const brand = await page.locator('#appHeader > div:first-child > div:first-child').boundingBox();
       const actions = await page.locator('.topbar-actions').boundingBox();
       expect(brand.x + brand.width).toBeLessThanOrEqual(actions.x + 2);
       expect(header.x).toBeGreaterThanOrEqual(0);
@@ -1018,8 +1033,8 @@ for (const viewport of [
       expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-MAP-OUTLIER').lat)).toBeCloseTo(9.218651);
       expect(await page.evaluate(() => window.VWSTechnicianMap.coordinates({ latitude: '  ', longitude: '100.1' }))).toBeNull();
       expect(await page.evaluate(() => window.VWSTechnicianMap.coordinates({ latitude: 'Infinity', longitude: '100.1' }))).toBeNull();
-      expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-MAP-HIDDEN').lat)).toBeCloseTo(19.3);
-      await expect(page.locator('#technicianMapScope')).toContainText('รวมรายการที่ไม่แสดงใน Public');
+      expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-MAP-HIDDEN').lat)).toBeCloseTo(19.175);
+      await expect(page.locator('#technicianMapScope')).toContainText('รวมรายการที่ไม่แสดงบนหน้าสาธารณะ');
       if (process.env.VWS_PHASE_D_SCREENSHOTS) {
         fs.mkdirSync(process.env.VWS_PHASE_D_SCREENSHOTS, { recursive: true });
         await page.screenshot({ path: path.join(process.env.VWS_PHASE_D_SCREENSHOTS, `phase-d-${viewport.name}-map.png`), fullPage: true });
@@ -1027,9 +1042,9 @@ for (const viewport of [
       await page.locator('[data-tab="map"]').click();
       await expect(page.locator('#technicianWaterMap')).toBeVisible();
       await page.locator('#technicianWaterMap [data-system-id="QA-MAP-HIDDEN"]').click();
-      await expect(page.locator('.technician-map-popup')).toContainText('ไม่แสดงใน Public Dashboard');
-      await expect(page.locator('.technician-map-popup')).toContainText('ใช้งานไม่ได้');
-      await page.locator('[data-technician-map-detail="QA-MAP-HIDDEN"]').click();
+      await expect(page.locator('#technicianWaterMap .map-popup')).toContainText('Hidden Synthetic System');
+      await expect(page.locator('#technicianWaterMap .map-popup')).toContainText('ใช้การไม่ได้');
+      await page.locator('#technicianWaterMap [data-map-action="detail"][data-system-id="QA-MAP-HIDDEN"]').click();
       await expect(page.locator('#systemDialogTitle')).toHaveText(hiddenMapSystem.system_name);
       await expect(page.locator('#editSystemButton')).toBeEnabled();
       expect(network.calls.find(call => call.action === 'data.waterSystem')?.payload.systemId).toBe(hiddenMapSystem.system_id);
@@ -1082,6 +1097,9 @@ test('Technician map refresh, update and physical deletion replace markers witho
   await page.locator('#deleteReason').fill('Synthetic removal');
   await page.locator('#deleteConfirmInput').fill(hiddenMapSystem.system_id);
   await page.locator('#confirmDeleteButton').click();
+  await expect(page.locator('#finalDeleteDialog')).toBeVisible();
+  expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(0);
+  await page.locator('#finalDeleteForm button[type="submit"]').click();
   await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(1);
   await expect(page.locator('#technicianWaterMap [data-system-id="QA-MAP-HIDDEN"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-MAP-HIDDEN'))).toBeNull();
@@ -1102,14 +1120,15 @@ test('Technician map keyboard popup and restricted detail keep management action
   await openLogin(page);
   await submitSyntheticLogin(page);
   await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(1);
+  await expect(page.locator('#busyOverlay')).toBeHidden();
   const marker = page.locator('#technicianWaterMap [data-system-id="QA-MAP-HIDDEN"]');
   await marker.focus();
   await expect(marker).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.technician-map-popup')).toContainText('Hidden Synthetic System');
+  await expect(page.locator('#technicianWaterMap .map-popup')).toContainText('Hidden Synthetic System');
   const a11y = await new AxeBuilder({ page }).include('#map-section').analyze();
   expect(a11y.violations).toEqual([]);
-  await page.locator('[data-technician-map-detail="QA-MAP-HIDDEN"]').click();
+  await page.locator('#technicianWaterMap [data-map-action="detail"][data-system-id="QA-MAP-HIDDEN"]').click();
   await expect(page.locator('#systemDialog')).toBeVisible();
   await expect(page.locator('#editSystemButton')).toBeDisabled();
   await expect(page.locator('#deleteSystemButton')).toBeDisabled();
@@ -1290,7 +1309,7 @@ for (const viewport of [
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     });
 
-    test('reduced motion keeps a static progress cue and retry remains usable', async ({ page }) => {
+    test('reduced motion matches the Public rotating loader and retry remains usable', async ({ page }) => {
       await page.emulateMedia({ reducedMotion: 'reduce' });
       const hold = heldResponse(failure('TEMPORARY', 'Synthetic verification interruption'));
       await installIsolatedTechnician(page, { 'auth.me': hold.respond });
@@ -1299,8 +1318,8 @@ for (const viewport of [
       await expect(page.locator('#busyOverlay')).toBeVisible();
       await expect(page.locator('#busyOverlay .swal2-title')).toContainText('กำลัง');
       const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
-      expect(frames.animation).toBe('none');
-      expect(frames.second.transform).toBe(frames.first.transform);
+      expect(frames.animation).toBe('swal2-rotate-loading');
+      expect(frames.second.transform).not.toBe(frames.first.transform);
       hold.release();
       await expect(page.locator('#retryResumeButton')).toBeVisible();
       await expect(page.locator('#bootView .boot-actions')).toBeHidden();
@@ -1339,7 +1358,7 @@ test('overlapping loading tokens retain the active Public popup until final clea
   expect(network.calls).toEqual([]);
 });
 
-test('reduced-motion busy dialog keeps a static cue and clears after successful login', async ({ page }) => {
+test('reduced-motion busy dialog matches Public rotation and clears after successful login', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const hold = heldResponse(success({ token, user }));
@@ -1348,8 +1367,8 @@ test('reduced-motion busy dialog keeps a static cue and clears after successful 
   await submitSyntheticLogin(page);
   await expectBusyDialog(page, 'กำลังเข้าสู่ระบบ...');
   const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
-  expect(frames.animation).toBe('none');
-  expect(frames.second.transform).toBe(frames.first.transform);
+  expect(frames.animation).toBe('swal2-rotate-loading');
+  expect(frames.second.transform).not.toBe(frames.first.transform);
   expect(await page.locator('#busyOverlay .swal2-popup').evaluate(element => getComputedStyle(element, '::after').content)).toBe('none');
   const reducedDirectory = process.env.VWS_LOADING_SCREENSHOTS;
   if (reducedDirectory) { fs.mkdirSync(reducedDirectory, { recursive: true }); await page.screenshot({ path: path.join(reducedDirectory, 'technician-loading-reduced-390.png') }); }
@@ -1383,7 +1402,7 @@ test('refresh, account listing, detail and history use the shared busy dialog', 
   await expect(page.locator('#systemDialog')).toBeVisible();
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
   await openToolSection(page, 'technicians');
-  await expectBusyDialog(page, 'กำลังโหลดบัญชีช่าง...');
+  await expectBusyDialog(page, 'กำลังโหลดบัญชีช่างเทคนิค...');
   list.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
   await openToolSection(page, 'history');
@@ -1417,6 +1436,9 @@ test('edit, delete, account mutation and password loading remain above their dia
   await page.locator('#deleteReason').fill('Synthetic deletion reason');
   await page.locator('#deleteConfirmInput').fill(system.system_id);
   await page.locator('#confirmDeleteButton').click();
+  await expect(page.locator('#finalDeleteDialog')).toBeVisible();
+  expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(0);
+  await page.locator('#finalDeleteForm button[type="submit"]').click();
   await expectBusyDialog(page, 'กำลังลบระบบประปา...');
   deleteHold.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
@@ -1455,7 +1477,7 @@ test('account edit and action keep one animated dialog through nested list reloa
   await page.locator('#techniciansTableBody [data-tech-action="edit"]').first().click();
   await page.locator('#techDisplayName').fill('Updated Synthetic');
   await page.locator('#technicianForm button[type="submit"]').click();
-  await expectBusyDialog(page, 'กำลังโหลดบัญชีช่าง...');
+  await expectBusyDialog(page, 'กำลังโหลดบัญชีช่างเทคนิค...');
   const firstAnimationTime = await page.locator('#busyOverlay .swal2-loader').evaluate(element => element.getAnimations().find(item => item.effect?.getComputedTiming().iterations === Infinity)?.currentTime);
   const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
   expect(frames.second.time).toBeGreaterThan(frames.first.time);
@@ -1808,6 +1830,9 @@ test('delete X and Cancel never delete after confirmation; explicit Delete valid
   expect(mutations(network)).toEqual([]);
   await page.locator('#deleteConfirmInput').fill(system.system_id);
   await page.locator('#confirmDeleteButton').click();
+  await expect(page.locator('#finalDeleteDialog')).toBeVisible();
+  expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(0);
+  await page.locator('#finalDeleteForm button[type="submit"]').click();
   await expect(page.locator('#deleteDialog')).toBeHidden();
   expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(1);
 });

@@ -128,7 +128,7 @@
     $('kpiVillages').classList.toggle('kpi-unavailable',!villageAvailable);
     setText('kpiWithWaterworks',complete?number(villages.filter(waterworks).length):'ไม่พร้อมใช้');
     setText('kpiWithoutWaterworks',complete?number(villages.length-villages.filter(waterworks).length):'ไม่พร้อมใช้');
-    for(const id of ['kpiWithWaterworks','kpiWithoutWaterworks']){$(id).classList.toggle('kpi-unavailable',!complete);$(id).title=complete?'':'Management dataset ไม่มี has_village_waterworks';}
+    for(const id of ['kpiWithWaterworks','kpiWithoutWaterworks']){$(id).classList.toggle('kpi-unavailable',!complete);$(id).title=complete?'':'ข้อมูลหมู่บ้านสำหรับคำนวณตัวเลขนี้ยังไม่พร้อม';}
     setText('kpiSystems',number(systems.length));
     setText('alertNotWorking',number(snapshot(['operationalStatus']).systems.filter(s=>s.operational_status==='NOT_WORKING').length));
     setText('alertInsufficient',number(snapshot(['waterQuantity']).systems.filter(s=>normal('waterQuantity',s.water_quantity)==='INSUFFICIENT').length));

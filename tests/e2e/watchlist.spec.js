@@ -24,13 +24,17 @@ async function installLargeWatchlistFixture(page) {
   });
 }
 
-test('watchlist renders every matching record and remains internally scrollable', async ({ page }) => {
+test('public systems list reaches every matching record through pagination and remains internally scrollable', async ({ page }) => {
   await installLargeWatchlistFixture(page);
   await openDashboard(page);
 
   await expect(page.locator('#watchlistTotal')).toHaveText(String(SYSTEM_COUNT));
-  await expect(page.locator('.problem-table tbody tr')).toHaveCount(SYSTEM_COUNT);
-  await expect(page.locator('.watchlist-mobile .watch-card')).toHaveCount(SYSTEM_COUNT);
+  await expect(page.locator('#publicListAllCount')).toHaveText(String(SYSTEM_COUNT));
+  await page.locator('#publicListMonitoring').click();
+  await expect(page.locator('#publicListPageStatus')).toHaveText('หน้า 1/2');
+  await expect(page.locator('.problem-table tbody tr')).toHaveCount(20);
+  await expect(page.locator('.watchlist-mobile .watch-card')).toHaveCount(20);
+  const firstPageIds = await page.locator('.problem-table tbody tr').evaluateAll(rows => rows.map(row => row.dataset.watchSystemId));
 
   const desktopScroll = await page.locator('.watchlist-scroll').evaluate(node => ({
     clientHeight: node.clientHeight,
@@ -40,6 +44,13 @@ test('watchlist renders every matching record and remains internally scrollable'
   expect(desktopScroll.overflowY).toBe('auto');
   expect(desktopScroll.scrollHeight).toBeGreaterThan(desktopScroll.clientHeight);
 
+  await page.locator('#publicListNext').click();
+  await expect(page.locator('#publicListPageStatus')).toHaveText('หน้า 2/2');
+  await expect(page.locator('.problem-table tbody tr')).toHaveCount(5);
+  const secondPageIds = await page.locator('.problem-table tbody tr').evaluateAll(rows => rows.map(row => row.dataset.watchSystemId));
+  expect(new Set([...firstPageIds, ...secondPageIds]).size).toBe(SYSTEM_COUNT);
+
+  await page.locator('#publicListPrevious').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.watchlist-mobile')).toBeVisible();
   const mobileScroll = await page.locator('.watchlist-mobile').evaluate(node => ({

@@ -73,7 +73,7 @@
       },
       onRendered: (count, filtered) => {
         document.getElementById('technicianMapScope').textContent =
-          `${filtered ? 'กรองตามรายการปัจจุบัน · ' : 'แสดงทุกระบบ · '}${count.toLocaleString('th-TH')} จุดที่มีพิกัดใช้งานได้ รวมรายการที่ไม่แสดงใน Public`;
+          `${filtered ? 'กรองตามรายการปัจจุบัน · ' : 'แสดงทุกระบบ · '}${count.toLocaleString('th-TH')} จุดที่มีพิกัดใช้งานได้ รวมรายการที่ไม่แสดงบนหน้าสาธารณะ`;
         document.getElementById('technicianMapEmpty').classList.toggle('hidden', count > 0);
       }
     });

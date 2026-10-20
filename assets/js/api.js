@@ -10,7 +10,7 @@ export async function loadData() {
 
   const apiUrl = String(CONFIG?.API_URL || '').trim();
   if (!apiUrl) {
-    throw new Error('ยังไม่ได้กำหนด API_URL ใน assets/js/config.js');
+    throw new Error('ยังไม่ได้ตั้งค่าการเชื่อมต่อข้อมูล');
   }
 
   const controller = new AbortController();
@@ -25,21 +25,21 @@ export async function loadData() {
     });
 
     if (!response.ok) {
-      throw new Error(`API ตอบกลับ HTTP ${response.status}`);
+      throw new Error(`โหลดข้อมูลไม่สำเร็จ (รหัส ${response.status}) กรุณาลองใหม่`);
     }
 
     let payload;
     try {
       payload = await response.json();
     } catch (_) {
-      throw new Error('API ส่งข้อมูลกลับมาในรูปแบบที่อ่านไม่ได้');
+      throw new Error('ระบบข้อมูลส่งข้อมูลกลับมาในรูปแบบที่อ่านไม่ได้');
     }
 
     validatePayload(payload);
     return payload;
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new Error('การเชื่อมต่อ API ใช้เวลานานเกินกำหนด กรุณาลองใหม่');
+      throw new Error('การเชื่อมต่อข้อมูลใช้เวลานานเกินกำหนด กรุณาลองใหม่');
     }
     throw error;
   } finally {
@@ -50,9 +50,9 @@ export async function loadData() {
 async function loadMockData() {
   const urls = resolveMockDataUrls(import.meta.url);
   const [villages, waterSystems, waterSources] = await Promise.all([
-    fetchJson(urls.villages, 'villages.json'),
-    fetchJson(urls.waterSystems, 'water_systems.json'),
-    fetchJson(urls.waterSources, 'village_water_sources.json')
+    fetchJson(urls.villages, 'หมู่บ้าน'),
+    fetchJson(urls.waterSystems, 'ระบบประปา'),
+    fetchJson(urls.waterSources, 'แหล่งน้ำ')
   ]);
 
   return {
@@ -66,23 +66,23 @@ async function loadMockData() {
 
 async function fetchJson(url, label) {
   const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`โหลดไฟล์ข้อมูลตัวอย่าง ${label} ไม่สำเร็จ`);
+  if (!response.ok) throw new Error(`โหลดข้อมูลตัวอย่าง${label}ไม่สำเร็จ`);
   return response.json();
 }
 
 function validatePayload(payload) {
   if (!payload || typeof payload !== 'object') {
-    throw new Error('API ไม่ได้ส่งข้อมูล Dashboard กลับมา');
+    throw new Error('ระบบข้อมูลไม่ได้ส่งข้อมูลแดชบอร์ดกลับมา');
   }
 
   if (payload.success === false) {
-    throw new Error(payload.message || 'API ตอบกลับว่าไม่สำเร็จ');
+    throw new Error(payload.message || 'ระบบข้อมูลตอบกลับว่าไม่สำเร็จ');
   }
 
   const required = ['villages', 'waterSystems', 'waterSources'];
   for (const key of required) {
     if (!Array.isArray(payload[key])) {
-      throw new Error(`API ไม่มีชุดข้อมูล ${key} ที่ถูกต้อง`);
+      throw new Error('ข้อมูลแดชบอร์ดไม่ครบถ้วนหรือไม่ถูกต้อง');
     }
   }
 }
