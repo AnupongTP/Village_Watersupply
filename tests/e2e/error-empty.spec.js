@@ -10,7 +10,7 @@ test('API/network failure resolves to a visible initial-load error state instead
 
   await page.goto('/');
   await expect(page.locator('.swal2-title')).toHaveText('ไม่สามารถโหลดข้อมูลได้', { timeout: 20_000 });
-  await expect(page.locator('.swal2-html-container')).toContainText('โหลดไฟล์');
+  await expect(page.locator('.swal2-html-container')).toContainText('โหลดข้อมูลตัวอย่างหมู่บ้านไม่สำเร็จ');
   await expect(page.locator('body')).toContainText('ระบบข้อมูลประปาหมู่บ้าน');
 });
 

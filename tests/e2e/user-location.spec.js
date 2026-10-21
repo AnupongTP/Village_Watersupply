@@ -34,7 +34,11 @@ test('user location is shown on the map without issuing mutating HTTP requests',
   await page.locator('#btnUserLocation').click();
 
   await expect(page.locator('.user-location-marker')).toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('.leaflet-popup')).toContainText('ตำแหน่งของคุณ');
+  // Auto-location can leave a closing Leaflet popup in the DOM while the
+  // explicit request opens the next one. Check the visible, newest popup.
+  const locationPopup = page.locator('.leaflet-popup').filter({ hasText: 'ตำแหน่งของคุณ' }).last();
+  await expect(locationPopup).toBeVisible();
+  await expect(locationPopup).toContainText('ตำแหน่งของคุณ');
 
   // The current UI intentionally does not display a storage/privacy sentence in
   // the popup. Verify the actual contract instead: no mutating request, no raw

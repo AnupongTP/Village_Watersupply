@@ -34,8 +34,12 @@ export async function requestCurrentUserPosition({
 }
 
 export function normalizeUserPosition(position) {
-  const latitude = Number(position?.coords?.latitude);
-  const longitude = Number(position?.coords?.longitude);
+  const rawLatitude = position?.coords?.latitude;
+  const rawLongitude = position?.coords?.longitude;
+  if (rawLatitude == null || rawLongitude == null ||
+      String(rawLatitude).trim() === '' || String(rawLongitude).trim() === '') return null;
+  const latitude = Number(rawLatitude);
+  const longitude = Number(rawLongitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
 
@@ -59,7 +63,7 @@ export function normalizeGeolocationError(error) {
 export function userLocationErrorMessage(error) {
   switch (error?.locationCode) {
     case 'INSECURE_CONTEXT':
-      return 'เบราว์เซอร์อนุญาตการระบุตำแหน่งเฉพาะการเชื่อมต่อที่ปลอดภัย กรุณาเปิดผ่าน HTTPS หรือ localhost';
+      return 'เบราว์เซอร์อนุญาตให้ระบุตำแหน่งเฉพาะเมื่อเปิดเว็บไซต์ผ่านการเชื่อมต่อที่ปลอดภัย กรุณาเปิดเว็บไซต์ใหม่ด้วยการเชื่อมต่อที่ปลอดภัย';
     case 'UNSUPPORTED':
       return 'เบราว์เซอร์หรืออุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง';
     case 'PERMISSION_DENIED':
