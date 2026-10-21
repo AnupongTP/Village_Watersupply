@@ -28,7 +28,7 @@ async function captureStage(page, name, locator = null, fullPage = false) {
   else await page.screenshot({ path: output, fullPage });
 }
 const token = `MGT-${'a'.repeat(64)}`;
-const user = { username: 'synthetic-technician', displayName: 'Synthetic Technician', role: 'TECHNICIAN' };
+const user = { username: 'synthetic-technician', displayName: 'Synthetic Technician', role: 'TECHNICIAN', district: 'จุน' };
 const system = {
   system_id: 'QA-SYSTEM-1', village_id: 'QA-VILLAGE-1', system_name: 'Synthetic Water System',
   recordStatus: 'ACTIVE', publicVisible: true, publicSuppressionReasons: [],
@@ -65,7 +65,7 @@ async function installIsolatedTechnician(page, overrides = {}) {
       const defaults = {
         'auth.login': success({ token, user }),
         'auth.me': success({ user }),
-        'data.bootstrap': success({ user, permissions: [], featureFlags: { managementRead: true }, enumCatalog: {} }),
+        'data.bootstrap': success({ user, permissions: [], featureFlags: { managementRead: true, technicianDistrictScope: true }, enumCatalog: {} }),
         'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages: [], waterSystems: [system], waterSources: [] }),
         'data.waterSystem': success({ system }),
         'auth.logout': success()
@@ -233,12 +233,12 @@ const editableSystem = {
 const managementUser = { ...user, role: 'ADMIN' };
 function managementMocks(extra = {}) {
   return {
-    'data.bootstrap': success({ user: managementUser, permissions: ['UPDATE_SYSTEM', 'DELETE_SYSTEM', 'MANAGE_TECHNICIANS'], enumCatalog: { usage_type: ['DOMESTIC', 'AGRICULTURE'] } }),
-    'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages: [{ village_id: 'QA-VILLAGE-2', village_name: 'Synthetic Neighbor' }], waterSystems: [editableSystem], waterSources: [] }),
+    'data.bootstrap': success({ user: managementUser, permissions: ['UPDATE_SYSTEM', 'DELETE_SYSTEM', 'MANAGE_TECHNICIANS'], featureFlags: { technicianDistrictScope: true }, enumCatalog: { usage_type: ['DOMESTIC', 'AGRICULTURE'] } }),
+    'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages: [{ village_id: 'QA-VILLAGE-2', village_name: 'Synthetic Neighbor', district: 'จุน' }], waterSystems: [editableSystem], waterSources: [] }),
     'data.waterSystem': success({ system: editableSystem }),
     'data.updateWaterSystem': success({ system: editableSystem }),
     'data.deleteWaterSystem': success(),
-    'technicians.list': success({ technicians: [{ userId: 'QA-TECH-1', username: 'synthetic-account', displayName: 'Synthetic Account', status: 'ACTIVE', recordVersion: 'v1' }] }),
+    'technicians.list': success({ technicians: [{ userId: 'QA-TECH-1', username: 'synthetic-account', displayName: 'Synthetic Account', district: 'จุน', status: 'ACTIVE', recordVersion: 'v1' }] }),
     'technicians.create': success(), 'technicians.update': success(), 'technicians.disable': success(),
     'technicians.enable': success(), 'technicians.delete': success(), 'technicians.resetPassword': success(),
     'auth.changePassword': success(),
@@ -1073,6 +1073,38 @@ for (const viewport of [
   });
 }
 
+for (const width of [360, 390]) test(`mobile Technician map popup stays compact at ${width}px without hiding actions`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 844 });
+  const popupSystem = { ...visibleMapSystem, drinking_water_quality: 'FAIL' };
+  const network = await openManagement(page, { 'data.dashboard': mapDashboard([popupSystem]) });
+  await page.locator('#systemsMobileList [data-system-id="QA-MAP-VISIBLE"] .system-map-button').click();
+  const popup = page.locator('#technicianWaterMap .system-map-popup');
+  await expect(popup).toBeVisible();
+  await expect.poll(async () => {
+    const mapBox = await page.locator('#technicianWaterMap').boundingBox();
+    const popupBox = await popup.boundingBox();
+    return popupBox.y >= mapBox.y + 70 && popupBox.y + popupBox.height <= mapBox.y + mapBox.height - 8;
+  }).toBe(true);
+  await expect(popup.locator('[data-map-action="detail"]')).toBeVisible();
+  await expect(popup.locator('[data-map-action="navigate"]')).toBeVisible();
+  const map = await page.locator('#technicianWaterMap').boundingBox();
+  const box = await popup.boundingBox();
+  const zoom = await page.locator('#technicianWaterMap .leaflet-control-zoom').boundingBox();
+  const layers = await page.locator('#technicianWaterMap .leaflet-control-layers').boundingBox();
+  expect(box.height).toBeLessThanOrEqual(map.height * .7);
+  expect(box.width).toBeLessThan(map.width - 50);
+  await expect.poll(async () => {
+    const current = await popup.boundingBox();
+    return current.y >= Math.max(zoom.y + zoom.height, layers.y + layers.height) + 4;
+  }).toBe(true);
+  await expect(popup.locator('.map-popup strong')).toBeVisible();
+  await expect(popup.locator('.detail-status-row .badge')).toHaveText(['ใช้การได้', 'น้ำเพียงพอ', 'น้ำดื่มไม่ผ่านเกณฑ์']);
+  await expect(popup.locator('.map-popup')).not.toContainText('คุณภาพน้ำใช้');
+  await page.screenshot({ path: testInfo.outputPath(`technician-mobile-map-popup-${width}.png`) });
+  expect(network.blocked).toEqual([]);
+  expect(network.calls.filter(call => /^(data\.(update|delete)|technicians\.)/.test(call.action))).toEqual([]);
+});
+
 test('Technician map refresh, update and physical deletion replace markers without duplicates', async ({ page }) => {
   let systems = [visibleMapSystem, hiddenMapSystem];
   const network = await openManagement(page, {
@@ -1113,7 +1145,7 @@ test('Technician map refresh, update and physical deletion replace markers witho
 
 test('Technician map keyboard popup and restricted detail keep management actions guarded', async ({ page }) => {
   await installIsolatedTechnician(page, {
-    'data.bootstrap': success({ user, permissions: [], featureFlags: { managementRead: true }, enumCatalog: {} }),
+    'data.bootstrap': success({ user, permissions: [], featureFlags: { managementRead: true, technicianDistrictScope: true }, enumCatalog: {} }),
     'data.dashboard': mapDashboard([hiddenMapSystem]),
     'data.waterSystem': success({ system: hiddenMapSystem })
   });
@@ -1446,6 +1478,7 @@ test('edit, delete, account mutation and password loading remain above their dia
   await page.locator('#createTechnicianButton').click();
   await page.locator('#techUsername').fill('another-synthetic');
   await page.locator('#techDisplayName').fill('Another Synthetic');
+  await page.locator('#techDistrict').fill('จุน');
   await page.locator('#techPassword').fill('synthetic-secret');
   await page.locator('#technicianForm button[type="submit"]').click();
   await expectBusyDialog(page, 'กำลังสร้างบัญชี...');
@@ -1808,6 +1841,35 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
   });
 }
 
+test('mobile edit dialog stays top anchored when keyboard-sized viewport changes', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const network = await openManagement(page);
+  await openEditFromTable(page, true);
+  await page.locator('#sharedVillageSearch').focus();
+  await expect(page.locator('#sharedVillageSearch')).toBeFocused();
+  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('#editDialog'), '::backdrop').backdropFilter)).toBe('none');
+  const before = await page.locator('#editDialog').boundingBox();
+  expect(before.y).toBe(0);
+  await page.setViewportSize({ width: 390, height: 500 });
+  const after = await page.locator('#editDialog').boundingBox();
+  expect(after.y).toBe(0);
+  expect(after.height).toBeLessThanOrEqual(500);
+  await expect(page.locator('#editDialog .modal-header')).toBeInViewport();
+  await expect(page.locator('#editDialog .modal-footer')).toBeInViewport();
+  const scroll = await page.locator('#editDialog .edit-modal-body').evaluate(body => {
+    body.scrollTop = body.scrollHeight;
+    return { top: body.scrollTop, max: body.scrollHeight - body.clientHeight };
+  });
+  expect(scroll.max).toBeGreaterThan(0);
+  expect(scroll.top).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#editDialog .modal-header [data-dismiss-dialog]').click();
+  await expect(page.locator('#systemDialog')).toBeVisible();
+  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).not.toBe('hidden');
+  expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toEqual([]);
+});
+
 test('delete X and Cancel never delete after confirmation; explicit Delete validates ID', async ({ page }) => {
   const network = await openManagement(page);
   await clickSystemAction(page, 'delete');
@@ -1844,6 +1906,7 @@ test('account and password dialog dismissal never dispatches mutations', async (
   await page.locator('#createTechnicianButton').click();
   await page.locator('#techUsername').fill('new-synthetic');
   await page.locator('#techDisplayName').fill('New Synthetic');
+  await page.locator('#techDistrict').fill('จุน');
   await page.locator('#techPassword').fill('synthetic-secret');
   await page.locator('#technicianDialog .modal-header [data-dismiss-dialog]').click();
   await expect(page.locator('#technicianDialog')).toBeHidden();
@@ -1879,7 +1942,7 @@ test('forced password change cannot be dismissed with Escape or backdrop', async
 });
 
 test('restricted role cannot open edit or delete from desktop or mobile actions', async ({ page }) => {
-  const network = await openManagement(page, { 'data.bootstrap': success({ user, permissions: [], enumCatalog: {} }) });
+  const network = await openManagement(page, { 'data.bootstrap': success({ user, permissions: [], featureFlags: { technicianDistrictScope: true }, enumCatalog: {} }) });
   for (const parent of ['#systemsTableBody', '#systemsMobileList']) {
     await page.locator(`${parent} [data-action-trigger]`).first().evaluate(button => button.click());
     await expect(page.locator('#systemActionMenu [data-action="edit"]')).toBeDisabled();
@@ -1979,10 +2042,13 @@ test('explicit account create and password change each dispatch once', async ({ 
   await page.locator('#createTechnicianButton').click();
   await page.locator('#techUsername').fill('new-synthetic');
   await page.locator('#techDisplayName').fill('New Synthetic');
+  await page.locator('#techDistrict').fill('จุน');
   await page.locator('#techPassword').fill('synthetic-secret');
   await page.locator('#technicianForm button[type="submit"]').click();
   await expect(page.locator('#technicianDialog')).toBeHidden();
   expect(network.calls.filter(call => call.action === 'technicians.create')).toHaveLength(1);
+  expect(network.calls.find(call => call.action === 'technicians.create')?.payload.request.district).toBe('จุน');
+  await page.locator('#mobileAccountButton').click();
   await page.locator('#changePasswordButton').click();
   await page.locator('#currentPassword').fill('synthetic-old');
   await page.locator('#newPassword').fill('synthetic-new');
@@ -1990,6 +2056,116 @@ test('explicit account create and password change each dispatch once', async ({ 
   await page.locator('#passwordChangeSubmit').click();
   await expect(page.locator('#passwordDialog')).toBeHidden();
   expect(network.calls.filter(call => call.action === 'auth.changePassword')).toHaveLength(1);
+});
+
+test('district assignment is required before a technician dashboard can load', async ({ page }) => {
+  const unassigned = { ...user, district: '' };
+  const network = await installIsolatedTechnician(page, {
+    'data.bootstrap': success({ user: unassigned, permissions: ['VIEW_MANAGEMENT'], featureFlags: { technicianDistrictScope: true } })
+  });
+  await openLogin(page);
+  await submitSyntheticLogin(page);
+  await expect(page.locator('#loginView')).toBeVisible();
+  await expect(page.locator('#loginError')).toContainText('ยังไม่ได้รับมอบหมายอำเภอ');
+  expect(network.calls.some(call => call.action === 'data.dashboard')).toBe(false);
+});
+
+test('account form rejects an unknown district without sending a mutation', async ({ page }) => {
+  const network = await openManagement(page);
+  await openToolSection(page, 'technicians');
+  await page.locator('#createTechnicianButton').click();
+  await expect(page.locator('#techDistrictOptions option')).toHaveCount(1);
+  await page.locator('#techUsername').fill('district-synthetic');
+  await page.locator('#techDisplayName').fill('ช่างอำเภอตัวอย่าง');
+  await page.locator('#techDistrict').fill('อำเภอที่ไม่มีในรายการ');
+  await page.locator('#techPassword').fill('synthetic-secret');
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianError')).toContainText('กรุณาเลือกอำเภอจากรายชื่อ');
+  expect(network.calls.some(call => call.action === 'technicians.create')).toBe(false);
+});
+
+test('account password guidance and border colors follow the backend length policy', async ({ page }) => {
+  const network = await openManagement(page);
+  await openToolSection(page, 'technicians');
+  await page.locator('#createTechnicianButton').click();
+  await page.locator('#techUsername').fill('password-synthetic');
+  await page.locator('#techDisplayName').fill('ช่างตัวอย่าง');
+  await page.locator('#techDistrict').fill('จุน');
+  await expect(page.locator('#techPasswordHelp')).toHaveText('กรุณากำหนดรหัสผ่านอย่างน้อย 8 ตัวอักษร');
+  await expect(page.locator('#techPassword')).not.toHaveAttribute('data-validity');
+  await page.locator('#techPassword').fill('1234');
+  await expect(page.locator('#techPassword')).toHaveAttribute('data-validity', 'invalid');
+  await expect(page.locator('#techPassword')).toHaveCSS('border-color', 'rgb(220, 38, 38)');
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianDialog')).toBeVisible();
+  await expect(page.locator('#techPasswordHelp')).toHaveClass(/password-help-invalid/);
+  await expect(page.locator('#techPassword')).toHaveAttribute('aria-invalid', 'true');
+  expect(await page.locator('#technicianForm').evaluate(form => form.noValidate)).toBe(true);
+  expect(network.calls.some(call => call.action === 'technicians.create')).toBe(false);
+  await page.locator('#techPassword').fill('x'.repeat(129));
+  await expect(page.locator('#techPasswordError')).toHaveText('รหัสผ่านต้องมีความยาวไม่เกิน 128 ตัวอักษร');
+  await expect(page.locator('#techPassword')).toHaveCSS('border-color', 'rgb(220, 38, 38)');
+  await page.locator('#techPassword').fill('12345678');
+  await expect(page.locator('#techPasswordError')).toBeEmpty();
+  await expect(page.locator('#techPassword')).toHaveAttribute('data-validity', 'valid');
+  await expect(page.locator('#techPassword')).toHaveCSS('border-color', 'rgb(22, 163, 74)');
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianDialog')).toBeHidden();
+  expect(network.calls.filter(call => call.action === 'technicians.create')).toHaveLength(1);
+});
+
+test('account editing sends a changed district and keeps existing account identity', async ({ page }) => {
+  const network = await openManagement(page, {
+    'data.bootstrap': success({ user: managementUser, permissions: ['UPDATE_SYSTEM', 'DELETE_SYSTEM', 'MANAGE_TECHNICIANS'], featureFlags: {}, enumCatalog: {} }),
+    'data.dashboard': success({ generatedAt: '2026-01-01T00:00:00Z', villages: [
+      { village_id: 'QA-VILLAGE-2', district: 'จุน' },
+      { village_id: 'QA-VILLAGE-3', district: 'เมืองพะเยา' }
+    ], waterSystems: [editableSystem], waterSources: [] })
+  });
+  await openToolSection(page, 'technicians');
+  await page.locator('#techniciansTableBody [data-tech-action="edit"]').click();
+  await expect(page.locator('#techDistrict')).toHaveValue('จุน');
+  await page.locator('#techDistrict').fill('เมืองพะเยา');
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianDialog')).toBeHidden();
+  expect(network.calls.filter(call => call.action === 'technicians.update')).toHaveLength(1);
+  expect(network.calls.find(call => call.action === 'technicians.update')?.payload.request).toMatchObject({
+    userId: 'QA-TECH-1', expectedVersion: 'v1', district: 'เมืองพะเยา'
+  });
+});
+
+test('account creation reports backend district rejection when bootstrap flag is absent', async ({ page }) => {
+  const network = await openManagement(page, {
+    'data.bootstrap': success({ user: managementUser, permissions: ['MANAGE_TECHNICIANS'], featureFlags: {} }),
+    'technicians.create': failure('VALIDATION_FAILED', 'อำเภอไม่รองรับใน backend')
+  });
+  await openToolSection(page, 'technicians');
+  await page.locator('#createTechnicianButton').click();
+  await page.locator('#techUsername').fill('scope-synthetic');
+  await page.locator('#techDisplayName').fill('ช่างตัวอย่าง');
+  await page.locator('#techDistrict').fill('จุน');
+  await page.locator('#techPassword').fill('synthetic-secret');
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianError')).toContainText('อำเภอไม่รองรับใน backend');
+  await expect(page.locator('#technicianDialog')).toBeVisible();
+  expect(network.calls.filter(call => call.action === 'technicians.create')).toHaveLength(1);
+  expect(network.calls.find(call => call.action === 'technicians.create')?.payload.request.district).toBe('จุน');
+});
+
+test('admin can create a district account when backend accepts it without a bootstrap flag', async ({ page }) => {
+  const network = await openManagement(page, {
+    'data.bootstrap': success({ user: managementUser, permissions: ['MANAGE_TECHNICIANS'], featureFlags: {} })
+  });
+  await openToolSection(page, 'technicians');
+  await page.locator('#createTechnicianButton').click();
+  await page.locator('#techUsername').fill('district-synthetic');
+  await page.locator('#techDisplayName').fill('ช่างตัวอย่าง');
+  await page.locator('#techDistrict').fill('จุน');
+  await page.locator('#techPassword').fill('synthetic-secret');
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianDialog')).toBeHidden();
+  expect(network.calls.filter(call => call.action === 'technicians.create')).toHaveLength(1);
+  expect(network.calls.find(call => call.action === 'technicians.create')?.payload.request.district).toBe('จุน');
 });
 
 test('second edit submission is ignored while first mutation is pending', async ({ page }) => {

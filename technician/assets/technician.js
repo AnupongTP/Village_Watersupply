@@ -174,6 +174,10 @@
       }
       throw e;
     }
+    if(boot.user?.role==='TECHNICIAN' && (boot.featureFlags?.technicianDistrictScope!==true || !boot.user.district)){
+      const error=new Error(boot.featureFlags?.technicianDistrictScope===true?'บัญชีช่างยังไม่ได้รับมอบหมายอำเภอ กรุณาติดต่อผู้ดูแลระบบ':'ระบบยังไม่พร้อมจำกัดสิทธิ์ช่างตามอำเภอ กรุณาติดต่อผู้ดูแลระบบ');
+      error.code='ACCOUNT_DISTRICT_REQUIRED';throw error;
+    }
     state.bootstrap=boot; state.user=boot.user; renderCurrentUser();
     const dash=unwrap(await api('data.dashboard',authPayload({filters:{}}))); assertDashboard(dash); state.dashboard=dash;
     const canManageAccounts=hasPermission('MANAGE_TECHNICIANS');
@@ -187,7 +191,7 @@
     if(!state.token){showLogin();return;}
     showBoot();
     try{ const me=unwrap(await api('auth.me',{token:state.token})); state.user=me.user; await bootstrapAndLoad(); }
-    catch(e){ if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_INVALID','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED'].includes(e.code)){clearSession();showLogin();}else{state.user=null;state.bootstrap=null;state.dashboard=null;showBoot('ยังตรวจสอบการเข้าสู่ระบบไม่สำเร็จ',true);} }
+    catch(e){ if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_INVALID','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED','ACCOUNT_DISTRICT_REQUIRED'].includes(e.code)){clearSession();showLogin();if(e.code==='ACCOUNT_DISTRICT_REQUIRED')setError('loginError',e.message);}else{state.user=null;state.bootstrap=null;state.dashboard=null;showBoot('ยังตรวจสอบการเข้าสู่ระบบไม่สำเร็จ',true);} }
   }
 
   function renderCurrentUser(){ const name=state.user?.displayName||state.user?.username||'-',role=label(state.user?.role),showRole=role&&role!=='-'&&name.trim().toLocaleLowerCase('th')!==role.trim().toLocaleLowerCase('th'); $('currentUserName').textContent=name; $('currentUserRole').textContent=role; $('currentUserRole').classList.toggle('hidden',!showRole); $('mobileCurrentUserName').textContent=name; $('mobileCurrentUserRole').textContent=role; $('mobileCurrentUserRole').classList.toggle('hidden',!showRole); $('mobileAccountButton').setAttribute('aria-label',`เมนูบัญชีผู้ใช้ ${name}${showRole?` ${role}`:''}`); }
@@ -412,9 +416,51 @@
 
   async function loadTechnicians(){if(!hasPermission('MANAGE_TECHNICIANS'))return;const busy=showBusy('กำลังโหลดบัญชีช่างเทคนิค...');try{state.technicians=unwrap(await api('technicians.list',{token:state.token})).technicians||[];renderTechnicians();}catch(e){handleApiError(e);}finally{hideBusy(busy);}}
   function technicianActions(u){const id=escapeHtml(u.userId);return u.status==='DELETED'?'':`<button class="mini-btn" data-tech-action="edit" data-id="${id}">แก้ไข</button>${u.status==='ACTIVE'?`<button class="mini-btn" data-tech-action="disable" data-id="${id}">ปิด</button>`:''}${u.status==='DISABLED'?`<button class="mini-btn primary" data-tech-action="enable" data-id="${id}">เปิด</button>`:''}<button class="mini-btn" data-tech-action="reset" data-id="${id}">รีเซ็ตรหัสผ่าน</button><button class="mini-btn danger" data-tech-action="delete" data-id="${id}">ลบบัญชี</button>`;}
-  function renderTechnicians(){const body=$('techniciansTableBody'),mobile=$('techniciansMobileList');if(!state.technicians.length){body.innerHTML='<tr><td colspan="5" class="empty-row">ยังไม่มีบัญชีช่างเทคนิค</td></tr>';mobile.innerHTML='<p class="empty-state">ยังไม่มีบัญชีช่างเทคนิค</p>';return;}body.innerHTML=state.technicians.map(u=>`<tr><td><strong>${escapeHtml(u.username)}</strong><div class="system-id">${escapeHtml(u.userId)}</div></td><td>${escapeHtml(u.displayName)}</td><td><span class="badge ${u.status==='ACTIVE'?'good':u.status==='DISABLED'?'warn':'bad'}">${escapeHtml(label(u.status))}</span></td><td>${escapeHtml(fmtDate(u.lastLoginAt))}</td><td><div class="row-actions">${technicianActions(u)}</div></td></tr>`).join('');mobile.innerHTML=state.technicians.map(u=>`<article class="technician-mobile-card"><div class="technician-mobile-head"><div><strong>${escapeHtml(u.displayName)}</strong><span>${escapeHtml(u.username)} · ${escapeHtml(u.userId)}</span></div><span class="badge ${u.status==='ACTIVE'?'good':u.status==='DISABLED'?'warn':'bad'}">${escapeHtml(label(u.status))}</span></div><p>เข้าสู่ระบบล่าสุด: ${escapeHtml(fmtDate(u.lastLoginAt))}</p><div class="technician-mobile-actions">${technicianActions(u)}</div></article>`).join('');}
-  function openTechnicianForm(mode,user=null){state.technicianDialogMode=mode;state.selectedTechnician=user;$('technicianDialogTitle').textContent=mode==='create'?'สร้างบัญชีช่างเทคนิค':'แก้ไขบัญชีช่างเทคนิค';$('techUsername').value=user?.username||'';$('techDisplayName').value=user?.displayName||'';$('techPassword').value='';$('techPasswordLabel').classList.toggle('hidden',mode!=='create');$('techPassword').required=mode==='create';setError('technicianError');$('technicianDialog').showModal();}
-  async function saveTechnician(){if(!beginMutation($('technicianDialog')))return;const mode=state.technicianDialogMode;const busy=showBusy(mode==='create'?'กำลังสร้างบัญชี...':'กำลังบันทึกบัญชี...');try{if(mode==='create'){unwrap(await api('technicians.create',authPayload({request:{username:$('techUsername').value,displayName:$('techDisplayName').value,password:$('techPassword').value,clientInfo:clientInfo()}})));toast('สร้างบัญชีช่างเทคนิคแล้ว');}else{const u=state.selectedTechnician;unwrap(await api('technicians.update',authPayload({request:{userId:u.userId,expectedVersion:u.recordVersion,username:$('techUsername').value,displayName:$('techDisplayName').value,clientInfo:clientInfo()}})));toast('แก้ไขบัญชีช่างเทคนิคแล้ว');}$('technicianDialog').close();$('techPassword').value='';await loadTechnicians();}catch(e){setError('technicianError',e.message);}finally{hideBusy(busy);endMutation($('technicianDialog'));}}
+  function renderTechnicians(){
+    const body=$('techniciansTableBody'),mobile=$('techniciansMobileList'),visible=state.technicians.filter(u=>u.status!=='DELETED');
+    if(!visible.length){body.innerHTML='<tr><td colspan="6" class="empty-row">ยังไม่มีบัญชีช่างเทคนิค</td></tr>';mobile.innerHTML='<p class="empty-state">ยังไม่มีบัญชีช่างเทคนิค</p>';return;}
+    body.innerHTML=visible.map(u=>`<tr><td><strong>${escapeHtml(u.username)}</strong><div class="system-id">${escapeHtml(u.userId)}</div></td><td>${escapeHtml(u.displayName)}</td><td>${escapeHtml(u.district||'ยังไม่กำหนด')}</td><td><span class="badge ${u.status==='ACTIVE'?'good':u.status==='DISABLED'?'warn':'bad'}">${escapeHtml(label(u.status))}</span></td><td>${escapeHtml(fmtDate(u.lastLoginAt))}</td><td><div class="row-actions">${technicianActions(u)}</div></td></tr>`).join('');
+    mobile.innerHTML=visible.map(u=>`<article class="technician-mobile-card"><div class="technician-mobile-head"><div><strong>${escapeHtml(u.displayName)}</strong><span>${escapeHtml(u.username)} · ${escapeHtml(u.userId)}</span></div><span class="badge ${u.status==='ACTIVE'?'good':u.status==='DISABLED'?'warn':'bad'}">${escapeHtml(label(u.status))}</span></div><p>อำเภอ: ${escapeHtml(u.district||'ยังไม่กำหนด')}</p><p>เข้าสู่ระบบล่าสุด: ${escapeHtml(fmtDate(u.lastLoginAt))}</p><div class="technician-mobile-actions">${technicianActions(u)}</div></article>`).join('');
+  }
+  function technicianDistricts(){return [...new Set((state.dashboard?.villages||[]).map(v=>String(v.district||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'));}
+  function updateTechPasswordFeedback(submitted=false){
+    const input=$('techPassword'),length=input.value.length;
+    const validity=length>=8&&length<=128?'valid':length||submitted?'invalid':'';
+    if(validity)input.dataset.validity=validity;else delete input.dataset.validity;
+    if(validity==='invalid')input.setAttribute('aria-invalid','true');else input.removeAttribute('aria-invalid');
+    $('techPasswordHelp').classList.toggle('password-help-invalid',validity==='invalid'&&length<=128);
+    setError('techPasswordError',length>128?'รหัสผ่านต้องมีความยาวไม่เกิน 128 ตัวอักษร':'');
+    return validity==='valid';
+  }
+  function openTechnicianForm(mode,user=null){
+    state.technicianDialogMode=mode;state.selectedTechnician=user;
+    $('technicianDialogTitle').textContent=mode==='create'?'สร้างบัญชีช่างเทคนิค':'แก้ไขบัญชีช่างเทคนิค';
+    $('techDistrictOptions').innerHTML=technicianDistricts().map(d=>`<option value="${escapeHtml(d)}"></option>`).join('');
+    $('techUsername').value=user?.username||'';$('techDisplayName').value=user?.displayName||'';$('techDistrict').value=user?.district||'';$('techPassword').value='';
+    $('techPasswordLabel').classList.toggle('hidden',mode!=='create');$('techPassword').required=mode==='create';setError('technicianError');updateTechPasswordFeedback();$('technicianDialog').showModal();
+  }
+  async function saveTechnician(){
+    for(const id of ['techUsername','techDisplayName','techDistrict']){
+      if($(id).value.trim())continue;
+      setError('technicianError','กรุณากรอกข้อมูลบัญชีให้ครบ');$(id).focus();return;
+    }
+    if(state.technicianDialogMode==='create'&&!updateTechPasswordFeedback(true)){$('techPassword').focus();return;}
+    const district=$('techDistrict').value.trim();
+    if(!technicianDistricts().includes(district)){setError('technicianError','กรุณาเลือกอำเภอจากรายชื่อ');$('techDistrict').focus();return;}
+    if(!beginMutation($('technicianDialog')))return;
+    const mode=state.technicianDialogMode,busy=showBusy(mode==='create'?'กำลังสร้างบัญชี...':'กำลังบันทึกบัญชี...');
+    try{
+      if(mode==='create'){
+        unwrap(await api('technicians.create',authPayload({request:{username:$('techUsername').value,displayName:$('techDisplayName').value,district,password:$('techPassword').value,clientInfo:clientInfo()}})));
+        toast('สร้างบัญชีช่างเทคนิคแล้ว');
+      }else{
+        const u=state.selectedTechnician;
+        unwrap(await api('technicians.update',authPayload({request:{userId:u.userId,expectedVersion:u.recordVersion,username:$('techUsername').value,displayName:$('techDisplayName').value,district,clientInfo:clientInfo()}})));
+        toast('แก้ไขบัญชีช่างเทคนิคแล้ว');
+      }
+      $('technicianDialog').close();$('techPassword').value='';await loadTechnicians();
+    }catch(e){setError('technicianError',e.message);}finally{hideBusy(busy);endMutation($('technicianDialog'));}
+  }
   function findTech(id){return state.technicians.find(u=>u.userId===id);}
   function openAccountAction(action,user){state.accountAction=action;state.selectedTechnician=user;$('actionReason').value='';$('actionPassword').value='';setError('actionError');const reason=action==='delete',password=action==='reset';$('actionReasonLabel').classList.toggle('hidden',!reason);$('actionPasswordLabel').classList.toggle('hidden',!password);const titles={disable:'ปิดการใช้งานบัญชี',enable:'เปิดการใช้งานบัญชี',delete:'ลบบัญชีช่างเทคนิค',reset:'รีเซ็ตรหัสผ่าน'};$('actionTitle').textContent=titles[action];$('actionDescription').textContent=`${user.displayName} (${user.username})`;$('actionConfirmButton').className=`btn ${action==='delete'?'danger':'primary'}`;$('actionDialog').showModal();}
   async function runAccountAction(){const u=state.selectedTechnician,a=state.accountAction;const map={disable:'technicians.disable',enable:'technicians.enable',delete:'technicians.delete',reset:'technicians.resetPassword'};const req={userId:u.userId,expectedVersion:u.recordVersion,clientInfo:clientInfo()};if(a==='delete'){req.reason=$('actionReason').value.trim();if(!req.reason){setError('actionError','กรุณาระบุเหตุผล');return;}}if(a==='reset'){req.newPassword=$('actionPassword').value;if(!req.newPassword){setError('actionError','กรุณาระบุรหัสผ่านใหม่');return;}}if(!beginMutation($('actionDialog')))return;const busy=showBusy('กำลังดำเนินการบัญชี...');try{unwrap(await api(map[a],authPayload({request:req})));$('actionDialog').close();$('actionPassword').value='';toast('ดำเนินการบัญชีสำเร็จ');await loadTechnicians();}catch(e){setError('actionError',e.message);}finally{hideBusy(busy);endMutation($('actionDialog'));}}
@@ -469,6 +515,7 @@
     $('historySearchButton').addEventListener('click',()=>loadHistory($('historySystemId').value));$('historySystemId').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();loadHistory(e.target.value);}});
     $('createTechnicianButton').addEventListener('click',()=>openTechnicianForm('create'));
     $('technicianForm').addEventListener('submit',e=>{e.preventDefault();saveTechnician();});
+    $('techPassword').addEventListener('input',()=>updateTechPasswordFeedback());
     for(const list of [$('techniciansTableBody'),$('techniciansMobileList')])list.addEventListener('click',e=>{const b=e.target.closest('button[data-tech-action]');if(!b)return;const u=findTech(b.dataset.id);if(!u)return;if(b.dataset.techAction==='edit')openTechnicianForm('edit',u);else openAccountAction(b.dataset.techAction,u);});
     $('actionForm').addEventListener('submit',e=>{e.preventDefault();runAccountAction();});$('passwordForm').addEventListener('submit',e=>{e.preventDefault();changePassword();});
   }

@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
-import { projectPublicDataset, PUBLIC_FIELDS } from './projection.mjs';
+import { projectPublicDataset, PUBLIC_FIELDS, PUBLIC_PROJECTION_POLICY_REVISION } from './projection.mjs';
 import { assertEligibleSet } from './eligibility.mjs';
 
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+// Schema 4 records the explicit publication-transition contract. Schema 3
+// with this same restrictive field policy is readable only for migration.
+export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const MIGRATION_SOURCE_SCHEMA_VERSION = 3;
+export const PUBLICATION_CONTRACT = 'EXPLICIT_POLICY_MIGRATION_V1';
 const KEYS = ['villages', 'waterSystems', 'waterSources'];
 const IDS = { villages: 'village_id', waterSystems: 'system_id', waterSources: 'source_id' };
 const candidateProofs = new WeakMap();
@@ -24,6 +28,15 @@ function contentOf(snapshot) {
     return left < right ? -1 : left > right ? 1 : 0;
   })]));
 }
+// The payload checksum remains independent of schema and disclosure policy.
+// Version identity changes when either contract changes, even for empty data.
+export function datasetVersionFor(content, schemaVersion, policyRevision) {
+  return `sha256:${hash({
+    schemaVersion,
+    policyRevision,
+    content: contentOf(content)
+  })}`;
+}
 function metadataOf(snapshot) {
   const { villages, waterSystems, waterSources, metadataHash, ...metadata } = snapshot;
   return metadata;
@@ -44,11 +57,13 @@ export function createPublicSnapshot(eligible, { observationTime } = {}) {
   const contentHash = hash(contentOf(content));
   const snapshot = {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    policyRevision: PUBLIC_PROJECTION_POLICY_REVISION,
+    publicationContract: PUBLICATION_CONTRACT,
     projectionOwner: 'SERVER_R5_1',
     completeness: 'VERIFIED',
     ordering: eligible.sourceRevision === null ? 'UNKNOWN' : 'VERIFIED',
     sourceRevision: eligible.sourceRevision,
-    datasetVersion: `sha256:${contentHash}`,
+    datasetVersion: datasetVersionFor(content, SNAPSHOT_SCHEMA_VERSION, PUBLIC_PROJECTION_POLICY_REVISION),
     contentHash,
     generatedAt: eligible.generatedAt,
     observationTime,
@@ -69,9 +84,16 @@ export function createPublicSnapshot(eligible, { observationTime } = {}) {
   return snapshot;
 }
 
-export function validatePublicSnapshot(snapshot) {
-  if (!snapshot || typeof snapshot !== 'object' || snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+function validateSnapshotFor(snapshot, schemaVersion, historical = false) {
+  if (!snapshot || typeof snapshot !== 'object' || snapshot.schemaVersion !== schemaVersion) {
     throw new Error('Unsupported snapshot schema');
+  }
+  if (snapshot.policyRevision !== PUBLIC_PROJECTION_POLICY_REVISION) {
+    throw new Error('Unsupported public projection policy');
+  }
+  if (historical ? snapshot.publicationContract !== undefined :
+      snapshot.publicationContract !== PUBLICATION_CONTRACT) {
+    throw new Error('Unsupported publication contract');
   }
   if (snapshot.projectionOwner !== 'SERVER_R5_1' || snapshot.completeness !== 'VERIFIED') {
     throw new Error('Invalid projection or completeness contract');
@@ -132,11 +154,22 @@ export function validatePublicSnapshot(snapshot) {
     throw new Error('Inconsistent publication or suppression metadata');
   }
   const actualHash = hash(contentOf(snapshot));
-  if (snapshot.contentHash !== actualHash || snapshot.datasetVersion !== `sha256:${actualHash}`) {
+  if (snapshot.contentHash !== actualHash || snapshot.datasetVersion !==
+      datasetVersionFor(snapshot, schemaVersion, PUBLIC_PROJECTION_POLICY_REVISION)) {
     throw new Error('Snapshot content hash mismatch');
   }
   if (snapshot.metadataHash !== hash(metadataOf(snapshot))) throw new Error('Snapshot metadata hash mismatch');
   return true;
+}
+
+export function validatePublicSnapshot(snapshot) {
+  return validateSnapshotFor(snapshot, SNAPSHOT_SCHEMA_VERSION);
+}
+
+// This exact predecessor is never eligible for Public GET or normal recovery.
+// Schema 2 and any unknown policy are intentionally unsupported.
+export function validateMigrationSourceSnapshot(snapshot) {
+  return validateSnapshotFor(snapshot, MIGRATION_SOURCE_SCHEMA_VERSION, true);
 }
 
 // A deserialized hash-valid object does not carry the independent source and

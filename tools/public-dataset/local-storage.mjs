@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, unlink, readdir, rmdir, open } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
-import { validatePublicSnapshot } from './snapshot.mjs';
+import { assertTrustedSnapshotCandidate, validateMigrationSourceSnapshot, validatePublicSnapshot } from './snapshot.mjs';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (code, cause) => Object.assign(new Error(code), { code, cause });
@@ -49,7 +49,7 @@ export function createLocalSnapshotStorage(root, { hook = async () => {} } = {})
       return id;
     } finally { await rmdir(objectLock); }
   }
-  async function get(id) {
+  async function readObject(id, validate) {
     if (!isId(id)) throw fail('INVALID_OBJECT_ID');
     await call('beforeObjectRead', { id });
     let bytes, marker;
@@ -59,9 +59,11 @@ export function createLocalSnapshotStorage(root, { hook = async () => {} } = {})
       ]);
     } catch (error) { throw fail(error.code === 'ENOENT' ? 'OBJECT_MISSING' : 'STORAGE_UNAVAILABLE', error); }
     if (marker.toString() !== id || digest(bytes) !== id) throw fail('OBJECT_CORRUPT');
-    try { const value = JSON.parse(bytes.toString('utf8')); validatePublicSnapshot(value); return value; }
+    try { const value = JSON.parse(bytes.toString('utf8')); validate(value); return value; }
     catch (error) { throw fail('OBJECT_CORRUPT', error); }
   }
+  const get = id => readObject(id, validatePublicSnapshot);
+  const getMigrationSource = id => readObject(id, validateMigrationSourceSnapshot);
   async function pointer() {
     await call('beforePointerRead');
     let names;
@@ -79,10 +81,16 @@ export function createLocalSnapshotStorage(root, { hook = async () => {} } = {})
       const value = JSON.parse(raw.toString('utf8'));
       if (!isId(value.id) || !Number.isSafeInteger(value.revision) || value.revision < 0 ||
           value.generation !== generation || typeof value.datasetVersion !== 'string') throw new Error('Invalid pointer');
+      const hasSchema = Object.hasOwn(value, 'schemaVersion');
+      const hasPolicy = Object.hasOwn(value, 'policyRevision');
+      if (hasSchema !== hasPolicy || (hasSchema &&
+          (!Number.isSafeInteger(value.schemaVersion) || typeof value.policyRevision !== 'string'))) {
+        throw new Error('Invalid pointer identity');
+      }
       return value;
     } catch (error) { throw fail('POINTER_CORRUPT', error); }
   }
-  async function compareAndSwap(expectedGeneration, next) {
+  async function swap(expectedGeneration, next, migrationCandidate = null) {
     await initialize();
     try { await mkdir(lock); }
     catch (error) { if (error.code === 'EEXIST') throw fail('PUBLISH_BUSY', error); throw error; }
@@ -91,12 +99,33 @@ export function createLocalSnapshotStorage(root, { hook = async () => {} } = {})
       if ((old?.generation ?? 0) !== expectedGeneration) return { applied: false, pointer: old };
       const stored = await get(next.id);
       if (stored.sourceRevision !== next.revision || stored.datasetVersion !== next.datasetVersion ||
-          (old && (next.revision < old.revision ||
-            (next.revision === old.revision && next.id !== old.id)))) {
+          stored.schemaVersion !== next.schemaVersion || stored.policyRevision !== next.policyRevision ||
+          (old && next.revision < old.revision)) {
+        throw fail('INVALID_PROMOTION');
+      }
+      if (migrationCandidate !== null) {
+        assertTrustedSnapshotCandidate(migrationCandidate);
+        if (!old || migrationCandidate.metadataHash !== stored.metadataHash ||
+            migrationCandidate.sourceRevision !== stored.sourceRevision) throw fail('INVALID_MIGRATION');
+        const predecessor = await getMigrationSource(old.id);
+        if (predecessor.sourceRevision !== old.revision ||
+            predecessor.datasetVersion !== old.datasetVersion ||
+            (old.schemaVersion !== undefined &&
+              (old.schemaVersion !== predecessor.schemaVersion || old.policyRevision !== predecessor.policyRevision))) {
+          throw fail('INVALID_MIGRATION');
+        }
+        if (migrationCandidate.sourceRevision === predecessor.sourceRevision &&
+            migrationCandidate.contentHash !== predecessor.contentHash) {
+          throw fail('MIGRATION_CONTENT_CONFLICT');
+        }
+      } else if (old && (old.schemaVersion !== stored.schemaVersion ||
+          old.policyRevision !== stored.policyRevision ||
+          (next.revision === old.revision && next.id !== old.id))) {
         throw fail('INVALID_PROMOTION');
       }
       const record = { id: next.id, revision: next.revision,
-        datasetVersion: next.datasetVersion, generation: expectedGeneration + 1 };
+        datasetVersion: next.datasetVersion, generation: expectedGeneration + 1,
+        schemaVersion: stored.schemaVersion, policyRevision: stored.policyRevision };
       const raw = encode(record);
       const path = join(root, `publication-${record.generation}.json`);
       const marker = join(root, `publication-${record.generation}.complete`);
@@ -108,9 +137,13 @@ export function createLocalSnapshotStorage(root, { hook = async () => {} } = {})
       return { applied: true, pointer: record };
     } finally { await rmdir(lock); }
   }
+  const compareAndSwap = (expectedGeneration, next) => swap(expectedGeneration, next);
+  const compareAndSwapMigration = (expectedGeneration, next, candidate) =>
+    swap(expectedGeneration, next, candidate);
   async function history() {
     const names = await readdir(objects).catch(error => { if (error.code === 'ENOENT') return []; throw error; });
     return names.filter(name => /^[a-f0-9]{64}\.complete$/.test(name)).map(name => name.slice(0, 64)).sort();
   }
-  return { root, initialize, put, get, pointer, compareAndSwap, history };
+  return { root, initialize, put, get, getMigrationSource, pointer,
+    compareAndSwap, compareAndSwapMigration, history };
 }

@@ -1,9 +1,12 @@
 // Local foundation for a future public API. No Production service imports this file.
 const FIELDS = Object.freeze({
   villages: ['village_id', 'province', 'district', 'subdistrict', 'local_authority', 'village_no', 'village_name', 'has_village_waterworks', 'pwa_households', 'mwa_households', 'commercial_households', 'other_village_pipe_households', 'waterbank_households', 'self_source_households', 'natural_source_households'],
-  waterSystems: ['system_id', 'village_id', 'system_name', 'latitude', 'longitude', 'operational_status', 'drinking_water_quality', 'water_quantity', 'households_served', 'owner_type', 'owner', 'responsible_agency', 'system_type', 'water_source_type', 'capacity_m3_hr', 'usage_type', 'construction_year_be', 'utility_water_quality', 'shared_with_other_village', 'shared_village_name', 'establishment_type', 'establishment_agency', 'transfer_year_be', 'transfer_year', 'transfer_agency', 'transfer_other', 'transfer_document_status', 'transfer_document_url', 'document_url'],
+  // Candidate publication policy: agency, free-text ownership, shared-village
+  // names, transfer details, and document URLs await disclosure approval.
+  waterSystems: ['system_id', 'village_id', 'system_name', 'latitude', 'longitude', 'operational_status', 'drinking_water_quality', 'water_quantity', 'households_served', 'owner_type', 'system_type', 'water_source_type', 'capacity_m3_hr', 'usage_type', 'construction_year_be', 'utility_water_quality', 'shared_with_other_village', 'establishment_type', 'transfer_year_be', 'transfer_document_status'],
   waterSources: ['source_id', 'village_id', 'source_type', 'households']
 });
+Object.values(FIELDS).forEach(Object.freeze);
 const ID_FIELDS = { villages: 'village_id', waterSystems: 'system_id', waterSources: 'source_id' };
 const CONTROL_FIELDS = [
   'is_deleted', 'deleted_at', 'record_status', 'submission_status', 'publication_status',
@@ -109,3 +112,4 @@ export function projectPublicDataset(payload, manifest) {
 }
 
 export const PUBLIC_FIELDS = FIELDS;
+export const PUBLIC_PROJECTION_POLICY_REVISION = 'REVIEW_DEFAULT_DENY_2026_10_21_V1';

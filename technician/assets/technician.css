@@ -85,13 +85,14 @@ button { -webkit-tap-highlight-color: transparent; }
 .filter-mobile-head { display: none; align-items: center; justify-content: space-between; gap: 12px; }
 .filter-mobile-summary { margin: 0; color: #64748b; font-size: 11px; }
 .filter-panel { display: grid; grid-template-columns: minmax(260px, 1.7fr) repeat(3, minmax(150px, .8fr)) auto; gap: 10px; align-items: end; }
+.password-field { display: grid; gap: 5px; }
 .field-label, #technicianManagementSection .filter-field, .history-search-shell .filter-field { min-width: 0; display: grid; gap: 5px; color: #475569; font-size: 11px; font-weight: 700; }
-#technicianManagementSection .filter-field input, #technicianManagementSection .filter-field select, .history-search-shell .filter-field input, .field-label input, .field-label select, .field-label textarea,
+#technicianManagementSection .filter-field input, #technicianManagementSection .filter-field select, .history-search-shell .filter-field input, .field-label input, .field-label select, .field-label textarea, .password-field input,
 .form-grid input, .form-grid select, .form-grid textarea, .edit-field input, .edit-field select, .edit-field textarea {
   width: 100%; min-width: 0; min-height: 40px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; padding: 8px 10px; color: #0f172a; font-size: 12px; font-weight: 400; outline: none;
 }
 textarea { resize: vertical; }
-#technicianManagementSection .filter-field input:focus, #technicianManagementSection .filter-field select:focus, .history-search-shell .filter-field input:focus, .field-label input:focus, .field-label select:focus, .field-label textarea:focus,
+#technicianManagementSection .filter-field input:focus, #technicianManagementSection .filter-field select:focus, .history-search-shell .filter-field input:focus, .field-label input:focus, .field-label select:focus, .field-label textarea:focus, .password-field input:focus,
 .form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus, .edit-field input:focus, .edit-field select:focus, .edit-field textarea:focus {
   border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(14,165,233,.12);
 }
@@ -197,6 +198,11 @@ textarea { resize: vertical; }
 .modal-body { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px; }
 .stack { display: grid; gap: 12px; }
 .form-error { min-height: 18px; margin: 0; color: #b91c1c; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.password-field input[data-validity="invalid"] { border-color: #dc2626; }
+.password-field input[data-validity="invalid"]:focus { border-color: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
+.password-field input[data-validity="valid"] { border-color: #16a34a; }
+.password-field input[data-validity="valid"]:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
+.password-help-invalid { color: #b91c1c; font-weight: 700; }
 .warning-box { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #fecaca; border-radius: 10px; background: #fef2f2; padding: 10px; color: #991b1b; font-size: 10px; }
 .warning-box > i { margin-top: 3px; }
 .warning-box strong { display: block; font-size: 11px; }
@@ -319,6 +325,10 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
   .drawer-footer .btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding-inline: 5px; font-size: 12px; }
   .modal, .modal.wide { width: calc(100vw - 12px); max-width: calc(100vw - 12px); max-height: calc(100dvh - 12px); border-radius: 12px; }
   .modal-card { border-radius: 12px; }
+  html:has(#editDialog[open]), body:has(#editDialog[open]) { overflow: hidden; }
+  #editDialog.modal { inset: 0; width: 100%; max-width: none; height: 100vh; height: 100dvh; max-height: none; margin: 0; border-radius: 0; overflow: hidden; }
+  #editDialog .modal-card { height: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+  #systemDialog::backdrop, #editDialog::backdrop { backdrop-filter: none; }
   .modal-body { padding: 10px 11px; }
   .form-grid, .edit-section-grid { grid-template-columns: 1fr; gap: 12px; padding: 12px; }
   .form-grid .full, .edit-field.full, .edit-section-grid .full, fieldset.full { grid-column: auto; }

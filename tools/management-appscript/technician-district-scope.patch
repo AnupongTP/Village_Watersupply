@@ -1,0 +1,422 @@
+diff --git a/KebNamComplete/ManagementAuthBackend.js b/KebNamComplete/ManagementAuthBackend.js
+index 1d3d5ca..ab44048 100644
+--- a/KebNamComplete/ManagementAuthBackend.js
++++ b/KebNamComplete/ManagementAuthBackend.js
+@@ -70,7 +70,8 @@ const MGMT_CONFIG = Object.freeze({
+       'created_by',
+       'updated_at',
+       'updated_by',
+-      'deleted_at'
++      'deleted_at',
++      'district'
+     ]),
+ 
+     SESSIONS: Object.freeze([
+@@ -485,7 +486,7 @@ function mgmtAssertTimezone_() {
+ }
+ 
+ function mgmtAssertManagementSchemasReadOnly_(ss) {
+-  const users = mgmtReadExactTable_(ss, MGMT_CONFIG.SHEETS.USERS, MGMT_CONFIG.HEADERS.USERS);
++  const users = mgmtReadUsersTable_(ss);
+   const sessions = mgmtReadExactTable_(ss, MGMT_CONFIG.SHEETS.SESSIONS, MGMT_CONFIG.HEADERS.SESSIONS);
+   const audit = mgmtReadExactTable_(ss, MGMT_CONFIG.SHEETS.AUDIT, MGMT_CONFIG.HEADERS.AUDIT);
+   return { users: users, sessions: sessions, audit: audit };
+@@ -538,6 +539,19 @@ function mgmtAssertPermission_(context, permission) {
+   return true;
+ }
+ 
++function mgmtAssertDistrictAssignment_(context) {
++  if (context.role === MGMT_CONFIG.ROLES.TECHNICIAN && !context.district) {
++    throw mgmtError_('ACCOUNT_DISTRICT_REQUIRED', 'บัญชีช่างยังไม่ได้รับมอบหมายอำเภอ กรุณาติดต่อผู้ดูแลระบบ');
++  }
++}
++
++function mgmtAssertDistrictAccess_(context, district) {
++  mgmtAssertDistrictAssignment_(context);
++  if (context.role === MGMT_CONFIG.ROLES.TECHNICIAN && context.district !== mgmtNormalizeText_(district)) {
++    throw mgmtError_('FORBIDDEN', 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลอำเภอนี้');
++  }
++}
++
+ function mgmtAssertPasswordChangeSatisfied_(user) {
+   if (user && user.mustChangePassword === true) {
+     throw mgmtError_(
+@@ -845,6 +859,7 @@ function mgmtVerifySessionLocked_(ss, rawToken, options) {
+     userId: user.userId,
+     username: user.username,
+     displayName: user.displayName,
++    district: user.district,
+     role: user.role,
+     sessionId: mgmtNormalizeText_(match.object.session_id),
+     requestId: mgmtNormalizeText_(opts.requestId)
+@@ -890,6 +905,7 @@ function mgmtParseUserMatch_(usersTable, sheetRow, row) {
+   const username = mgmtNormalizeText_(object.username);
+   const normalizedUsername = mgmtNormalizeUsername_(username);
+   const displayName = mgmtNormalizeText_(object.display_name);
++  const district = mgmtNormalizeText_(object.district);
+   const role = mgmtNormalizeUpper_(object.role);
+   const status = mgmtNormalizeUpper_(object.status);
+   const password = object.password === null || object.password === undefined ? '' : String(object.password);
+@@ -927,6 +943,7 @@ function mgmtParseUserMatch_(usersTable, sheetRow, row) {
+     normalizedUsername: normalizedUsername,
+     password: password,
+     displayName: displayName,
++    district: district,
+     role: role,
+     status: status,
+     mustChangePassword: mustChangePassword,
+@@ -936,11 +953,11 @@ function mgmtParseUserMatch_(usersTable, sheetRow, row) {
+ }
+ 
+ function mgmtReadUsersTable_(ss) {
+-  return mgmtReadExactTable_(
+-    ss,
+-    MGMT_CONFIG.SHEETS.USERS,
+-    MGMT_CONFIG.HEADERS.USERS
+-  );
++  const sheet = ss.getSheetByName(MGMT_CONFIG.SHEETS.USERS);
++  const current = MGMT_CONFIG.HEADERS.USERS;
++  const legacy = current.slice(0, -1);
++  const expected = sheet && sheet.getLastColumn() === legacy.length ? legacy : current;
++  return mgmtReadExactTable_(ss, MGMT_CONFIG.SHEETS.USERS, expected);
+ }
+ 
+ function mgmtFindUserByNormalizedUsernameLocked_(ss, normalizedUsername) {
+@@ -1096,6 +1113,7 @@ function mgmtSanitizedUser_(user) {
+     userId: user.userId,
+     username: user.username,
+     displayName: user.displayName,
++    district: user.district,
+     role: user.role,
+     status: user.status,
+     mustChangePassword: user.mustChangePassword
+diff --git a/KebNamComplete/ManagementReadBackend.js b/KebNamComplete/ManagementReadBackend.js
+index d1b71a9..7a0937a 100644
+--- a/KebNamComplete/ManagementReadBackend.js
++++ b/KebNamComplete/ManagementReadBackend.js
+@@ -620,12 +620,18 @@ function mgmtDataTouchSessionAfterSuccessLocked_(ss, rawToken, now) {
+ }
+ 
+ function mgmtDataVerifyReadContextLocked_(ss, token, requestId) {
+-  return mgmtVerifySessionLocked_(ss, token, {
++  const verified = mgmtVerifySessionLocked_(ss, token, {
+     requestId: requestId,
+     touch: false,
+     allowPasswordChangeRequired: false,
+     permission: MGMT_PERMISSION.VIEW_MANAGEMENT
+   });
++  mgmtAssertDistrictAssignment_(verified.context);
++  return verified;
++}
++
++function mgmtDataDistrictVisible_(context, district) {
++  return context.role === MGMT_CONFIG.ROLES.ADMIN || context.district === mgmtNormalizeText_(district);
+ }
+ 
+ // ============================================================================
+@@ -659,7 +665,7 @@ function mgmtGetBootstrap(token) {
+         relationalOrder: 'LINKS_BEFORE_COORDINATE_SUPPRESSION',
+         temporaryHide244ServerSide: false
+       },
+-      featureFlags: JSON.parse(JSON.stringify(MGMT_DATA.FEATURE_FLAGS)),
++      featureFlags: Object.assign({}, JSON.parse(JSON.stringify(MGMT_DATA.FEATURE_FLAGS)), { technicianDistrictScope: true }),
+       dataContractVersion: MGMT_DATA.VERSION,
+       session: {
+         expiresAt: verified.session.expiresAt,
+@@ -684,7 +690,7 @@ function mgmtGetDashboardData(token, filters) {
+     lock = mgmtAcquireScriptLock_();
+     const ss = mgmtOpenSpreadsheet_();
+     mgmtAssertTimezone_();
+-    mgmtDataVerifyReadContextLocked_(ss, token, requestId);
++    const verified = mgmtDataVerifyReadContextLocked_(ss, token, requestId);
+     const parsedFilters = mgmtDataParseDashboardFilters_(filters);
+     const snapshot = mgmtDataBuildSnapshotLocked_(ss);
+     const villages = [];
+@@ -692,6 +698,7 @@ function mgmtGetDashboardData(token, filters) {
+     const sources = [];
+ 
+     Object.keys(snapshot.villageIndex).forEach(function(villageId) {
++      if (!mgmtDataDistrictVisible_(verified.context, snapshot.villageIndex[villageId].object.district)) return;
+       villages.push(mgmtDataBuildVillageRecord_(
+         snapshot.villageIndex[villageId], snapshot.projection, snapshot.activeSystemCountByVillage
+       ));
+@@ -702,46 +709,56 @@ function mgmtGetDashboardData(token, filters) {
+     let publicSuppressedSystemCount = 0;
+     Object.keys(snapshot.systemIndex).forEach(function(systemId) {
+       const entry = snapshot.systemIndex[systemId];
++      const villageId = mgmtNormalizeText_(entry.object.village_id);
++      if (!mgmtDataDistrictVisible_(verified.context, snapshot.villageIndex[villageId].object.district)) return;
+       const guard = snapshot.processorIndex.guardBySystemId[systemId] || mgmtEvaluateProcessorGuardLinks_([]);
+       const visibility = snapshot.projection.systemVisibility[systemId];
+       if (guard.linked) processorLinkedSystemCount += 1;
+       if (!guard.mutable) processorBlockedSystemCount += 1;
+       if (visibility && !visibility.visible) publicSuppressedSystemCount += 1;
+-      const villageId = mgmtNormalizeText_(entry.object.village_id);
+       systems.push(mgmtDataBuildSystemRecord_(
+         entry, snapshot.villageIndex[villageId], snapshot.projection, snapshot.processorIndex
+       ));
+     });
+ 
+     Object.keys(snapshot.sourceIndex).forEach(function(sourceId) {
++      const villageId = mgmtNormalizeText_(snapshot.sourceIndex[sourceId].object.village_id);
++      if (!mgmtDataDistrictVisible_(verified.context, snapshot.villageIndex[villageId].object.district)) return;
+       sources.push(mgmtDataBuildSourceRecord_(
+         snapshot.sourceIndex[sourceId], snapshot.villageIndex, snapshot.projection
+       ));
+     });
+ 
+     const publicVisibleSourceCount = sources.filter(function(source) { return source.publicVisible === true; }).length;
++    const technicianScope = verified.context.role === MGMT_CONFIG.ROLES.TECHNICIAN;
++    const hiddenMissingCoordinateSystems = technicianScope
++      ? systems.filter(function(system) { return system.publicSuppressionReasons.indexOf(MGMT_DATA.PUBLIC_RULE.SYSTEM_MISSING_COORDINATE) >= 0; }).length
++      : snapshot.projection.counts.hiddenMissingCoordinateSystems;
++    const hiddenWaterworksVillagesWithoutSystem = technicianScope
++      ? villages.filter(function(village) { return village.publicSuppressionReasons.indexOf(MGMT_DATA.PUBLIC_RULE.VILLAGE_NO_LINKED_SYSTEM) >= 0; }).length
++      : snapshot.projection.counts.hiddenWaterworksVillagesWithoutSystem;
+     const data = {
+       generatedAt: new Date().toISOString(),
+       filtersApplied: parsedFilters,
+       summary: {
+-        villages: Object.keys(snapshot.villageIndex).length,
+-        systems: Object.keys(snapshot.systemIndex).length,
+-        waterSources: Object.keys(snapshot.sourceIndex).length,
+-        publicVisibleVillages: Object.keys(snapshot.villageIndex).length - snapshot.projection.counts.hiddenWaterworksVillagesWithoutSystem,
+-        publicVisibleSystems: snapshot.projection.counts.visibleSystems,
++        villages: villages.length,
++        systems: systems.length,
++        waterSources: sources.length,
++        publicVisibleVillages: villages.length - hiddenWaterworksVillagesWithoutSystem,
++        publicVisibleSystems: systems.filter(function(system) { return system.publicVisible === true; }).length,
+         publicVisibleWaterSources: publicVisibleSourceCount,
+         publicSuppressedSystems: publicSuppressedSystemCount,
+-        missingCoordinateSystems: snapshot.projection.counts.hiddenMissingCoordinateSystems,
+-        hiddenWaterworksVillagesWithoutSystem: snapshot.projection.counts.hiddenWaterworksVillagesWithoutSystem,
++        missingCoordinateSystems: hiddenMissingCoordinateSystems,
++        hiddenWaterworksVillagesWithoutSystem: hiddenWaterworksVillagesWithoutSystem,
+         processorLinkedSystems: processorLinkedSystemCount,
+         processorBlockedSystems: processorBlockedSystemCount,
+-        orphanRawLinkCount: snapshot.integrity.orphanRawLinkCount,
+-        intentionalDeletedRawLinkCount: snapshot.integrity.intentionalDeletedRawLinkCount
++        orphanRawLinkCount: technicianScope ? null : snapshot.integrity.orphanRawLinkCount,
++        intentionalDeletedRawLinkCount: technicianScope ? null : snapshot.integrity.intentionalDeletedRawLinkCount
+       },
+       publicProjection: {
+         rule: MGMT_DATA.PUBLIC_RULE.ID,
+-        hiddenMissingCoordinateSystems: snapshot.projection.counts.hiddenMissingCoordinateSystems,
+-        hiddenWaterworksVillagesWithoutSystem: snapshot.projection.counts.hiddenWaterworksVillagesWithoutSystem,
++        hiddenMissingCoordinateSystems: hiddenMissingCoordinateSystems,
++        hiddenWaterworksVillagesWithoutSystem: hiddenWaterworksVillagesWithoutSystem,
+         relationalOrder: 'LINKS_BEFORE_COORDINATE_SUPPRESSION'
+       },
+       villages: villages,
+@@ -768,11 +785,12 @@ function mgmtGetWaterSystem(token, systemId) {
+     lock = mgmtAcquireScriptLock_();
+     const ss = mgmtOpenSpreadsheet_();
+     mgmtAssertTimezone_();
+-    mgmtDataVerifyReadContextLocked_(ss, token, requestId);
++    const verified = mgmtDataVerifyReadContextLocked_(ss, token, requestId);
+     const snapshot = mgmtDataBuildSnapshotLocked_(ss, { includeSources: false });
+     const entry = snapshot.systemIndex[normalizedSystemId];
+     if (!entry) throw mgmtError_('NOT_FOUND', 'ไม่พบระบบประปาที่ต้องการ');
+     const villageId = mgmtNormalizeText_(entry.object.village_id);
++    mgmtAssertDistrictAccess_(verified.context, snapshot.villageIndex[villageId].object.district);
+     const system = mgmtDataBuildSystemRecord_(
+       entry, snapshot.villageIndex[villageId], snapshot.projection, snapshot.processorIndex
+     );
+diff --git a/KebNamComplete/ManagementMutationBackend.js b/KebNamComplete/ManagementMutationBackend.js
+index b01e939..943b123 100644
+--- a/KebNamComplete/ManagementMutationBackend.js
++++ b/KebNamComplete/ManagementMutationBackend.js
+@@ -1831,6 +1831,7 @@ function mgmtMutationInternalUpdateLocked_(ss, context, request, options) {
+   const parsed = mgmtMutationValidateRequest_(request);
+ 
+   mgmtAssertPermission_(context, MGMT_PERMISSION.UPDATE_SYSTEM);
++  mgmtAssertDistrictAssignment_(context);
+   if (opts.skipTimezoneCheck !== true) mgmtAssertTimezone_();
+ 
+   // Full read snapshot gives exact system/village/raw-guard state.
+@@ -1840,6 +1841,7 @@ function mgmtMutationInternalUpdateLocked_(ss, context, request, options) {
+   if (!systemEntry) {
+     throw mgmtError_('NOT_FOUND', 'ไม่พบระบบประปาที่ต้องการแก้ไข');
+   }
++  mgmtAssertDistrictAccess_(context, snapshot.villageIndex[mgmtNormalizeText_(systemEntry.object.village_id)].object.district);
+ 
+   // Required order: existence -> Processor guard -> recovery -> re-read -> version.
+   mgmtAssertProcessorMutationReady_(ss, parsed.systemId);
+@@ -1856,6 +1858,7 @@ function mgmtMutationInternalUpdateLocked_(ss, context, request, options) {
+       systemId: parsed.systemId
+     });
+   }
++  mgmtAssertDistrictAccess_(context, snapshot.villageIndex[mgmtNormalizeText_(systemEntry.object.village_id)].object.district);
+ 
+   // First formula/version gate occurs before validation/audit. A second, later gate
+   // is mandatory immediately before the actual write.
+@@ -1910,6 +1913,7 @@ function mgmtMutationInternalUpdateLocked_(ss, context, request, options) {
+       parsed.systemId,
+       currentVersion
+     );
++    mgmtOpsAssertSystemDistrictLocked_(ss, context, writeTarget.systemEntry.object);
+ 
+     mutationAttempted = true;
+     writeTarget.systemsTable.sheet
+diff --git a/KebNamComplete/ManagementOperationsBackend.js b/KebNamComplete/ManagementOperationsBackend.js
+index 98e7ef4..5cf2f2c 100644
+--- a/KebNamComplete/ManagementOperationsBackend.js
++++ b/KebNamComplete/ManagementOperationsBackend.js
+@@ -256,12 +256,14 @@ function mgmtOpsInternalDeleteWaterSystemLocked_(ss, context, request, options)
+   const opts = options || {};
+   const parsed = mgmtOpsValidateDeleteRequest_(request);
+   mgmtAssertPermission_(context, MGMT_PERMISSION.DELETE_SYSTEM);
++  mgmtAssertDistrictAssignment_(context);
+   if (opts.skipTimezoneCheck !== true) mgmtAssertTimezone_();
+ 
+   mgmtOpsRecoverPreparedDeletesLocked_(ss);
+   mgmtAssertProcessorMutationReady_(ss, parsed.systemId);
+ 
+   let target = mgmtMutationReadSystemTargetLocked_(ss, parsed.systemId);
++  mgmtOpsAssertSystemDistrictLocked_(ss, context, target.systemEntry.object);
+   mgmtMutationAssertTargetRowHasNoFormulas_(target.systemsTable, target.systemEntry.sheetRow, parsed.systemId);
+   if (!mgmtSecureStringEquals_(target.version, parsed.expectedVersion)) {
+     throw mgmtError_('CONFLICT', 'ข้อมูลถูกแก้ไขหลังจากที่คุณเปิดรายการนี้ กรุณาโหลดข้อมูลล่าสุดก่อนลบ', { systemId: parsed.systemId });
+@@ -289,6 +291,7 @@ function mgmtOpsInternalDeleteWaterSystemLocked_(ss, context, request, options)
+     // Minimize direct-Sheet race window: re-locate by ID immediately before delete.
+     mgmtAssertProcessorMutationReady_(ss, parsed.systemId);
+     target = mgmtMutationReadSystemTargetLocked_(ss, parsed.systemId);
++    mgmtOpsAssertSystemDistrictLocked_(ss, context, target.systemEntry.object);
+     mgmtMutationAssertTargetRowHasNoFormulas_(target.systemsTable, target.systemEntry.sheetRow, parsed.systemId);
+     if (!mgmtSecureStringEquals_(target.version, parsed.expectedVersion)) {
+       throw mgmtError_('CONFLICT', 'ข้อมูลเปลี่ยนระหว่างเตรียมการลบ กรุณาโหลดข้อมูลล่าสุดก่อนลบ', { systemId: parsed.systemId });
+@@ -374,6 +377,7 @@ function mgmtGetEntityHistory(token, request) {
+     if (entityType !== MGMT_OPS.ENTITY_WATER_SYSTEM && verified.context.role !== MGMT_CONFIG.ROLES.ADMIN) {
+       throw mgmtError_('FORBIDDEN', 'คุณไม่มีสิทธิ์ดูประวัติ entity ประเภทนี้');
+     }
++    mgmtAssertDistrictAssignment_(verified.context);
+ 
+     mgmtOpsRecoverPreparedDeletesLocked_(ss);
+     const audit = mgmtMutationReadAuditTable_(ss);
+@@ -403,6 +407,22 @@ function mgmtGetEntityHistory(token, request) {
+         errorCode: mgmtNormalizeText_(object.error_code)
+       });
+     });
++    if (verified.context.role === MGMT_CONFIG.ROLES.TECHNICIAN && items.length) {
++      const villageIds = [];
++      items.forEach(function(item) {
++        [item.before, item.after].forEach(function(version) {
++          const villageId = version && mgmtNormalizeText_(version.village_id);
++          if (villageId) villageIds.push(villageId);
++        });
++      });
++      if (!villageIds.length) throw mgmtError_('FORBIDDEN', 'ไม่สามารถยืนยันอำเภอของประวัติรายการนี้');
++      const villages = mgmtDataReadExactTable_(ss, MGMT_DATA.SHEETS.VILLAGES, MGMT_DATA.HEADERS.VILLAGES);
++      villageIds.forEach(function(villageId) {
++        const matches = villages.rows.filter(function(row) { return mgmtNormalizeText_(row[villages.headerMap.village_id]) === villageId; });
++        if (matches.length !== 1) throw mgmtError_('FORBIDDEN', 'ไม่สามารถยืนยันอำเภอของประวัติรายการนี้');
++        mgmtAssertDistrictAccess_(verified.context, matches[0][villages.headerMap.district]);
++      });
++    }
+     items.sort(function(a, b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });
+     mgmtDataTouchSessionAfterSuccessLocked_(ss, token, new Date());
+     return mgmtSuccess_({ history: items.slice(0, limit) }, requestId);
+@@ -425,6 +445,7 @@ function mgmtOpsUserView_(usersTable, user) {
+     userId: user.userId,
+     username: user.username,
+     displayName: user.displayName,
++    district: user.district,
+     role: user.role,
+     status: user.status,
+     mustChangePassword: user.mustChangePassword,
+@@ -768,33 +789,54 @@ function mgmtOpsCompensateCreatedTechnicianLocked_(ss, userId, intendedRow) {
+   }
+ }
+ 
++function mgmtOpsAssertDistrictExistsLocked_(ss, district) {
++  const villages = mgmtDataReadExactTable_(ss, MGMT_DATA.SHEETS.VILLAGES, MGMT_DATA.HEADERS.VILLAGES);
++  if (!villages.rows.some(function(row) { return mgmtNormalizeText_(row[villages.headerMap.district]) === district; })) {
++    throw mgmtError_('VALIDATION_FAILED', 'ไม่พบอำเภอที่เลือกในข้อมูลหมู่บ้าน');
++  }
++}
++
++function mgmtOpsAssertSystemDistrictLocked_(ss, context, systemObject) {
++  mgmtAssertDistrictAssignment_(context);
++  if (context.role !== MGMT_CONFIG.ROLES.TECHNICIAN) return;
++  const villageId = mgmtNormalizeText_(systemObject.village_id);
++  const villages = mgmtDataReadExactTable_(ss, MGMT_DATA.SHEETS.VILLAGES, MGMT_DATA.HEADERS.VILLAGES);
++  const matches = villages.rows.filter(function(row) { return mgmtNormalizeText_(row[villages.headerMap.village_id]) === villageId; });
++  if (matches.length !== 1) throw mgmtError_('FORBIDDEN', 'ไม่สามารถยืนยันอำเภอของระบบประปานี้');
++  mgmtAssertDistrictAccess_(context, matches[0][villages.headerMap.district]);
++}
++
+ function mgmtCreateTechnician(token, request) {
+   const requestId = mgmtNewRequestId_();
+   let lock = null;
+   try {
+     const input = request && typeof request === 'object' && !Array.isArray(request) ? request : {};
+-    const allowed = { username: true, password: true, displayName: true, clientInfo: true };
++    const allowed = { username: true, password: true, displayName: true, district: true, clientInfo: true };
+     Object.keys(input).forEach(function(key) { if (!allowed[key]) throw mgmtError_('VALIDATION_FAILED', 'พบ field ที่ request ไม่รองรับ', { field: key }); });
+     const username = mgmtNormalizeUsername_(input.username);
+     const password = typeof input.password === 'string' ? input.password : '';
+     const displayName = mgmtNormalizeText_(input.displayName);
++    const district = mgmtNormalizeText_(input.district);
+     const policy = mgmtPasswordPolicy_(password);
+     if (!username) throw mgmtError_('VALIDATION_FAILED', 'กรุณาระบุ username');
+     if (!displayName) throw mgmtError_('VALIDATION_FAILED', 'กรุณาระบุชื่อแสดงผล');
++    if (!district) throw mgmtError_('VALIDATION_FAILED', 'กรุณาเลือกอำเภอของช่างเทคนิค');
+     if (!policy.valid) throw mgmtError_('VALIDATION_FAILED', 'รหัสผ่านไม่ตรงตามนโยบาย', { issue: policy.reason });
+ 
+     lock = mgmtAcquireScriptLock_();
+     const ss = mgmtOpenSpreadsheet_();
+     const verified = mgmtVerifySessionLocked_(ss, token, { requestId: requestId, touch: false, allowPasswordChangeRequired: false, permission: MGMT_PERMISSION.MANAGE_TECHNICIANS });
+     const lookup = mgmtFindUserByNormalizedUsernameLocked_(ss, username);
++    if (lookup.usersTable.headerMap.district === undefined) throw mgmtError_('DATA_INTEGRITY_CONFLICT', 'ยังไม่ได้เพิ่มคอลัมน์ district ในชีต users');
++    mgmtOpsAssertDistrictExistsLocked_(ss, district);
+     if (lookup.match) throw mgmtError_('VALIDATION_FAILED', 'username นี้ถูกใช้งานแล้ว');
+ 
+     const now = new Date();
+     const userId = MGMT_OPS.USER_ID_PREFIX + Utilities.getUuid();
+     const rowObject = {
+       user_id: userId, username: username, password: password, display_name: displayName,
+-      role: MGMT_CONFIG.ROLES.TECHNICIAN, status: MGMT_CONFIG.USER_STATUSES.ACTIVE,
+-      must_change_password: true, failed_login_count: 0, locked_until: '', password_changed_at: '', last_login_at: '',
++      role: MGMT_CONFIG.ROLES.TECHNICIAN, status: MGMT_CONFIG.USER_STATUSES.ACTIVE, district: district,
++      must_change_password: false, failed_login_count: 0, locked_until: '', password_changed_at: '', last_login_at: '',
+       created_at: now, created_by: verified.context.userId, updated_at: now, updated_by: verified.context.userId, deleted_at: ''
+     };
+     const row = mgmtMutationObjectToRow_(lookup.usersTable.headers, rowObject);
+@@ -850,21 +892,25 @@ function mgmtUpdateTechnician(token, request) {
+   let lock = null;
+   try {
+     const input = request && typeof request === 'object' && !Array.isArray(request) ? request : {};
+-    const allowed = { userId: true, expectedVersion: true, username: true, displayName: true, clientInfo: true };
++    const allowed = { userId: true, expectedVersion: true, username: true, displayName: true, district: true, clientInfo: true };
+     Object.keys(input).forEach(function(key) { if (!allowed[key]) throw mgmtError_('VALIDATION_FAILED', 'พบ field ที่ request ไม่รองรับ', { field: key }); });
+     const userId = mgmtNormalizeText_(input.userId);
+     const username = mgmtNormalizeUsername_(input.username);
+     const displayName = mgmtNormalizeText_(input.displayName);
+-    if (!userId || !username || !displayName) throw mgmtError_('VALIDATION_FAILED', 'กรุณาระบุข้อมูลบัญชีให้ครบ');
++    const district = mgmtNormalizeText_(input.district);
++    if (!userId || !username || !displayName || !district) throw mgmtError_('VALIDATION_FAILED', 'กรุณาระบุข้อมูลบัญชีให้ครบ');
+ 
+     lock = mgmtAcquireScriptLock_();
+     const ss = mgmtOpenSpreadsheet_();
+     const verified = mgmtVerifySessionLocked_(ss, token, { requestId: requestId, touch: false, allowPasswordChangeRequired: false, permission: MGMT_PERMISSION.MANAGE_TECHNICIANS });
+     const nameLookup = mgmtFindUserByNormalizedUsernameLocked_(ss, username);
++    if (nameLookup.usersTable.headerMap.district === undefined) throw mgmtError_('DATA_INTEGRITY_CONFLICT', 'ยังไม่ได้เพิ่มคอลัมน์ district ในชีต users');
++    mgmtOpsAssertDistrictExistsLocked_(ss, district);
+     if (nameLookup.match && nameLookup.match.userId !== userId) throw mgmtError_('VALIDATION_FAILED', 'username นี้ถูกใช้งานแล้ว');
++    const previousDistrict = mgmtOpsFindUserByIdForAdminLocked_(ss, userId).user.district;
+     const now = new Date();
+     const data = mgmtOpsWriteUserMutationLocked_(ss, verified.context, userId, input.expectedVersion, MGMT_OPS.ACTION_TECH_UPDATE, {
+-      username: username, display_name: displayName, updated_at: now, updated_by: verified.context.userId
++      username: username, display_name: displayName, district: district, updated_at: now, updated_by: verified.context.userId
+     }, '', input.clientInfo || '', {
+       allowedStatuses: [MGMT_CONFIG.USER_STATUSES.ACTIVE, MGMT_CONFIG.USER_STATUSES.DISABLED],
+       beforeWriteValidation: function() {
+@@ -878,6 +924,7 @@ function mgmtUpdateTechnician(token, request) {
+         if (!persistedLookup.match || persistedLookup.match.userId !== userId) {
+           throw mgmtError_('DATA_INTEGRITY_CONFLICT', 'ตรวจสอบความเป็นเอกลักษณ์ของ username หลังบันทึกไม่ผ่าน');
+         }
++        if (previousDistrict !== district) mgmtRevokeAllSessionsForUserLocked_(ss, userId, '');
+       }
+     });
+     mgmtOpsTouchSessionAfterCommittedBestEffort_(ss, token, requestId, 'UPDATE_TECHNICIAN_SESSION_TOUCH');

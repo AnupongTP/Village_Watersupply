@@ -194,7 +194,11 @@ test('GET: version and data reads do not create publication files', async t => {
   const candidate = snapshot();
   await publishLocalSnapshot(store, candidate);
   const before = await readdir(root);
-  assert.equal((await get.getVersion(candidate)).state, 'CURRENT');
+  const version = await get.getVersion(candidate);
+  assert.equal(version.state, 'CURRENT');
+  assert.equal(version.metadata.schemaVersion, candidate.schemaVersion);
+  assert.equal(version.metadata.policyRevision, candidate.policyRevision);
+  assert.equal(version.metadata.datasetVersion, candidate.datasetVersion);
   assert.equal((await get.getData(candidate)).state, 'CURRENT');
   assert.deepEqual(await readdir(root), before);
 });

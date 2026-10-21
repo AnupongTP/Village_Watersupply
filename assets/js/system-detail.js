@@ -38,11 +38,7 @@ export function buildSystemDetailHtml(system, village) {
         <p class="detail-subtitle">${escapeHtml(villageName)}${village?.district ? ` • อ.${escapeHtml(safeDisplayText(village.district))}` : ''}</p>
       </div>
 
-      <div class="detail-status-row">
-        ${statusBadge(system.operational_status)}
-        ${quantityBadge(system.water_quantity)}
-        ${qualityBadge(system.drinking_water_quality)}
-      </div>
+      ${buildSystemStatusBadgesHtml(system)}
 
       ${document.available ? documentCard(document) : ''}
 
@@ -133,6 +129,14 @@ function detailItem(label, value) {
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(isBlank(value) ? '-' : value)}</strong>
     </div>`;
+}
+
+export function buildSystemStatusBadgesHtml(system) {
+  return `<div class="detail-status-row">
+    ${statusBadge(system.operational_status)}
+    ${quantityBadge(system.water_quantity)}
+    ${qualityBadge(system.drinking_water_quality)}
+  </div>`;
 }
 
 function statusBadge(value) {

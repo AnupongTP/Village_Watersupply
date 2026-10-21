@@ -1,12 +1,13 @@
 import {
-  operationalStatusLabel, qualityLabel, quantityLabel, systemTypeLabel,
+  systemTypeLabel,
   systemDisplayName, villageDisplayName, safeDisplayText
 } from './labels.js';
+import { buildSystemStatusBadgesHtml } from './system-detail.js';
 
 // Presentation shared by the Public and authenticated Technician maps. No dataset or auth state lives here.
 export const HOME_VIEW = Object.freeze({ center: [19.171194, 99.874972], zoom: 13 });
 export const PHAYAO_BOUNDS = Object.freeze({ minLat: 18.70, maxLat: 20.00, minLng: 99.40, maxLng: 100.70 });
-export const SYSTEM_POPUP_OPTIONS = Object.freeze({ maxWidth: 350, minWidth: 260, autoPanPadding: [24, 24] });
+export const SYSTEM_POPUP_OPTIONS = Object.freeze({ maxWidth: 350, minWidth: 260, autoPanPadding: [24, 24], className: 'system-map-popup' });
 
 export function inPhayao(point) {
   return point.lat >= PHAYAO_BOUNDS.minLat && point.lat <= PHAYAO_BOUNDS.maxLat &&
@@ -36,11 +37,9 @@ export function buildMapPopup(system, village, usableCoordinate, additionalHtml 
       <div class="popup-muted">${escapeHtml(villageDisplayName(village))}</div>
       <div class="popup-muted">${escapeHtml(areaLabel(village))}</div>
       <hr>
-      <div>ประเภทระบบ: ${escapeHtml(systemTypeLabel(system.system_type))}</div>
-      <div>สถานะระบบ: ${escapeHtml(operationalStatusLabel(system.operational_status))}</div>
-      <div>คุณภาพน้ำดื่ม: ${escapeHtml(qualityLabel(system.drinking_water_quality))}</div>
-      <div>ปริมาณน้ำ: ${escapeHtml(quantityLabel(system.water_quantity))}</div>
-      <div>ครัวเรือนรับน้ำ: ${formatNumber(system.households_served)}</div>
+      <div class="map-popup-secondary">ประเภทระบบ: ${escapeHtml(systemTypeLabel(system.system_type))}</div>
+      ${buildSystemStatusBadgesHtml(system)}
+      <div class="map-popup-secondary">ครัวเรือนรับน้ำ: ${formatNumber(system.households_served)}</div>
       ${additionalHtml}
       <div class="map-popup-actions">
         <button

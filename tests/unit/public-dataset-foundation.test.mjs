@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTemporaryPublicScope } from '../../assets/js/public-scope.js';
-import { projectPublicDataset } from '../../tools/public-dataset/projection.mjs';
-import { createPublicSnapshot, createVerifiedSnapshotStore, validatePublicSnapshot } from '../../tools/public-dataset/snapshot.mjs';
+import { projectPublicDataset, PUBLIC_FIELDS, PUBLIC_PROJECTION_POLICY_REVISION } from '../../tools/public-dataset/projection.mjs';
+import { createPublicSnapshot, createVerifiedSnapshotStore, datasetVersionFor, SNAPSHOT_SCHEMA_VERSION, validatePublicSnapshot } from '../../tools/public-dataset/snapshot.mjs';
 import { inspectSourceRead } from '../../tools/public-dataset/source-read.mjs';
 import { selectPhysicalPublicationEligible } from '../../tools/public-dataset/eligibility.mjs';
 
@@ -83,6 +83,43 @@ test('suppressed village sources disappear while sources of coordinate-only supp
   assert.equal(result.waterSystems[0].operational_status, 'WORKING');
 });
 
+test('candidate snapshot default-denies pending disclosure fields and unknown columns', () => {
+  const data = fixture();
+  Object.assign(data.waterSystems[1], {
+    owner_type: 'LOCAL_AUTHORITY', transfer_year_be: 2566,
+    responsible_agency: 'private agency', shared_village_name: 'private village',
+    establishment_agency: 'private establishment', transfer_agency: 'private transfer',
+    transfer_other: 'private note', transfer_document_url: 'https://example.invalid/private',
+    owner: 'private owner', transfer_year: 2023, document_url: 'https://example.invalid/legacy',
+    arbitrary_private_column: 'private data'
+  });
+  const candidate = make(data);
+  const baselineData = fixture();
+  Object.assign(baselineData.waterSystems[1], {
+    owner_type: 'LOCAL_AUTHORITY', transfer_year_be: 2566
+  });
+  const baseline = make(baselineData);
+  assert.equal(candidate.contentHash, baseline.contentHash);
+  assert.equal(candidate.datasetVersion, baseline.datasetVersion);
+  const row = candidate.waterSystems[0];
+  assert.equal(row.system_id, 's4');
+  assert.equal(row.village_id, 'v4');
+  assert.equal(row.owner_type, 'LOCAL_AUTHORITY');
+  assert.equal(row.transfer_year_be, 2566);
+  for (const field of [
+    'responsible_agency', 'shared_village_name', 'establishment_agency',
+    'transfer_agency', 'transfer_other', 'transfer_document_url',
+    'owner', 'transfer_year', 'document_url', 'arbitrary_private_column'
+  ]) {
+    assert.equal(Object.hasOwn(row, field), false, field);
+    assert.equal(PUBLIC_FIELDS.waterSystems.includes(field), false, field);
+  }
+  assert.equal(validatePublicSnapshot(candidate), true);
+  const smuggled = structuredClone(candidate);
+  smuggled.waterSystems[0].responsible_agency = 'private agency';
+  assert.throws(() => validatePublicSnapshot(smuggled), /non-public field/);
+});
+
 test('rejects missing, partial, duplicated, and orphan source records', () => {
   const data = fixture();
   assert.throws(() => projectPublicDataset(data), /manifest/);
@@ -124,6 +161,25 @@ test('snapshot version ignores observation timestamp, but changes for add, edit 
   assert.notEqual(make(edited, 3).datasetVersion, first.datasetVersion);
   const deleted = fixture(); deleted.waterSystems.splice(1, 1);
   assert.notEqual(make(deleted, 3).datasetVersion, first.datasetVersion);
+});
+
+test('dataset version includes canonical content, schema and policy while contentHash is payload-only', () => {
+  const first = make();
+  const later = make(fixture(), 2, '2026-10-20T00:00:00.000Z');
+  assert.equal(first.contentHash, later.contentHash);
+  assert.equal(first.datasetVersion, later.datasetVersion);
+  assert.equal(first.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
+  assert.equal(first.policyRevision, PUBLIC_PROJECTION_POLICY_REVISION);
+  assert.notEqual(first.datasetVersion,
+    datasetVersionFor(first, SNAPSHOT_SCHEMA_VERSION + 1, PUBLIC_PROJECTION_POLICY_REVISION));
+  assert.notEqual(first.datasetVersion,
+    datasetVersionFor(first, SNAPSHOT_SCHEMA_VERSION, 'OTHER_PUBLIC_POLICY'));
+  const oldSchema = structuredClone(first); oldSchema.schemaVersion--;
+  assert.throws(() => validatePublicSnapshot(oldSchema), /Unsupported snapshot schema/);
+  const oldPolicy = structuredClone(first); oldPolicy.policyRevision = 'PREVIOUS_PUBLIC_POLICY';
+  assert.throws(() => validatePublicSnapshot(oldPolicy), /Unsupported public projection policy/);
+  const noPolicy = structuredClone(first); delete noPolicy.policyRevision;
+  assert.throws(() => validatePublicSnapshot(noPolicy), /Unsupported public projection policy/);
 });
 
 test('snapshot integrity and acceptance preserve last verified copy on invalid/stale candidates', () => {

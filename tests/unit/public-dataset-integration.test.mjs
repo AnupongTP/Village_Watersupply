@@ -7,6 +7,8 @@ import { sourceFixture, selfManifest, oracle, decisions } from '../support/publi
 
 test('synthetic source to verified public response uses R5.1 once', () => {
   const data = sourceFixture();
+  data.waterSystems[1].responsible_agency = 'synthetic private agency';
+  data.waterSystems[1].transfer_document_url = 'https://example.invalid/private';
   const prepared = prepareLocalPublicCandidate(data, selfManifest(data), {
     verifyRead: oracle(data, 1), verifyEligibility: decisions(data),
     observationTime: '2026-10-19T04:00:00Z'
@@ -24,6 +26,10 @@ test('synthetic source to verified public response uses R5.1 once', () => {
   assert.deepEqual(consumeLocalDashboardResponse(response).waterSystems.map(row => row.system_id), ['s2']);
   assert.deepEqual(consumeLocalDashboardResponse(response).waterSources.map(row => row.source_id), ['r1', 'r2', 'r4']);
   assert.equal(JSON.stringify(response).includes('password'), false);
+  assert.equal(JSON.stringify(response).includes('synthetic private agency'), false);
+  assert.equal(JSON.stringify(response).includes('example.invalid/private'), false);
+  assert.deepEqual(Object.keys(response).sort(),
+    ['success', 'generatedAt', 'projectionOwner', 'villages', 'waterSystems', 'waterSources'].sort());
   // The current frontend projection is non-idempotent; this local adapter is
   // the required future ownership switch, not an activated frontend change.
   assert.deepEqual(buildTemporaryPublicScope(response).villages.map(row => row.village_id), ['v2', 'v4']);

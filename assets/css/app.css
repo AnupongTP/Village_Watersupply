@@ -396,6 +396,30 @@ body.drawer-open { overflow: hidden; }
   .leaflet-control-attribution { max-width: 88vw; font-size: 8px !important; }
   .map-legend { display: none; }
 
+  /* Keep system popups below the map controls on short phone-sized maps. */
+  .system-map-popup .leaflet-popup-content {
+    width: min(216px, calc(100vw - 166px)) !important;
+    margin: 10px;
+  }
+  .system-map-popup .map-popup { min-width: 0; line-height: 1.35; }
+  .system-map-popup .map-popup strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+  }
+  .system-map-popup .popup-muted {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .system-map-popup .map-popup hr { margin: 5px 0; }
+  .system-map-popup .map-popup-secondary { display: none; }
+  .system-map-popup .map-popup-actions { gap: 6px; margin-top: 7px; padding-top: 7px; }
+  .system-map-popup .map-popup-action { min-height: 40px; gap: 4px; padding-inline: 5px; font-size: 11px; }
+
   .data-completeness-popup {
     width: calc(100vw - 16px) !important;
     max-width: calc(100vw - 16px) !important;

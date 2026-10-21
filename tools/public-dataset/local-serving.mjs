@@ -10,26 +10,38 @@ export function createLocalPublicGet(storage) {
     if (!pointer) return safe('NO_PUBLICATION', 'UNAVAILABLE');
     let stored;
     try { stored = await storage.get(pointer.id); }
-    catch (error) { return safe(error.code ?? 'STORAGE_UNAVAILABLE', 'UNAVAILABLE'); }
-    if (stored.sourceRevision !== pointer.revision || stored.datasetVersion !== pointer.datasetVersion) {
+    catch (error) {
+      if (error.code === 'OBJECT_CORRUPT') {
+        try {
+          const predecessor = await storage.getMigrationSource(pointer.id);
+          if (predecessor.sourceRevision === pointer.revision &&
+              predecessor.datasetVersion === pointer.datasetVersion &&
+              (pointer.schemaVersion === undefined ||
+                (pointer.schemaVersion === predecessor.schemaVersion &&
+                  pointer.policyRevision === predecessor.policyRevision))) {
+            return safe('POLICY_MIGRATION_REQUIRED', 'UNAVAILABLE');
+          }
+        } catch (_) { /* Unknown or damaged history stays unavailable. */ }
+      }
+      return safe(error.code ?? 'STORAGE_UNAVAILABLE', 'UNAVAILABLE');
+    }
+    if (stored.sourceRevision !== pointer.revision || stored.datasetVersion !== pointer.datasetVersion ||
+        pointer.schemaVersion !== stored.schemaVersion ||
+        pointer.policyRevision !== stored.policyRevision) {
       return safe('POINTER_CONTENT_MISMATCH', 'UNAVAILABLE');
     }
     const metadata = { sourceRevision: pointer.revision, datasetVersion: pointer.datasetVersion,
-      generation: pointer.generation, schemaVersion: stored.schemaVersion };
+      generation: pointer.generation, schemaVersion: stored.schemaVersion,
+      policyRevision: stored.policyRevision };
     if (!freshCandidate) return safe('FRESHNESS_UNKNOWN', 'UNKNOWN', { metadata });
     try { assertTrustedSnapshotCandidate(freshCandidate); }
     catch (_) { return safe('FRESHNESS_UNKNOWN', 'UNKNOWN', { metadata }); }
     if (freshCandidate.sourceRevision === null) return safe('FRESHNESS_UNKNOWN', 'UNKNOWN', { metadata });
     if (freshCandidate.sourceRevision > pointer.revision) return safe('SOURCE_NEWER', 'STALE', { metadata });
     if (freshCandidate.sourceRevision < pointer.revision ||
-        freshCandidate.contentHash !== stored.contentHash ||
-        freshCandidate.metadataHash !== stored.metadataHash) {
-      // Same source revision with altered eligibility/content is a conflict.
-      // Metadata can differ solely by observation time, so compare content.
-      if (freshCandidate.sourceRevision === pointer.revision &&
-          freshCandidate.contentHash === stored.contentHash) {
-        return safe('CURRENT', 'CURRENT', { metadata, stored });
-      }
+        freshCandidate.datasetVersion !== stored.datasetVersion ||
+        freshCandidate.contentHash !== stored.contentHash) {
+      // Same-revision content or policy differences cannot confirm freshness.
       return safe('FRESHNESS_UNKNOWN', 'UNKNOWN', { metadata });
     }
     return safe('CURRENT', 'CURRENT', { metadata, stored });

@@ -382,7 +382,7 @@
         </div>
         <section class="data-card">
           <div class="table-scroll technicians-desktop-table" tabindex="0" aria-label="ตารางบัญชีช่างเทคนิค">
-            <table class="management-table"><thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อแสดงผล</th><th>สถานะ</th><th>เข้าสู่ระบบล่าสุด</th><th class="actions-column">จัดการ</th></tr></thead><tbody id="techniciansTableBody"></tbody></table>
+            <table class="management-table"><thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อแสดงผล</th><th>ช่างอำเภอ</th><th>สถานะ</th><th>เข้าสู่ระบบล่าสุด</th><th class="actions-column">จัดการ</th></tr></thead><tbody id="techniciansTableBody"></tbody></table>
           </div>
           <div id="techniciansMobileList" class="technicians-mobile-list" aria-live="polite"></div>
         </section>
@@ -437,9 +437,9 @@
   </dialog>
 
   <dialog id="technicianDialog" class="modal" aria-labelledby="technicianDialogTitle">
-    <form id="technicianForm" class="modal-card" method="dialog">
+    <form id="technicianForm" class="modal-card" method="dialog" novalidate>
       <header class="modal-header"><div><p class="eyebrow">บัญชีช่างเทคนิค</p><h3 id="technicianDialogTitle">สร้างบัญชีช่างเทคนิค</h3></div><button class="icon-btn" type="button" data-dismiss-dialog aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
-      <div class="modal-body stack"><label class="field-label">ชื่อผู้ใช้<input id="techUsername" autocomplete="off" required></label><label class="field-label">ชื่อแสดงผล<input id="techDisplayName" required></label><label id="techPasswordLabel" class="field-label">รหัสผ่านเริ่มต้น<input id="techPassword" type="password" autocomplete="new-password" minlength="8"></label><p id="technicianError" class="form-error" role="alert"></p></div>
+      <div class="modal-body stack"><label class="field-label">ชื่อผู้ใช้ (ID)<input id="techUsername" autocomplete="off" required></label><label class="field-label">ชื่อแสดงผล<input id="techDisplayName" required placeholder="ตัวอย่าง ช่างอ.เมืองพะเยา"></label><label class="field-label">ช่างอำเภอ<input id="techDistrict" list="techDistrictOptions" autocomplete="off" required placeholder="เลือกหรือพิมพ์ค้นหาอำเภอ" aria-describedby="techDistrictHelp"><datalist id="techDistrictOptions"></datalist></label><p id="techDistrictHelp" class="selection-help">ช่างจะเห็นและจัดการข้อมูลเฉพาะอำเภอที่เลือก</p><div id="techPasswordLabel" class="password-field"><label class="field-label" for="techPassword">รหัสผ่าน (Password)</label><input id="techPassword" type="password" autocomplete="new-password" minlength="8" aria-describedby="techPasswordHelp techPasswordError"><p id="techPasswordHelp" class="selection-help">กรุณากำหนดรหัสผ่านอย่างน้อย 8 ตัวอักษร</p><p id="techPasswordError" class="form-error" role="alert"></p></div><p id="technicianError" class="form-error" role="alert"></p></div>
       <footer class="modal-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>ยกเลิก</button><button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>บันทึก</span></button></footer>
     </form>
   </dialog>

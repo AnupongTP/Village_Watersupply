@@ -107,8 +107,11 @@ export function createMapEngine(config) {
   function addMarker(system, point, layer) {
     const village = config.villageForSystem(system);
     const extra = config.popupExtraHtml?.(system, point) || '';
+    const popupOptions = window.matchMedia('(max-width: 767px)').matches
+      ? { ...SYSTEM_POPUP_OPTIONS, keepInView: true, autoPanPaddingTopLeft: [24, 100], autoPanPaddingBottomRight: [24, 16] }
+      : SYSTEM_POPUP_OPTIONS;
     const marker = L.circleMarker(point, systemMarkerOptions(system))
-      .bindPopup(buildMapPopup(system, village, true, extra), SYSTEM_POPUP_OPTIONS)
+      .bindPopup(buildMapPopup(system, village, true, extra), popupOptions)
       .addTo(layer);
     config.decorateMarker?.(marker, system, village);
     return marker;

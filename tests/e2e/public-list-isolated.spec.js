@@ -134,6 +134,40 @@ test('list actions, global filter, charts and map stay connected to the accepted
   expect(evidence.pageErrors).toEqual([]);
 });
 
+for (const width of [360, 390]) test(`mobile Public map popup stays compact at ${width}px with visible actions`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 844 });
+  const evidence = await openIsolatedPublic(page);
+  await page.locator('.watchlist-mobile .watch-card:first-child [data-action="map"]').click();
+  const popup = page.locator('#waterMap .system-map-popup');
+  await expect(popup).toBeVisible();
+  await expect.poll(async () => {
+    const mapBox = await page.locator('#waterMap').boundingBox();
+    const popupBox = await popup.boundingBox();
+    return popupBox.y >= mapBox.y + 70 && popupBox.y + popupBox.height <= mapBox.y + mapBox.height - 8;
+  }).toBe(true);
+  await expect(popup.locator('[data-map-action="detail"]')).toBeVisible();
+  await expect(popup.locator('[data-map-action="navigate"]')).toBeVisible();
+  const map = await page.locator('#waterMap').boundingBox();
+  const box = await popup.boundingBox();
+  const zoom = await page.locator('#waterMap .leaflet-control-zoom').boundingBox();
+  const layers = await page.locator('#waterMap .leaflet-control-layers').boundingBox();
+  expect(box.height).toBeLessThanOrEqual(map.height * .7);
+  expect(box.width).toBeLessThan(map.width - 50);
+  await expect.poll(async () => {
+    const current = await popup.boundingBox();
+    return current.y >= Math.max(zoom.y + zoom.height, layers.y + layers.height) + 4;
+  }).toBe(true);
+  await expect(popup.locator('.map-popup strong')).toBeVisible();
+  await expect(popup.locator('.detail-status-row .badge')).toHaveText(['ใช้การได้', 'น้ำเพียงพอ', 'น้ำดื่มผ่านเกณฑ์']);
+  await expect(popup.locator('.map-popup')).not.toContainText('คุณภาพน้ำใช้');
+  await page.screenshot({ path: testInfo.outputPath(`public-mobile-map-popup-${width}.png`) });
+  await popup.locator('[data-map-action="detail"]').click();
+  await expect(page.locator('#systemDrawer')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#drawerContent')).toContainText('ประเภทระบบ');
+  expect(evidence.unexpected).toEqual([]);
+  expect(evidence.pageErrors).toEqual([]);
+});
+
 for (const viewport of LOCKED_VIEWPORTS) {
   test(`isolated public list responsive ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
