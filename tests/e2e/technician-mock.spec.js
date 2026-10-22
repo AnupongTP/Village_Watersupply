@@ -246,8 +246,21 @@ function managementMocks(extra = {}) {
   };
 }
 async function openToolSection(page, name) {
-  if (await page.locator('#technicianToolsMenu').isHidden()) await page.locator('#technicianToolsButton').click();
-  await page.locator(`[data-tab="${name}"]`).click();
+  if (name === 'systems') {
+    await page.locator('a[href="#technicianManagementSection"]').click();
+    return;
+  }
+  if (name === 'technicians') {
+    await page.locator('#mobileAccountButton').click();
+    await page.locator('#techniciansAccountButton').click();
+    return;
+  }
+  if (name === 'history') {
+    await page.locator('a[href="#technicianManagementSection"]').click();
+    await clickSystemAction(page, 'history');
+    return;
+  }
+  throw new Error(`Unknown section: ${name}`);
 }
 
 async function openManagement(page, overrides = {}, start = 'management') {
@@ -270,7 +283,7 @@ test('unified table uses one Dashboard section and two restorable modes', async 
   await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(28);
   await expect(page.locator('#managementWorkspace')).toHaveCount(0);
   await expect(page.locator('#problemList')).toHaveCount(0);
-  await page.locator('a[href="#watchlist"]').click();
+  await page.locator('#systemsModeMonitoring').click();
   await expect(page.locator('#systemsModeMonitoring')).toHaveAttribute('aria-pressed', 'true');
   await expect(page).toHaveURL(/#watchlist$/);
   await page.goBack();
@@ -626,7 +639,7 @@ for (const width of [1440, 768, 390]) {
   test(`unified systems table lets wheel input continue through the Dashboard at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     const network = await openManagement(page, scrollDataset(), 'dashboard');
-    await page.locator('a[href="#watchlist"]').click();
+    await page.locator('a[href="#technicianManagementSection"]').click();
     const row = width < 768 ? page.locator('#systemsMobileList .system-mobile-card').first() : page.locator('#systemsTableBody tr[data-system-id]').first();
     await expect(row).toBeVisible();
     await expect(page.locator('#busyOverlay')).toBeHidden();
@@ -764,7 +777,8 @@ test('Public-style Dashboard is continuous and tools open exclusive authenticate
   await expect(page.locator('#managementWorkspace')).toHaveCount(0);
   await expect(page.locator('#overview .kpi-card')).toHaveCount(4);
   await expect(page.locator('#kpiWithWaterworks')).toHaveText('ไม่พร้อมใช้');
-  expect(await page.locator('.tabs a.section-link').count()).toBe(7);
+  await expect(page.locator('.tabs a.section-link')).toHaveCount(6);
+  await expect(page.locator('.tabs a.section-link')).toHaveText(['ภาพรวม','แผนที่','รายพื้นที่','ระบบประปา','คุณภาพน้ำ','จัดการข้อมูล']);
   await page.locator('#filterSearch').fill('Synthetic');
   const reads = network.calls.filter(call => call.action === 'data.dashboard').length;
   await page.locator('a[href="#areas"]').click();
@@ -806,24 +820,26 @@ test('Public-style Dashboard is continuous and tools open exclusive authenticate
 });
 
 for (const width of [768, 390]) {
-  test(`continuous Dashboard and exclusive tools remain usable at ${width}px`, async ({ page }) => {
+  test(`continuous Dashboard and consolidated account menu remain usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const network = await openManagement(page, {}, 'dashboard');
     await captureArchitecture(page, `technician-${width}-overview`);
-    await page.locator('a[href="#watchlist"]').click();
+    await page.locator('a[href="#technicianManagementSection"]').click();
     await expect(page.locator('#watchlist')).toBeInViewport();
-    await captureArchitecture(page, `technician-${width}-monitoring`);
+    await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed', 'true');
+    await captureArchitecture(page, `technician-${width}-management`);
     await expect(page.locator('#areas')).toBeVisible();
-    await page.locator('#technicianToolsButton').click();
-    await expect(page.locator('#technicianToolsButton')).toHaveAttribute('aria-expanded', 'true');
+    await page.locator('#mobileAccountButton').click();
+    await expect(page.locator('#mobileAccountButton')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#techniciansAccountButton')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('#technicianToolsMenu')).toBeHidden();
-    await page.locator('#technicianToolsButton').focus();
+    await expect(page.locator('#mobileAccountMenu')).toBeHidden();
+    await page.locator('#mobileAccountButton').focus();
     await page.keyboard.press('Enter');
-    await expect(page.locator('#technicianToolsMenu')).toBeVisible();
-    await captureArchitecture(page, `technician-${width}-tools`);
-    await page.locator('a[href="#historyPanel"]').click();
-    await expect(page.locator('#historyPanel')).toBeVisible();
+    await expect(page.locator('#mobileAccountMenu')).toBeVisible();
+    await captureArchitecture(page, `technician-${width}-account-menu`);
+    await page.locator('#techniciansAccountButton').click();
+    await expect(page.locator('#techniciansPanel')).toBeVisible();
     await expect(page.locator('#dashboardWorkspace')).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     expect(network.blocked).toEqual([]);
@@ -910,7 +926,7 @@ test('saved session deep link waits for verification and rejects unauthorized ac
   await page.goto(`${origin}/technician/#techniciansPanel`);
   await expect(page.locator('#appView')).toBeVisible();
   await expect(page.locator('#techniciansPanel')).toBeHidden();
-  await expect(page.locator('#techniciansTab')).toBeHidden();
+  await expect(page.locator('#techniciansAccountButton')).toBeHidden();
   await expect(page).not.toHaveURL(/#techniciansPanel$/);
   expect(network.calls.some(call => call.action === 'technicians.list')).toBe(false);
   expect(network.blocked).toEqual([]);
@@ -1739,7 +1755,7 @@ test('overlapping read operations keep one SweetAlert until the final operation 
   });
   await page.locator('#refreshButton').click();
   await expectBusyDialog(page, 'กำลังรีเฟรชข้อมูล...');
-  await page.locator('[data-tab="history"]').evaluate(button => button.click());
+  await clickSystemAction(page, 'history');
   await page.locator('#historySystemId').evaluate(input => { input.value = 'QA-ANALYTICS-1'; });
   await page.locator('#historySearchButton').evaluate(button => button.click());
   await expectBusyDialog(page, 'กำลังโหลดประวัติ...');

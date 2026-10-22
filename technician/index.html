@@ -96,6 +96,7 @@
             <div id="mobileAccountMenu" class="mobile-account-menu hidden">
               <div class="mobile-account-summary"><strong id="mobileCurrentUserName">-</strong><small id="mobileCurrentUserRole">-</small></div>
               <div class="account-menu-sync"><span>โหลดข้อมูลล่าสุด</span><strong id="generatedAt">-</strong></div>
+              <button id="techniciansAccountButton" class="account-menu-navigation hidden" type="button"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span>บัญชีช่างเทคนิค</span></button>
               <button id="changePasswordButton" class="account-desktop-action" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i><span>เปลี่ยนรหัสผ่าน</span></button>
               <button id="logoutButton" class="account-desktop-action danger" type="button"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>ออกจากระบบ</span></button>
               <button id="mobileChangePasswordButton" class="account-mobile-action" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i><span>เปลี่ยนรหัสผ่าน</span></button>
@@ -112,17 +113,8 @@
             <a class="section-link" data-tab="map" href="#map-section">แผนที่</a>
             <a class="section-link" data-tab="area" href="#areas">รายพื้นที่</a>
             <a class="section-link" data-tab="types" href="#system-structure">ระบบประปา</a>
-            <a class="section-link" data-tab="operations" href="#operations">สถานะและปริมาณน้ำ</a>
             <a class="section-link" data-tab="quality" href="#quality">คุณภาพน้ำ</a>
-            <a class="section-link" data-tab="monitoring" href="#watchlist">รายการติดตาม</a>
-          </div>
-          <div class="technician-tools">
-            <button id="technicianToolsButton" class="section-link" type="button" aria-expanded="false" aria-controls="technicianToolsMenu"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i><span>เครื่องมือช่าง</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
-            <div id="technicianToolsMenu" class="technician-tools-menu hidden">
-              <a data-tab="systems" href="#technicianManagementSection">จัดการข้อมูล</a>
-              <a data-tab="history" href="#historyPanel">ประวัติการแก้ไข</a>
-              <a id="techniciansTab" class="hidden" data-tab="technicians" href="#techniciansPanel">บัญชีช่างเทคนิค</a>
-            </div>
+            <a class="section-link" data-tab="systems" href="#technicianManagementSection">จัดการข้อมูล</a>
           </div>
         </div>
       </nav>
