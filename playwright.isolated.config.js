@@ -4,7 +4,7 @@ import { defineConfig } from '@playwright/test';
 // No local HTTP server or Production endpoint is required.
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: ['public-list-isolated.spec.js', 'technician-mock.spec.js'],
+  testMatch: ['public-list-isolated.spec.js', 'public-cache-isolated.spec.js', 'technician-mock.spec.js'],
   timeout: 40_000,
   expect: { timeout: 8_000 },
   workers: 1,

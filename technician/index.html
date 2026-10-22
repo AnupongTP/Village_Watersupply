@@ -58,10 +58,10 @@
       <div class="auth-divider"></div>
       <form id="loginForm" class="stack" autocomplete="on">
         <label class="field-label">ชื่อผู้ใช้
-          <input id="loginUsername" name="username" autocomplete="username" required autofocus>
+          <input id="loginUsername" name="username" autocomplete="username" required autofocus aria-describedby="loginError">
         </label>
         <label class="field-label">รหัสผ่าน
-          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required aria-describedby="loginError">
         </label>
         <button class="btn btn-primary auth-submit" type="submit" id="loginSubmit">
           <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>เข้าสู่ระบบ</span>

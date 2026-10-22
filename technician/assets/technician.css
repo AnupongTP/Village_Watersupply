@@ -390,3 +390,21 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
   .topbar-actions #refreshButton,
   .mobile-account > #mobileAccountButton { width: 44px; min-height: 44px; }
 }
+
+/* UI/UX pass (local): readable small text and 44px form/touch targets for the Technician app. */
+.field-label,
+#technicianManagementSection .filter-field,
+.history-search-shell .filter-field,
+.filter-mobile-summary,
+.system-id,
+.account-trigger-copy small,
+.badge { font-size: 12px; }
+.badge { padding: 4px 9px; }
+@media (max-width: 767px), (pointer: coarse) {
+  #technicianManagementSection .filter-field input, #technicianManagementSection .filter-field select,
+  .history-search-shell .filter-field input, .field-label input, .field-label select, .field-label textarea,
+  .password-field input, .form-grid input, .form-grid select, .form-grid textarea,
+  .edit-field input, .edit-field select, .edit-field textarea,
+  #loginUsername, #loginPassword { min-height: 44px; font-size: 16px; }
+  .icon-btn { width: 44px; height: 44px; }
+}
