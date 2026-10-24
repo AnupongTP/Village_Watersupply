@@ -583,6 +583,20 @@ body.swal2-shown #btnBackToTop {
 .text-\[11px\],
 .text-\[10px\] { font-size: 12px; }
 .section-link { display: inline-flex; align-items: center; }
+.public-list-filters.list-search-only { grid-template-columns: 1fr; }
+/* One compact filter layout shared by Public and Technician. */
+.dashboard-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.dashboard-filter-grid .filter-field { min-width: 0; display: grid; gap: 5px; }
+.dashboard-filter-grid .dashboard-filter-search { grid-column: span 2; }
+.dashboard-filter-grid .filter-select { width: 100%; min-width: 0; height: 40px; min-height: 40px; padding: 7px 10px; font-size: 14px; }
+.dashboard-filter-grid .dashboard-filter-reset { grid-column: -2 / -1; justify-self: end; align-self: end; width: auto; min-height: 40px; padding: 7px 12px; font-size: 14px; white-space: nowrap; }
+@media (min-width: 768px) { .dashboard-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .dashboard-filter-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@media (min-width: 1600px) { .dashboard-filter-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (max-width: 767px), (pointer: coarse) {
+  .dashboard-filter-grid .filter-select { height: 44px; min-height: 44px; font-size: 16px; }
+  .dashboard-filter-grid .dashboard-filter-reset { min-height: 44px; }
+}
 .section-link:focus-visible,
 .filter-select:focus-visible,
 .icon-btn:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }

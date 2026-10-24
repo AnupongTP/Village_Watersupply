@@ -2,10 +2,10 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const keys = ['search','waterQuantity','district','localAuthority','systemType','operationalStatus','drinkingWaterQuality'];
-  const ids = {search:'filterSearch',waterQuantity:'filterWaterQuantity',district:'filterDistrict',localAuthority:'filterLocalAuthority',systemType:'filterSystemType',operationalStatus:'filterOperationalStatus',drinkingWaterQuality:'filterDrinkingWaterQuality'};
+  const keys = ['search','waterQuantity','district','localAuthority','systemType','operationalStatus','drinkingWaterQuality','publicVisibility'];
+  const ids = {search:'filterSearch',waterQuantity:'filterWaterQuantity',district:'filterDistrict',localAuthority:'filterLocalAuthority',systemType:'filterSystemType',operationalStatus:'filterOperationalStatus',drinkingWaterQuality:'filterDrinkingWaterQuality',publicVisibility:'filterPublicVisibility'};
   const fields = {waterQuantity:'water_quantity',systemType:'system_type',operationalStatus:'operational_status',drinkingWaterQuality:'drinking_water_quality'};
-  const titles = {search:'ค้นหา',waterQuantity:'ความเพียงพอของน้ำ',district:'อำเภอ',localAuthority:'อปท.',systemType:'ประเภทระบบ',operationalStatus:'สถานะระบบ',drinkingWaterQuality:'คุณภาพน้ำดื่ม'};
+  const titles = {search:'ค้นหา',waterQuantity:'ความเพียงพอของน้ำ',district:'อำเภอ',localAuthority:'อปท.',systemType:'ประเภทระบบ',operationalStatus:'สถานะระบบ',drinkingWaterQuality:'คุณภาพน้ำดื่ม',publicVisibility:'การแสดงหน้าสาธารณะ'};
   const colors = {blue:'#0284c7',amber:'#d97706',green:'#059669',red:'#dc2626',gray:'#94a3b8'};
   const fill = {blue:'rgba(2,132,199,.72)',amber:'rgba(217,119,6,.82)',green:'rgba(5,150,105,.82)',red:'rgba(220,38,38,.82)',gray:'rgba(148,163,184,.82)'};
   const dimFill = {blue:'rgba(2,132,199,.18)',amber:'rgba(217,119,6,.18)',green:'rgba(5,150,105,.18)',red:'rgba(220,38,38,.18)',gray:'rgba(148,163,184,.18)'};
@@ -26,7 +26,7 @@
   };
   const monitoringIssues = s => [s.operational_status === 'NOT_WORKING' && 'NOT_WORKING',normal('waterQuantity',s.water_quantity) === 'INSUFFICIENT' && 'INSUFFICIENT',normal('drinkingWaterQuality',s.drinking_water_quality) === 'FAIL' && 'FAIL'].filter(Boolean);
   const isWatch = s => monitoringIssues(s).length > 0;
-  const textSearch = (s,v) => [s.system_name,v.village_name,v.district,v.subdistrict,v.local_authority,s.responsible_agency,s.establishment_agency,s.transfer_agency,s.shared_village_name,label(s.system_type),label(s.operational_status),label(s.drinking_water_quality),label(s.water_quantity)].join(' ').normalize('NFKC').toLocaleLowerCase('th-TH');
+  const textSearch = (s,v) => [s.system_id,s.system_name,v.village_name,v.district,v.subdistrict,v.local_authority,s.responsible_agency,s.establishment_agency,s.transfer_agency,s.shared_village_name,label(s.system_type),label(s.operational_status),label(s.drinking_water_quality),label(s.water_quantity)].join(' ').normalize('NFKC').toLocaleLowerCase('th-TH');
   function snapshot(exclude = [], ignoreSearch = false) {
     const omitted = new Set(exclude), map = villageMap();
     const district = omitted.has('district') ? '' : filters.district;
@@ -37,10 +37,11 @@
     const systems = areaSystems.filter(s => {
       const v=villageOf(s,map);
       if (search && !textSearch(s,v).includes(search)) return false;
+      if (!omitted.has('publicVisibility') && filters.publicVisibility && (s.publicVisible===true?'VISIBLE':s.publicVisible===false?'HIDDEN':'UNKNOWN')!==filters.publicVisibility) return false;
       return Object.keys(fields).every(key => omitted.has(key) || !filters[key] || normal(key,s[fields[key]]) === filters[key]);
     });
     const selectedVillageIds = new Set(systems.map(s => s.village_id));
-    const hasSystemFilter = Object.keys(fields).some(key => !omitted.has(key) && filters[key]);
+    const hasSystemFilter = Object.keys(fields).some(key => !omitted.has(key) && filters[key]) || (!omitted.has('publicVisibility') && Boolean(filters.publicVisibility));
     const villages = areaVillages.filter(v => {
       if (hasSystemFilter) return selectedVillageIds.has(v.village_id);
       if (!search) return true;
@@ -76,10 +77,11 @@
     const active=keys.filter(key=>filters[key]);
     $('filterCount').textContent=String(active.length);
     $('btnClearFilters').disabled=!active.length;
+    $('btnClearFilters').classList.toggle('hidden',!active.length);
     $('scopeLabel').textContent=filters.district ? `อำเภอ${filters.district}` : 'จังหวัดพะเยา';
     const chips=$('activeFilterChips');
     chips.classList.toggle('hidden',!active.length);
-    const chipOrder=['search','district','localAuthority','systemType','operationalStatus','drinkingWaterQuality','waterQuantity'];
+    const chipOrder=['search','district','localAuthority','systemType','operationalStatus','drinkingWaterQuality','waterQuantity','publicVisibility'];
     chips.innerHTML=active.length?`<span class="text-[10px] font-semibold text-slate-400">ตัวกรองที่ใช้งาน</span>${chipOrder.filter(key=>filters[key]).map(key=>{
       const text=`${titles[key]}: ${key==='search'?`“${filters[key]}”`:label(filters[key])}`;
       return `<button class="btn btn-outline" type="button" data-filter-remove="${key}" aria-label="ล้างตัวกรอง ${esc(text)}"><span>${esc(text)}</span><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>`;

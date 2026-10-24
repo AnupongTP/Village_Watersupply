@@ -232,6 +232,83 @@ const editableSystem = {
   shared_villages_json: '[{"village_id":"QA-VILLAGE-2"}]'
 };
 const managementUser = { ...user, role: 'ADMIN' };
+
+for (const width of [1440, 390]) test(`committed before-after summary, history and dirty Save state at ${width}px`, async ({ page },testInfo) => {
+  await page.setViewportSize({ width, height: 900 });
+  const before={...editableSystem,capacity_m3_hr:0};
+  const after={...before,capacity_m3_hr:7};
+  const boot=managementMocks()['data.bootstrap'].data;
+  const network=await openManagement(page,{
+    'data.bootstrap':success({...boot,permissions:[...boot.permissions,'VIEW_ENTITY_HISTORY']}),
+    'data.waterSystem':success({system:before}),
+    'data.updateWaterSystem':success({system:after,changeSummary:{before:{capacity_m3_hr:0,record_version:1,construction_year_ce:2008,responsible_agency:null},after:{capacity_m3_hr:7,record_version:2,construction_year_ce:2002,responsible_agency:''}}}),
+    'data.entityHistory':success({history:[{auditId:'SYNTHETIC-AUDIT',action:'SYSTEM_UPDATE',username:'synthetic-admin',role:'ADMIN',timestamp:'2026-01-01T00:00:00Z',status:'COMMITTED',
+      before:{system_name:'<img src=x onerror=alert(1)>',responsible_agency:null,record_version:1},after:{system_name:'Recorded name',responsible_agency:'',record_version:2}}]})
+  });
+  await openEditFromTable(page,width===390);
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
+  await page.locator('#editReason').fill('A reason alone is not a data change');
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
+  await page.locator('#edit_system_name').fill(before.system_name+'  ');
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
+  await page.locator('#edit_capacity_m3_hr').fill('5');
+  await expect(page.locator('#saveEditButton')).toBeEnabled();
+  await page.locator('#edit_capacity_m3_hr').fill('0');
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
+  await page.locator('#edit_capacity_m3_hr').fill('5');
+  await page.locator('#saveEditButton').click();
+  const summary=page.locator('#saveSummaryDialog');
+  await expect(summary).toBeVisible();
+  // The server committed 7, different from submitted 5: never invent the diff from request state.
+  await expect(summary.locator('.change-row dd span')).toHaveText(['0','7']);
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  expect((await new AxeBuilder({page}).include('#saveSummaryDialog').analyze()).violations).toEqual([]);
+  await page.screenshot({path:testInfo.outputPath(`save-summary-${width}.png`)});
+  await expect(summary.locator('details')).toHaveCount(0);
+  await expect(summary.getByRole('button',{name:'ดูประวัติ'})).toHaveCount(0);
+  await summary.getByRole('button',{name:'ตกลง'}).click();
+  await expect(summary).toBeHidden();
+  await expect(page.locator('#systemDialogBody .save-change-summary')).toHaveCount(0);
+  await expect(page.locator('#systemDialogBody')).toContainText('7');
+  await page.locator('#systemDialog .drawer-footer [data-dismiss-dialog]').click();
+  await clickSystemAction(page,'history');
+  await expect(page.locator('#historyList .change-count')).toHaveText('เปลี่ยนข้อมูล 1 ช่อง');
+  await expect(page.locator('#historyList .change-row').first()).toContainText('<img src=x onerror=alert(1)>');
+  await expect(page.locator('#historyList img')).toHaveCount(0);
+  await page.locator('#historyList summary').filter({hasText:'การเปลี่ยนรูปแบบค่าว่าง'}).click();
+  await expect(page.locator('#historyList')).toContainText('ไม่มีค่า (NULL)');
+  await expect(page.locator('#historyList')).toContainText('ข้อความว่าง');
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  expect((await new AxeBuilder({page}).include('#historyPanel').analyze()).violations).toEqual([]);
+  await page.screenshot({path:testInfo.outputPath(`history-before-after-${width}.png`)});
+  expect(network.calls.filter(c=>c.action==='data.updateWaterSystem')).toHaveLength(1);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('one global filter controls KPI map and list while list search remains local',async({page})=>{
+  const network=await openManagement(page,{'data.dashboard':mapDashboard([visibleMapSystem,hiddenMapSystem])});
+  await expect(page.locator('#btnClearFilters')).toBeHidden();
+  await expect(page.locator('#districtFilter,#statusFilter,#publicFilter,#clearFiltersButton')).toHaveCount(0);
+  await page.locator('#searchInput').fill('QA-MAP-HIDDEN');
+  await expect(page.locator('#resultCount')).toContainText('แสดง 1 จาก 2');
+  await expect(page.locator('#kpiSystems')).toHaveText('2');
+  expect(await page.evaluate(()=>window.VWSTechnicianMap.markerCount())).toBe(2);
+  await expect(page.locator('#btnClearFilters')).toBeHidden();
+  await page.locator('#filterPublicVisibility').selectOption('HIDDEN');
+  await expect(page.locator('#btnClearFilters')).toBeVisible();
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  expect(await page.evaluate(()=>window.VWSTechnicianMap.markerCount())).toBe(1);
+  await page.locator('#btnClearFilters').click();
+  await expect(page.locator('#searchInput')).toHaveValue('QA-MAP-HIDDEN');
+  await expect(page.locator('#btnClearFilters')).toBeHidden();
+  await expect(page.locator('#kpiSystems')).toHaveText('2');
+  await page.locator('#searchInput').fill('');
+  await page.locator('#filterSearch').fill('QA-MAP-HIDDEN');
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await expect(page.locator('#allSystemsCount')).toHaveText('1');
+  expect(network.calls.filter(c=>c.action==='data.dashboard')).toHaveLength(1);
+});
+
 function managementMocks(extra = {}) {
   return {
     'data.bootstrap': success({ user: managementUser, permissions: ['UPDATE_SYSTEM', 'DELETE_SYSTEM', 'MANAGE_TECHNICIANS'], featureFlags: { technicianDistrictScope: true }, enumCatalog: { usage_type: ['DOMESTIC', 'AGRICULTURE'] } }),
@@ -360,7 +437,7 @@ for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     const fixture = unifiedTableDataset();
     const network = await openManagement(page, fixture.overrides);
-    if (width < 768) await page.locator('#filterToggleButton').click();
+    if (width < 768) await page.locator('#btnFilterToggle').click();
     const rowIds = () => page.locator('#systemsTableBody tr[data-system-id]').evaluateAll(rows => rows.map(row => row.dataset.systemId));
     const cardIds = () => page.locator('#systemsMobileList article[data-system-id]').evaluateAll(rows => rows.map(row => row.dataset.systemId));
     await expect(page.locator('#allSystemsCount')).toHaveText('75');
@@ -384,22 +461,22 @@ for (const width of [1440, 768, 390]) {
     expect(monitored).not.toContain('QA-UNIFIED-002');
     expect(new Set(monitored).size).toBe(25);
     await expect(page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-001"] .system-issue-badges .badge')).toHaveCount(3);
-    await page.locator('#publicFilter').selectOption('HIDDEN');
+    await page.locator('#filterPublicVisibility').selectOption('HIDDEN');
     await expect(page.locator('#resultCount')).toHaveText('แสดง 25 จาก 25 ระบบ');
-    await page.locator('#publicFilter').selectOption('UNKNOWN');
-    await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 25 ระบบ');
-    await page.locator('#publicFilter').selectOption('');
+    await page.locator('#filterPublicVisibility').selectOption('UNKNOWN');
+    await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 0 ระบบ');
+    await page.locator('#filterPublicVisibility').selectOption('');
     await page.locator('#searchInput').fill('QA-UNIFIED-004');
     await expect(page.locator('#resultCount')).toHaveText('แสดง 1 จาก 25 ระบบ');
     await page.locator('#searchInput').fill('ไม่มีระบบนี้');
     await expect(page.locator(width < 768 ? '#systemsMobileList .empty-state' : '#systemsTableBody .empty-row')).toBeVisible();
-    await page.locator('#clearFiltersButton').click();
+    await page.locator('#searchInput').fill('');
     await expect(page.locator('#systemsTableBody tr[data-system-id]')).toHaveCount(25);
     await page.locator('#systemsModeAll').click();
-    await page.locator('#publicFilter').selectOption('UNKNOWN');
-    await expect(page.locator('#resultCount')).toHaveText('แสดง 25 จาก 75 ระบบ');
+    await page.locator('#filterPublicVisibility').selectOption('UNKNOWN');
+    await expect(page.locator('#resultCount')).toHaveText('แสดง 25 จาก 25 ระบบ');
     await expect(page.locator('#systemsTableBody tr[data-system-id="QA-UNIFIED-003"]')).toContainText('ไม่ทราบ');
-    await page.locator('#clearFiltersButton').click();
+    await page.locator('#btnClearFilters').click();
     expect(await rowIds()).toEqual(await cardIds());
     expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(1);
     expect(mutations(network)).toEqual([]);
@@ -458,13 +535,13 @@ test('global and local table filters intersect; hashes restore modes after Back,
   await expect(page.locator('#allSystemsCount')).toHaveText('40');
   await expect(page.locator('#monitoringSystemsCount')).toHaveText('14');
   await expect(page.locator('#systemsScopeNote')).toContainText('ตัวกรองแดชบอร์ด');
-  await page.locator('#districtFilter').selectOption('เชียงคำ');
-  await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 40 ระบบ');
+  await page.locator('#filterDistrict').selectOption('เชียงคำ');
+  await expect(page.locator('#resultCount')).toHaveText('แสดง 35 จาก 35 ระบบ');
   await page.locator('#systemsModeMonitoring').click();
-  await expect(page.locator('#resultCount')).toHaveText('แสดง 0 จาก 14 ระบบ');
+  await expect(page.locator('#resultCount')).toHaveText('แสดง 11 จาก 11 ระบบ');
   await page.goBack();
   await expect(page.locator('#systemsModeAll')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#districtFilter')).toHaveValue('เชียงคำ');
+  await expect(page.locator('#filterDistrict')).toHaveValue('เชียงคำ');
   await page.goForward();
   await expect(page.locator('#systemsModeMonitoring')).toHaveAttribute('aria-pressed', 'true');
   await page.reload();
@@ -926,7 +1003,8 @@ test('saved session deep link waits for verification and rejects unauthorized ac
   const network = await installIsolatedTechnician(page, { 'auth.me': pending.respond });
   await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
   await page.goto(`${origin}/technician/#areas`);
-  await expect(page.locator('#busyOverlay')).toBeVisible();
+  await expect(page.locator('#bootView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
   await captureArchitecture(page, 'technician-boot-1440');
   await expect(page.locator('#loginView')).toBeHidden();
   await expect(page.locator('#appView')).toBeHidden();
@@ -1077,10 +1155,10 @@ for (const viewport of [
       await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
       await openToolSection(page, 'systems');
       if (viewport.width < 768) await page.locator('#filterToggleButton').click();
-      await page.locator('#publicFilter').selectOption('HIDDEN');
+      await page.locator('#filterPublicVisibility').selectOption('HIDDEN');
       await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
       await expect(page.locator('#resultCount')).toHaveText('แสดง 1 จาก 5 ระบบ');
-      await page.locator('#clearFiltersButton').click();
+      await page.locator('#btnClearFilters').click();
       await expect(page.locator('#technicianWaterMap .water-system-marker')).toHaveCount(3);
       await expect(page.locator('#resultCount')).toHaveText('แสดง 5 จาก 5 ระบบ');
       await expect(page.locator('#technicianMapScope')).toContainText('แสดงทุกระบบ');
@@ -1098,6 +1176,30 @@ for (const viewport of [
     });
   });
 }
+
+for (const width of [1440, 390]) test(`table map focus centers the selected popup after repeated selections at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const network = await openManagement(page, { 'data.dashboard': mapDashboard([visibleMapSystem, hiddenMapSystem]) });
+  const rows = width < 768 ? '#systemsMobileList' : '#systemsTableBody';
+  for (const id of ['QA-MAP-VISIBLE', 'QA-MAP-HIDDEN', 'QA-MAP-VISIBLE']) {
+    await openToolSection(page, 'systems');
+    await page.locator(`${rows} [data-system-id="${id}"] .system-map-button`).click();
+    // Leaflet briefly retains the old popup element during its close fade.
+    await expect(page.locator('#technicianWaterMap .system-map-popup')).toHaveCount(1);
+    await expect(page.locator('#technicianWaterMap .system-map-popup')).toContainText(id === 'QA-MAP-VISIBLE' ? 'Visible Synthetic System' : 'Hidden Synthetic System');
+    await expect.poll(() => page.evaluate(() => {
+      const map = document.querySelector('#technicianWaterMap').getBoundingClientRect();
+      const popup = document.querySelector('#technicianWaterMap .system-map-popup')?.getBoundingClientRect();
+      if (!popup) return false;
+      const mobile = matchMedia('(max-width: 767px)').matches;
+      const centerY = map.top + (mobile ? 100 + (map.height - 100 - 16) / 2 : map.height / 2);
+      return Math.abs(popup.left + popup.width / 2 - (map.left + map.width / 2)) <= 4 &&
+        Math.abs(popup.top + popup.height / 2 - centerY) <= 4 &&
+        popup.left >= map.left && popup.right <= map.right && popup.top >= map.top && popup.bottom <= map.bottom;
+    })).toBe(true);
+  }
+  expect(network.calls.filter(call => /^(data\.(update|delete)|technicians\.)/.test(call.action))).toEqual([]);
+});
 
 for (const width of [360, 390]) test(`mobile Technician map popup stays compact at ${width}px without hiding actions`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 844 });
@@ -1216,7 +1318,9 @@ test('later Technician detail selection wins over a stale response', async ({ pa
     'data.waterSystem': envelope => envelope.payload.systemId === visibleMapSystem.system_id ? first.respond() : second.respond()
   });
   await clickSystemAction(page,'view','#systemsTableBody [data-system-id="QA-MAP-VISIBLE"]');
-  await expectBusyDialog(page, 'กำลังโหลดข้อมูลระบบ...');
+  await expect(page.locator('#systemDialog')).toBeVisible();
+  await expect(page.locator('#systemDetailStatus')).toHaveText('กำลังตรวจสอบข้อมูลล่าสุด...');
+  await expect(page.locator('#busyOverlay')).toBeHidden();
   await page.locator('#systemsTableBody [data-system-id="QA-MAP-HIDDEN"] [data-action-trigger]').evaluate(button => button.click());
   await page.locator('#systemActionMenu [data-action="view"]').evaluate(button => button.click());
   second.release();
@@ -1343,45 +1447,43 @@ for (const viewport of [
   test.describe(`Technician loading ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
-    test('session verification is singular, readable, animated and hides after success', async ({ page }) => {
-      await page.emulateMedia({ reducedMotion: 'no-preference' });
+    test('silent resume shows public shell without a modal or private data', async ({ page },testInfo) => {
       const hold = heldResponse(success({ user }));
-      await installIsolatedTechnician(page, { 'auth.me': hold.respond });
+      const network = await installIsolatedTechnician(page, { 'auth.me': hold.respond });
       await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
       await page.goto(`${origin}/technician/`);
-      await expect(page.locator('#bootView')).toBeHidden();
+      await expect(page.locator('#bootView')).toBeVisible();
+      await expect(page.locator('.resume-brand')).toContainText('ระบบข้อมูลประปาหมู่บ้าน');
+      await expect(page.locator('.resume-nav')).toBeVisible();
       await expect(page.locator('#loginView')).toBeHidden();
-      await expect(page.locator('#busyOverlay')).toBeVisible();
-      await expect(page.locator('#busyOverlay .swal2-popup:visible')).toHaveCount(1);
-      await expect(page.locator('#busyOverlay .swal2-title')).toContainText('กำลัง');
-      const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
-      expect(frames.animation).toBe('swal2-rotate-loading');
-      expect(frames.second.time).toBeGreaterThan(frames.first.time);
-      expect(frames.second.transform).not.toBe(frames.first.transform);
-      const a11y = await new AxeBuilder({ page }).include('#busyOverlay').analyze();
-      expect(a11y.violations).toEqual([]);
+      await expect(page.locator('#appView')).toBeHidden();
+      await expect(page.locator('#busyOverlay')).toBeHidden();
+      await expect(page.locator('dialog[open],#bootView .swal2-popup,#bootView a,#bootView input')).toHaveCount(0);
+      await expect(page.locator('#bootView')).not.toContainText(user.username);
+      await expect(page.locator('#retryResumeButton')).toBeHidden();
+      expect((await new AxeBuilder({ page }).include('#bootView').analyze()).violations).toEqual([]);
+      await page.screenshot({path:testInfo.outputPath('silent-session.png')});
       hold.release();
       await expect(page.locator('#appView')).toBeVisible();
       await expect(page.locator('#bootView')).toBeHidden();
       await expect(page.locator('#busyOverlay')).toBeHidden();
+      expect(network.calls.map(c=>c.action)).toEqual(['auth.me','data.bootstrap','data.dashboard']);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     });
 
-    test('reduced motion matches the Public rotating loader and retry remains usable', async ({ page }) => {
-      await page.emulateMedia({ reducedMotion: 'reduce' });
+    test('silent resume failure offers inline retry without exposing dashboard', async ({ page }) => {
       const hold = heldResponse(failure('TEMPORARY', 'Synthetic verification interruption'));
       await installIsolatedTechnician(page, { 'auth.me': hold.respond });
       await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
       await page.goto(`${origin}/technician/`);
-      await expect(page.locator('#busyOverlay')).toBeVisible();
-      await expect(page.locator('#busyOverlay .swal2-title')).toContainText('กำลัง');
-      const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
-      expect(frames.animation).toBe('swal2-rotate-loading');
-      expect(frames.second.transform).not.toBe(frames.first.transform);
+      await expect(page.locator('#bootView')).toBeVisible();
+      await expect(page.locator('#busyOverlay')).toBeHidden();
       hold.release();
       await expect(page.locator('#retryResumeButton')).toBeVisible();
-      await expect(page.locator('#bootView .boot-actions')).toBeHidden();
+      await expect(page.locator('#bootError')).toBeVisible();
       await expect(page.locator('#loginView')).toBeHidden();
+      await expect(page.locator('#appView')).toBeHidden();
+      await expect(page.locator('dialog[open]')).toHaveCount(0);
     });
   });
 }
@@ -1437,7 +1539,7 @@ test('reduced-motion busy dialog matches Public rotation and clears after succes
   await expect(page.locator('#busyOverlay')).toBeHidden();
 });
 
-test('refresh, account listing, detail and history use the shared busy dialog', async ({ page }) => {
+test('refresh and view detail stay non-blocking while account listing and history retain guarded loading', async ({ page }) => {
   const refresh = heldResponse(success({ generatedAt: '2026-01-01T00:00:00Z', villages: [], waterSystems: [editableSystem], waterSources: [] }));
   const list = heldResponse(managementMocks()['technicians.list']);
   const detail = heldResponse(success({ system: editableSystem }));
@@ -1450,14 +1552,17 @@ test('refresh, account listing, detail and history use the shared busy dialog', 
     'data.entityHistory': history.respond
   });
   await page.locator('#refreshButton').click();
-  await expectBusyDialog(page, 'กำลังรีเฟรชข้อมูล...');
+  await expect(page.locator('#refreshStatus')).toContainText('กำลังรีเฟรชข้อมูล');
+  await expect(page.locator('#appView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
   refresh.release();
-  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#refreshStatus')).toHaveText('รีเฟรชข้อมูลแล้ว');
   await clickSystemAction(page, 'view');
-  await expectBusyDialog(page, 'กำลังโหลดข้อมูลระบบ...');
-  detail.release();
-  await expect(page.locator('#busyOverlay')).toBeHidden();
   await expect(page.locator('#systemDialog')).toBeVisible();
+  await expect(page.locator('#systemDetailStatus')).toHaveText('กำลังตรวจสอบข้อมูลล่าสุด...');
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  detail.release();
+  await expect(page.locator('#systemDetailStatus')).toBeHidden();
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
   await openToolSection(page, 'technicians');
   await expectBusyDialog(page, 'กำลังโหลดบัญชีช่างเทคนิค...');
@@ -1520,7 +1625,7 @@ test('edit, delete, account mutation and password loading remain above their dia
   expect(network.calls.filter(call => call.action === 'data.deleteWaterSystem')).toHaveLength(1);
 });
 
-test('account edit and action keep one animated dialog through nested list reload', async ({ page }) => {
+test('account edit and action invalidate the memory list and reload under the active mutation dialog', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   const reload = heldResponse(managementMocks()['technicians.list']);
   const action = heldResponse(success());
@@ -1534,7 +1639,7 @@ test('account edit and action keep one animated dialog through nested list reloa
   await page.locator('#techniciansTableBody [data-tech-action="edit"]').first().click();
   await page.locator('#techDisplayName').fill('Updated Synthetic');
   await page.locator('#technicianForm button[type="submit"]').click();
-  await expectBusyDialog(page, 'กำลังโหลดบัญชีช่างเทคนิค...');
+  await expectBusyDialog(page, 'กำลังบันทึกบัญชี...');
   const firstAnimationTime = await page.locator('#busyOverlay .swal2-loader').evaluate(element => element.getAnimations().find(item => item.effect?.getComputedTiming().iterations === Infinity)?.currentTime);
   const frames = await spinnerFrames(page, '#busyOverlay .swal2-loader');
   expect(frames.second.time).toBeGreaterThan(frames.first.time);
@@ -1717,6 +1822,7 @@ test('coordinate edit uses archive-verified ranges, paired blank semantics and e
   expect(update.payload.request.patch).toMatchObject({ latitude: 19.4, longitude: 100.3 });
   await page.waitForFunction(() => window.VWSTechnicianMap.point('QA-SYSTEM-1')?.lat === 19.4);
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-SYSTEM-1').lat)).toBeCloseTo(19.4);
+  await page.locator('#saveSummaryDialog').getByRole('button',{name:'ตกลง'}).click();
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
   await openEditFromTable(page);
   await page.locator('#edit_latitude').fill('');
@@ -1729,6 +1835,7 @@ test('coordinate edit uses archive-verified ranges, paired blank semantics and e
   expect(network.calls.filter(call => call.action === 'data.updateWaterSystem').at(-1).payload.request.patch).toMatchObject({ latitude: '', longitude: '' });
   await page.waitForFunction(() => window.VWSTechnicianMap.point('QA-SYSTEM-1') === null);
   expect(await page.evaluate(() => window.VWSTechnicianMap.point('QA-SYSTEM-1'))).toBeNull();
+  await page.locator('#saveSummaryDialog').getByRole('button',{name:'ตกลง'}).click();
   await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
   await openEditFromTable(page);
   await page.locator('#edit_latitude').fill('19.2');
@@ -1763,16 +1870,15 @@ test('overlapping read operations keep one SweetAlert until the final operation 
     'data.entityHistory': history.respond
   });
   await page.locator('#refreshButton').click();
-  await expectBusyDialog(page, 'กำลังรีเฟรชข้อมูล...');
-  // Intentionally start a second read while the baseline blocking loader is open.
-  // Dispatch the real handlers; do not pretend a user can click through a modal.
-  await page.locator('#systemsTableBody [data-action-trigger]').first().evaluate(button => button.click());
-  await page.locator('#systemActionMenu [data-action="history"]').evaluate(button => button.click());
+  await expect(page.locator('#refreshStatus')).toContainText('กำลังรีเฟรชข้อมูล');
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await clickSystemAction(page, 'history');
   await page.locator('#historySystemId').evaluate(input => { input.value = 'QA-ANALYTICS-1'; });
   await page.locator('#historySearchButton').evaluate(button => button.click());
   await expectBusyDialog(page, 'กำลังโหลดประวัติ...');
   refresh.release();
   await expectBusyDialog(page, 'กำลังโหลดประวัติ...');
+  await expect(page.locator('#refreshStatus')).toHaveText('รีเฟรชข้อมูลแล้ว');
   history.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
 });
@@ -1797,21 +1903,158 @@ test('failed refresh cleans up loading dialog and remains usable', async ({ page
   });
   await page.locator('#refreshButton').click();
   await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#refreshStatus')).toHaveClass(/error/);
+  await expect(page.locator('#refreshStatus')).toContainText('Synthetic refresh failure');
   await expect(page.locator('#appView')).toBeVisible();
   await expect(page.locator('#refreshButton')).toBeEnabled();
+});
+
+test('rapid explicit refreshes serialize one fresh follow-up and only apply the newest response', async ({ page }) => {
+  const first = heldResponse(success({ generatedAt: '2026-01-02T00:00:00Z', villages: [], waterSystems: [], waterSources: [] }));
+  const newestSystems = [editableSystem, { ...editableSystem, system_id: 'QA-NEWEST-2', system_name: 'Newest second system' }];
+  const second = heldResponse(success({ generatedAt: '2026-01-03T00:00:00Z', villages: [{ village_id: 'QA-VILLAGE-2', village_name: 'Synthetic Neighbor', district: 'จุน' }], waterSystems: newestSystems, waterSources: [] }));
+  let reads = 0;
+  const network = await openManagement(page, {
+    'data.dashboard': () => {
+      reads += 1;
+      if (reads === 1) return managementMocks()['data.dashboard'];
+      return reads === 2 ? first.respond() : second.respond();
+    }
+  });
+  await page.locator('#refreshButton').click();
+  await expect.poll(() => network.calls.filter(call => call.action === 'data.dashboard').length).toBe(2);
+  await page.locator('#refreshButton').click();
+  await page.locator('#refreshButton').click();
+  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(2);
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  first.release();
+  await expect.poll(() => network.calls.filter(call => call.action === 'data.dashboard').length).toBe(3);
+  second.release();
+  await expect(page.locator('#kpiSystems')).toHaveText('2');
+  await expect(page.locator('#refreshStatus')).toHaveText('รีเฟรชข้อมูลแล้ว');
+  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(3);
+});
+
+test('technician accounts reuse only same-session memory and support an explicit refresh', async ({ page }) => {
+  const network = await openManagement(page);
+  await openToolSection(page, 'technicians');
+  await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
+  expect(network.calls.filter(call => call.action === 'technicians.list')).toHaveLength(1);
+  await page.locator('#techniciansPanel [data-return-dashboard]').click();
+  await openToolSection(page, 'technicians');
+  expect(network.calls.filter(call => call.action === 'technicians.list')).toHaveLength(1);
+  await page.locator('#refreshTechniciansButton').click();
+  await expect.poll(() => network.calls.filter(call => call.action === 'technicians.list').length).toBe(2);
+  expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: ['vws_management_token_v2'] });
+});
+
+test('a fresh refresh requested during a running follow-up schedules another server read', async ({ page }) => {
+  const empty = success({ generatedAt: '2026-01-02T00:00:00Z', villages: [], waterSystems: [], waterSources: [] });
+  const first = heldResponse(empty), second = heldResponse(empty), third = heldResponse(managementMocks()['data.dashboard']);
+  let reads = 0;
+  await openManagement(page, { 'data.dashboard': () => [() => managementMocks()['data.dashboard'], first.respond, second.respond, third.respond][reads++]() });
+  await page.locator('#refreshButton').click();
+  await expect.poll(() => reads).toBe(2);
+  await page.locator('#refreshButton').click();
+  first.release();
+  await expect.poll(() => reads).toBe(3);
+  await page.locator('#refreshButton').click();
+  second.release();
+  await expect.poll(() => reads).toBe(4);
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  third.release();
+  await expect(page.locator('#refreshStatus')).toHaveText('รีเฟรชข้อมูลแล้ว');
+});
+
+test('closing pending detail prevents its response from reopening the drawer', async ({ page }) => {
+  const detail = heldResponse(success({ system: editableSystem }));
+  const network = await openManagement(page, { 'data.waterSystem': detail.respond });
+  await clickSystemAction(page, 'view');
+  await expect(page.locator('#systemDetailStatus')).toBeVisible();
+  await expect.poll(() => network.calls.filter(call => call.action === 'data.waterSystem').length).toBe(1);
+  await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+  const response = page.waitForResponse(result => result.request().postDataJSON()?.action === 'data.waterSystem');
+  detail.release();
+  await (await response).finished();
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(page.locator('#systemDialog')).toBeHidden();
+});
+
+test('failed detail verification keeps preview read-only and exposes the failure', async ({ page }) => {
+  const detail = heldResponse(failure('TEMPORARY', 'Synthetic detail failure'));
+  await openManagement(page, { 'data.waterSystem': detail.respond });
+  await clickSystemAction(page, 'view');
+  await expect(page.locator('#editSystemButton')).toBeDisabled();
+  detail.release();
+  await expect(page.locator('#systemDetailStatus')).toHaveClass(/error/);
+  await expect(page.locator('#deleteSystemButton')).toBeDisabled();
+  await expect(page.locator('#appView')).toBeVisible();
+});
+
+test('logout discards account memory and ignores an old pending list after login', async ({ page }) => {
+  const oldList = heldResponse(success({ technicians: [{ userId: 'OLD', username: 'stale-account', displayName: 'Stale', status: 'ACTIVE' }] }));
+  let reads = 0;
+  const network = await openManagement(page, {
+    'technicians.list': () => ++reads === 2 ? oldList.respond() : managementMocks()['technicians.list']
+  });
+  await openToolSection(page, 'technicians');
+  await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
+  await page.locator('#refreshTechniciansButton').click();
+  await expect.poll(() => reads).toBe(2);
+  await page.locator('#logoutButton').evaluate(button => button.click());
+  await expect(page.locator('#loginView')).toBeVisible();
+  await expect(page.locator('#techniciansTableBody')).toBeEmpty();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await submitSyntheticLogin(page);
+  await expect.poll(() => network.calls.filter(call => call.action === 'auth.login').length).toBe(2);
+  await expect(page.locator('#appView')).toBeVisible();
+  await openToolSection(page, 'technicians');
+  await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
+  expect(network.calls.filter(call => call.action === 'technicians.list')).toHaveLength(3);
+  const response = page.waitForResponse(result => result.request().postDataJSON()?.action === 'technicians.list');
+  oldList.release();
+  await (await response).finished();
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(page.locator('#techniciansTableBody')).not.toContainText('stale-account');
+});
+
+test('history ignores an older response after a newer system was selected', async ({ page }) => {
+  const first = heldResponse(success({ history: [] }));
+  const second = heldResponse(success({ history: [] }));
+  let reads = 0;
+  await openManagement(page, { 'data.entityHistory': () => ++reads === 1 ? first.respond() : second.respond() });
+  await clickSystemAction(page, 'history');
+  await expect.poll(() => reads).toBe(1);
+  await page.locator('#historySystemId').evaluate(input => { input.value = 'NEWER-SYSTEM'; });
+  await page.locator('#historySearchButton').evaluate(button => button.click());
+  await expect.poll(() => reads).toBe(2);
+  second.release();
+  await expect(page.locator('#historyList')).toHaveText('ไม่พบประวัติของระบบนี้');
+  const response = page.waitForResponse(result => result.request().postDataJSON()?.action === 'data.entityHistory');
+  first.release();
+  await (await response).finished();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#historySystemId')).toHaveValue('NEWER-SYSTEM');
 });
 
 test('session expiration clears pending busy dialog and returns to login', async ({ page }) => {
   const hold = heldResponse(failure('SESSION_EXPIRED', 'Synthetic session expired'));
   let reads = 0;
-  await openManagement(page, {
+  const network = await openManagement(page, {
     'data.dashboard': () => ++reads === 1 ? managementMocks()['data.dashboard'] : hold.respond()
   });
+  await openToolSection(page, 'technicians');
+  await expect(page.locator('#techniciansTableBody')).toContainText('synthetic-account');
+  await page.locator('#techniciansPanel [data-return-dashboard]').click();
   await page.locator('#refreshButton').click();
-  await expectBusyDialog(page, 'กำลังรีเฟรชข้อมูล...');
+  await expect(page.locator('#refreshStatus')).toContainText('กำลังรีเฟรชข้อมูล');
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await page.locator('#refreshButton').click();
   hold.release();
   await expect(page.locator('#loginView')).toBeVisible();
   await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#techniciansTableBody')).toBeEmpty();
+  expect(network.calls.filter(call => call.action === 'data.dashboard')).toHaveLength(2);
   expect(await page.evaluate(() => sessionStorage.getItem('vws_management_token_v2'))).toBeNull();
 });
 
@@ -1988,7 +2231,8 @@ test('saved valid session shows boot state before validation, never login flash'
   const network = await installIsolatedTechnician(page, managementMocks({ 'auth.me': async () => { await hold; return success({ user: managementUser }); } }));
   await page.addInitScript(value => sessionStorage.setItem('vws_management_token_v2', value), token);
   await page.goto(`${origin}/technician/`, { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#busyOverlay')).toBeVisible();
+  await expect(page.locator('#bootView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
   await expect(page.locator('#loginView')).toBeHidden();
   await expect(page.locator('#appView')).toBeHidden();
   release();
@@ -2010,21 +2254,52 @@ for (const width of [1440, 768, 390]) test(`saved session hides login before def
   await expect(page.locator('#loginView')).toBeHidden();
   await expect(page.locator('#appView')).toBeHidden();
   expect(network.calls).toEqual([]);
-  const fallback = await loadingGeometry(page, '#bootView .swal2-popup');
-  if (directory) { fs.mkdirSync(directory, { recursive: true }); await page.screenshot({ path: path.join(directory, `technician-first-paint-${width}.png`) }); }
+  const before=await page.locator('#bootView').boundingBox();
+  await expect(page.locator('#bootView .swal2-popup')).toHaveCount(0);
   releaseScript();
-  await expect(page.locator('#busyOverlay')).toBeVisible();
-  await expect(page.locator('#bootView')).toBeHidden();
-  const sweet = await loadingGeometry(page, '#busyOverlay .swal2-popup');
-  if (directory) await page.screenshot({ path: path.join(directory, `technician-session-${width}.png`) });
-  for (const key of ['width', 'height']) expect(Math.abs(fallback.popup[key] - sweet.popup[key]), key).toBeLessThanOrEqual(2);
-  for (const key of ['centerX', 'centerY', 'gap']) expect(Math.abs(fallback[key] - sweet[key]), key).toBeLessThanOrEqual(2);
-  expect(fallback.titleSize).toBe(sweet.titleSize);
-  expect(fallback.spinnerColor).toBe(sweet.spinnerColor);
-  console.log(`First-paint/SweetAlert geometry ${width}px`, JSON.stringify({ fallback, sweet }));
+  await expect(page.locator('#bootView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  const after=await page.locator('#bootView').boundingBox();
+  expect(after).toEqual(before);
+  if (directory) { fs.mkdirSync(directory, { recursive: true }); await page.screenshot({ path: path.join(directory, `technician-session-${width}.png`) }); }
   holdMe.release();
   await expect(page.locator('#appView')).toBeVisible();
   expect(network.consoleWarnings).toEqual([]);
+});
+
+test('silent resume waits until bootstrap and dashboard both finish without exposing management actions', async ({ page }) => {
+  const mocks=managementMocks();
+  const boot=heldResponse(mocks['data.bootstrap']);
+  const dash=heldResponse(mocks['data.dashboard']);
+  const network=await installIsolatedTechnician(page,{...mocks,'auth.me':success({user:managementUser}),'data.bootstrap':boot.respond,'data.dashboard':dash.respond});
+  await page.addInitScript(value=>sessionStorage.setItem('vws_management_token_v2',value),token);
+  await page.goto(`${origin}/technician/`);
+  await expect.poll(()=>network.calls.map(c=>c.action)).toEqual(['auth.me','data.bootstrap']);
+  await expect(page.locator('#bootView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#appView')).toBeHidden();
+  boot.release();
+  await expect.poll(()=>network.calls.map(c=>c.action)).toEqual(['auth.me','data.bootstrap','data.dashboard']);
+  await expect(page.locator('#bootView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#appView')).toBeHidden();
+  dash.release();
+  await expect(page.locator('#appView')).toBeVisible();
+  await expect(page.locator('#bootView')).toBeHidden();
+});
+
+test('silent resume still enforces mandatory password change before fetching data', async ({ page }) => {
+  const forced={...managementUser,mustChangePassword:true};
+  const network=await installIsolatedTechnician(page,managementMocks({'auth.me':success({user:forced})}));
+  await page.addInitScript(value=>sessionStorage.setItem('vws_management_token_v2',value),token);
+  await page.goto(`${origin}/technician/`);
+  await expect(page.locator('#passwordDialog')).toBeVisible();
+  await expect(page.locator('#bootView')).toBeHidden();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#passwordCloseButton')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#passwordDialog')).toBeVisible();
+  expect(network.calls.map(c=>c.action)).toEqual(['auth.me']);
 });
 
 test('temporary resume failure retains token but never reveals dashboard', async ({ page }) => {
@@ -2335,6 +2610,45 @@ test('Phase B service values serialize exactly and shared villages support touch
   expect(updates[0].payload.request.patch).toEqual({ beneficiaries: 125, monthly_production_cost: 1300.5, monthly_service_revenue: 900, water_tariff: 9.25, service_agency: 'หน่วยงานใหม่', shared_villages_json: [] });
 });
 
+for (const width of [1440, 390]) {
+  test(`required owner blank is explained before dispatch and explicit UNKNOWN saves at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const boot = managementMocks()['data.bootstrap'];
+    const network = await openManagement(page, {
+      'data.bootstrap': success({ ...boot.data, enumCatalog: { ...boot.data.enumCatalog, owner_type: ['LOCAL_AUTHORITY', 'UNKNOWN'] } }),
+      'data.waterSystem': success({ system: { ...editableSystem, owner_type: 'LOCAL_AUTHORITY' } })
+    });
+    await openEditFromTable(page, width === 390);
+    await page.locator('#edit_system_name').fill('Edited synthetic name');
+    await page.locator('#edit_owner_type').selectOption('');
+    await page.locator('#saveEditButton').click();
+    await expect(page.locator('#editError')).toHaveText('กรุณาเลือกประเภทเจ้าของ');
+    await expect(page.locator('#edit_owner_type')).toBeFocused();
+    expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toHaveLength(0);
+    await page.locator('#edit_owner_type').selectOption('UNKNOWN');
+    await page.locator('#saveEditButton').click();
+    await expect(page.locator('#editDialog')).not.toBeVisible();
+    const writes = network.calls.filter(call => call.action === 'data.updateWaterSystem');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].payload.request.patch).toEqual({ system_name: 'Edited synthetic name', owner_type: 'UNKNOWN' });
+    expect(writes[0].payload.mutationId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+}
+
+test('untouched legacy owner blank and explicitly cleared optional enums remain supported', async ({ page }) => {
+  const blankOwner = { ...editableSystem, owner_type: '', establishment_type: 'LOCAL_CREATED', transfer_document_status: 'AVAILABLE', water_pressure: 'FLOW_CONTINUOUS' };
+  const network = await openManagement(page, { 'data.waterSystem': success({ system: blankOwner }) });
+  await openEditFromTable(page);
+  await page.locator('#edit_system_name').fill('Unrelated synthetic edit');
+  await page.locator('#edit_transfer_document_status').selectOption('');
+  await page.locator('#edit_water_pressure').selectOption('');
+  await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editDialog')).not.toBeVisible();
+  const writes = network.calls.filter(call => call.action === 'data.updateWaterSystem');
+  expect(writes).toHaveLength(1);
+  expect(writes[0].payload.request.patch).toEqual({ system_name: 'Unrelated synthetic edit', transfer_document_status: '', water_pressure: '' });
+});
+
 test('Phase B rejects invalid numeric values and preserves unknown array values', async ({ page }) => {
   const unknownSystem = { ...editableSystem, usage_types_json: '["DOMESTIC","LEGACY_CODE"]', quality_failure_categories_json: '["LEGACY_QUALITY"]' };
   const network = await openManagement(page, { 'data.waterSystem': success({ system: unknownSystem }) });
@@ -2413,8 +2727,7 @@ test('Phase B displays every rendered field from a synthetic existing record wit
   }
   await expect(page.locator('#sharedVillageCount')).toContainText('1');
   await expect(page.locator('#sharedVillageChips [data-remove-village="LEGACY-VILLAGE"]')).toContainText('ไม่อยู่ในรายชื่อปัจจุบัน');
-  await page.locator('#saveEditButton').click();
-  await expect(page.locator('#editError')).not.toBeEmpty();
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
   expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toEqual([]);
 });
 
@@ -2434,9 +2747,12 @@ for (const width of [1440, 768, 390]) {
     await scan('dashboard');
     await openEditFromTable(page, width === 390);
     await scan('edit');
+    await expect(page.locator('#saveEditButton')).toBeDisabled();
+    await page.locator('#edit_beneficiaries').fill('-1');
     await page.locator('#saveEditButton').click();
     await expect(page.locator('#editError')).not.toBeEmpty();
     await scan('edit validation error');
+    await page.locator('#edit_beneficiaries').fill('');
     await page.locator('#editDialog [data-dismiss-dialog]').first().click();
     await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
     await clickSystemAction(page, 'delete', `${width === 390 ? '#systemsMobileList' : '#systemsTableBody'} [data-system-id]`);

@@ -77,6 +77,28 @@ async function openIsolatedPublic(page) {
   return { unexpected, pageErrors };
 }
 
+test('single global filter and separate list search support IDs without revealing hidden systems',async({page})=>{
+  const evidence=await openIsolatedPublic(page);
+  await expect(page.locator('#btnClearFilters')).toBeHidden();
+  await expect(page.locator('#publicListDistrict,#publicListType,#publicListStatus,#publicListClear,#filterPublicVisibility')).toHaveCount(0);
+  await page.locator('#publicListSearch').fill('s27');
+  await expect(page.locator('.problem-table tbody tr')).toHaveCount(1);
+  await expect(page.locator('#kpiSystems')).toHaveText('27');
+  await expect(page.locator('#btnClearFilters')).toBeHidden();
+  await page.locator('#publicListSearch').fill('');
+  await page.locator('#filterSearch').fill('s27');
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await expect(page.locator('#btnClearFilters')).toBeVisible();
+  await expect(page.locator('.problem-table tbody tr')).toHaveCount(1);
+  await page.locator('#filterSearch').fill('hidden-system');
+  await expect(page.locator('#kpiSystems')).toHaveText('0');
+  await expect(page.locator('#problemList')).not.toContainText('บ้านข้อมูลซ่อน');
+  await page.locator('#btnClearFilters').click();
+  await expect(page.locator('#btnClearFilters')).toBeHidden();
+  await expect(page.locator('#kpiSystems')).toHaveText('27');
+  expect(evidence.unexpected).toEqual([]);expect(evidence.pageErrors).toEqual([]);
+});
+
 test('all and monitoring modes, local filters, pagination and R5.1 use only accepted systems', async ({ page }) => {
   const evidence = await openIsolatedPublic(page);
   await expect(page.locator('#publicListMonitoringCount')).toHaveText('5');
@@ -98,14 +120,17 @@ test('all and monitoring modes, local filters, pagination and R5.1 use only acce
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(1);
   await page.locator('#publicListSearch').fill('ระบบข้อมูลซ่อน');
   await expect(page.locator('#problemList .empty-state')).toBeVisible();
-  await page.locator('#publicListClear').click();
-  await page.locator('#publicListDistrict').selectOption('เชียงคำ');
+  await page.locator('#publicListSearch').fill('');
+  if (await page.locator('#btnClearFilters').isEnabled()) await page.locator('#btnClearFilters').click();
+  await page.locator('#filterDistrict').selectOption('เชียงคำ');
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(3);
-  await page.locator('#publicListClear').click();
-  await page.locator('#publicListStatus').selectOption('NOT_WORKING');
+  await page.locator('#publicListSearch').fill('');
+  if (await page.locator('#btnClearFilters').isEnabled()) await page.locator('#btnClearFilters').click();
+  await page.locator('#filterOperationalStatus').selectOption('NOT_WORKING');
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(5);
-  await page.locator('#publicListClear').click();
-  await page.locator('#publicListType').selectOption('GROUNDWATER_SMALL');
+  await page.locator('#publicListSearch').fill('');
+  if (await page.locator('#btnClearFilters').isEnabled()) await page.locator('#btnClearFilters').click();
+  await page.locator('#filterSystemType').selectOption('GROUNDWATER_SMALL');
   await expect(page.locator('#problemList .problem-summary strong')).toHaveText('14');
   expect(evidence.unexpected).toEqual([]);
   expect(evidence.pageErrors).toEqual([]);

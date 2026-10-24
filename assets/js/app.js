@@ -191,6 +191,11 @@ function setDataNotice(kind) {
   document.body.dataset.dataOrigin = origin;
   if (label) label.textContent = origin === 'cache' ? 'ข้อมูลที่บันทึกไว้เมื่อ' : 'โหลดข้อมูลล่าสุด';
   if (!notice) return;
+  if (kind === 'CACHE_PENDING') {
+    notice.hidden = true;
+    notice.textContent = '';
+    return;
+  }
   if (kind === 'LIVE') {
     notice.hidden = true;
     notice.textContent = '';

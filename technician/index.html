@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light">
   <title>แดชบอร์ดช่างเทคนิค — ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</title>
   <script>try { if (sessionStorage.getItem('vws_management_token_v2')) document.documentElement.classList.add('has-session'); } catch (_) {}</script>
-  <style>.has-session #loginView { display: none !important; }.has-session:not(.boot-handoff) #bootView { display: grid !important; }</style>
+  <style>.has-session #loginView { display: none !important; }.has-session:not(.boot-handoff) #bootView { display: block !important; }</style>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,18 +31,23 @@
   <script src="assets/technician-analytics.js" defer></script>
   <script src="assets/technician-map.js" defer></script>
   <script src="assets/supabase-transport.js"></script>
+  <script src="assets/system-changes.js" defer></script>
   <script src="assets/technician.js" defer></script>
 </head>
 <body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
   <a id="skipLink" class="skip-link" href="#loginView">ข้ามไปยังเนื้อหาหลัก</a>
 
-  <div id="bootView" class="swal2-container swal2-center swal2-backdrop-show hidden" aria-live="polite" aria-labelledby="bootTitle">
-    <div class="swal2-popup swal2-modal swal2-show" style="display: grid" role="alertdialog" aria-modal="true" aria-labelledby="bootTitle" aria-busy="true" data-loading="true">
-      <h2 id="bootTitle" class="swal2-title">กำลังตรวจสอบการเข้าสู่ระบบ...</h2>
-      <div class="swal2-actions" style="display: flex" aria-hidden="true"><div class="swal2-loader" style="display: flex"></div></div>
-      <p id="bootError" class="muted hidden" role="alert"></p>
-      <button id="retryResumeButton" class="btn btn-primary hidden" type="button">ลองอีกครั้ง</button>
-    </div>
+  <!-- Public shell only: no account, record or management action before validation. -->
+  <div id="bootView" class="resume-shell hidden">
+    <header class="resume-header">
+      <div class="resume-brand"><div class="brand-mark" aria-hidden="true"><svg width="22" height="26" viewBox="0 0 24 28" fill="currentColor"><path d="M12 1C9 6 3 12 3 18a9 9 0 0 0 18 0c0-6-6-12-9-17Z"/></svg></div><div><h1>ระบบข้อมูลประปาหมู่บ้าน</h1><p>จังหวัดพะเยา</p></div></div>
+      <nav class="resume-nav" tabindex="0" aria-label="เมนูแดชบอร์ดระหว่างตรวจสอบสิทธิ์"><span>ภาพรวม</span><span>แผนที่</span><span>รายพื้นที่</span><span>ระบบประปา</span><span>คุณภาพน้ำ</span><span>จัดการข้อมูล</span></nav>
+    </header>
+    <main class="resume-content" aria-labelledby="bootTitle" tabindex="-1">
+      <div role="status" aria-live="polite"><h2 id="bootTitle" tabindex="-1">กำลังโหลดข้อมูล...</h2></div>
+      <p id="bootError" class="hidden" role="alert"></p>
+      <button id="retryResumeButton" class="btn btn-outline hidden" type="button">ลองอีกครั้ง</button>
+    </main>
   </div>
 
   <!-- Login uses the same Government BI visual language but remains isolated from the app shell. -->
@@ -106,6 +111,7 @@
           </div>
         </div>
       </div>
+      <p id="refreshStatus" class="refresh-status hidden" role="status" aria-live="polite"></p>
 
       <nav class="border-t border-slate-100" aria-label="เมนูส่วนต่าง ๆ ของแดชบอร์ด">
         <div class="mx-auto flex max-w-[1600px] items-center gap-1 px-3 py-1.5 leading-relaxed sm:px-5 xl:px-6">
@@ -138,10 +144,10 @@
       </div>
 
       <div id="dashboardFilterPanel" class="hidden pt-3 md:block md:pt-0">
-        <div class="mb-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
-          <label class="filter-field">
+        <div class="dashboard-filter-grid">
+          <label class="filter-field dashboard-filter-search">
             <span>ค้นหาทั้งแดชบอร์ด</span>
-            <input id="filterSearch" class="filter-select font-sans" type="search" autocomplete="off" placeholder="ค้นหาชื่อระบบ หมู่บ้าน อำเภอ อปท. หรือหน่วยงาน">
+            <input id="filterSearch" class="filter-select font-sans" type="search" autocomplete="off" placeholder="ค้นหาชื่อระบบ รหัสระบบ หมู่บ้าน อำเภอ อปท. หรือหน่วยงาน">
           </label>
           <label class="filter-field">
             <span>ความเพียงพอของน้ำ</span>
@@ -149,9 +155,6 @@
               <option value="">ทั้งหมด</option>
             </select>
           </label>
-        </div>
-
-        <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[0.85fr_1.15fr_1.15fr_0.95fr_1.05fr_auto] xl:items-end">
           <label class="filter-field">
             <span>อำเภอ</span>
             <select id="filterDistrict" class="filter-select"><option value="">ทั้งหมด</option></select>
@@ -176,7 +179,8 @@
               <option value="">ทั้งหมด</option>
             </select>
           </label>
-          <button id="btnClearFilters" class="btn btn-ghost w-full xl:w-auto" type="button" disabled>
+          <label class="filter-field"><span>การแสดงหน้าสาธารณะ</span><select id="filterPublicVisibility" class="filter-select"><option value="">ทั้งหมด</option><option value="VISIBLE">แสดง</option><option value="HIDDEN">ไม่แสดง</option><option value="UNKNOWN">ไม่ทราบ</option></select></label>
+          <button id="btnClearFilters" class="btn btn-ghost dashboard-filter-reset hidden" type="button" disabled>
             <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
             <span>ล้างตัวกรอง</span>
           </button>
@@ -321,20 +325,10 @@
         <button id="systemsModeMonitoring" class="system-mode-button" type="button" data-system-mode="monitoring" aria-pressed="true">เฝ้าระวัง (<span id="monitoringSystemsCount">0</span>)</button>
       </div>
         <section id="technicianManagementSection" class="filter-shell technician-section-anchor" aria-label="ตัวกรองระบบประปา">
-          <div class="filter-mobile-head">
-            <div><p class="eyebrow">ตัวกรองข้อมูล</p><p class="filter-mobile-summary">ค้นหาและจำกัดรายการระบบประปา</p></div>
-            <button id="filterToggleButton" class="btn btn-outline" type="button" aria-expanded="false" aria-controls="filterPanel">
-              <i class="fa-solid fa-sliders" aria-hidden="true"></i><span>ตัวกรอง</span>
-            </button>
-          </div>
-          <div id="filterPanel" class="filter-panel">
-            <label class="filter-field search-field">ค้นหา
-              <div class="input-with-icon"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="searchInput" type="search" autocomplete="off" placeholder="ชื่อระบบ หมู่บ้าน อำเภอ อปท. หรือรหัสระบบ"></div>
+          <div id="filterPanel" class="filter-panel list-search-only">
+            <label class="filter-field search-field">ค้นหาในรายการ
+              <div class="input-with-icon"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="searchInput" type="search" autocomplete="off" placeholder="ชื่อระบบ รหัสระบบ หมู่บ้าน อำเภอ หรือ อปท."></div>
             </label>
-            <label class="filter-field">อำเภอ<select id="districtFilter"><option value="">ทั้งหมด</option></select></label>
-            <label class="filter-field">สถานะระบบ<select id="statusFilter"><option value="">ทั้งหมด</option></select></label>
-            <label class="filter-field">การแสดงบนหน้าสาธารณะ<select id="publicFilter"><option value="">ทั้งหมด</option><option value="VISIBLE">แสดงบนหน้าสาธารณะ</option><option value="HIDDEN">ไม่แสดงบนหน้าสาธารณะ</option><option value="UNKNOWN">ไม่ทราบ</option></select></label>
-            <button id="clearFiltersButton" class="btn btn-ghost clear-filter" type="button"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i><span>ล้างตัวกรอง</span></button>
           </div>
         </section>
 
@@ -371,7 +365,7 @@
       <section id="techniciansPanel" class="dashboard-section hidden" data-workspace="technicians">
         <div class="section-heading page-heading">
           <div><p class="eyebrow">ผู้ดูแลระบบ</p><h2>บัญชีช่างเทคนิค</h2><p class="section-description muted">จัดการบัญชีช่างเทคนิค โดยไม่แสดงรหัสผ่านหรือข้อมูลการเข้าสู่ระบบบนหน้าจอ</p></div>
-          <div class="workspace-heading-actions"><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับแดชบอร์ด</button><button id="createTechnicianButton" class="btn btn-primary" type="button"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>สร้างบัญชีช่างเทคนิค</span></button></div>
+          <div class="workspace-heading-actions"><button class="btn btn-outline workspace-return" data-return-dashboard type="button">กลับแดชบอร์ด</button><button id="refreshTechniciansButton" class="btn btn-outline" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span>รีเฟรชบัญชี</span></button><button id="createTechnicianButton" class="btn btn-primary" type="button"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>สร้างบัญชีช่างเทคนิค</span></button></div>
         </div>
         <section class="data-card">
           <div class="table-scroll technicians-desktop-table" tabindex="0" aria-label="ตารางบัญชีช่างเทคนิค">
@@ -401,6 +395,7 @@
   <dialog id="systemDialog" class="drawer-dialog" aria-labelledby="systemDialogTitle">
     <form method="dialog" class="drawer-panel" id="systemDialogForm">
       <header class="drawer-header"><div><p class="eyebrow">ข้อมูลระบบประปา</p><h3 id="systemDialogTitle">รายละเอียดระบบ</h3></div><button class="icon-btn" type="button" data-dismiss-dialog aria-label="ปิดรายละเอียด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
+      <p id="systemDetailStatus" class="detail-load-status hidden" role="status" aria-live="polite"></p>
       <div id="systemDialogBody" class="drawer-body"></div>
       <footer class="drawer-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>ปิด</button><button id="editSystemButton" class="btn btn-primary" type="button"><i class="fa-solid fa-pen" aria-hidden="true"></i><span>แก้ไขข้อมูล</span></button><button id="deleteSystemButton" class="btn btn-danger" type="button"><i class="fa-solid fa-trash" aria-hidden="true"></i><span>ลบระบบ</span></button></footer>
     </form>
@@ -410,7 +405,15 @@
     <form id="editForm" class="modal-card" method="dialog">
       <header class="modal-header"><div><p class="eyebrow">แก้ไขข้อมูล</p><h3 id="editDialogTitle">-</h3></div><button class="icon-btn" type="button" data-dismiss-dialog aria-label="ปิด"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="icon-fallback">×</span></button></header>
       <div class="modal-body edit-modal-body"><div id="editFields" class="edit-sections"></div><label class="full field-label edit-reason">หมายเหตุ/เหตุผลการแก้ไข<textarea id="editReason" rows="3" placeholder="ไม่บังคับ แต่ควรระบุเมื่อเป็นการแก้ข้อมูลสำคัญ"></textarea></label><p id="editError" class="form-error" role="alert"></p></div>
-      <footer class="modal-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>ยกเลิก</button><button id="saveEditButton" class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>บันทึกการแก้ไข</span></button></footer>
+      <footer class="modal-footer"><button class="btn btn-ghost" type="button" data-dismiss-dialog>ยกเลิก</button><button id="saveEditButton" class="btn btn-primary" type="submit" disabled><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>บันทึกการแก้ไข</span></button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="saveSummaryDialog" class="modal" aria-labelledby="saveSummaryTitle">
+    <form method="dialog" class="modal-card">
+      <header class="modal-header"><h2 id="saveSummaryTitle">บันทึกการแก้ไขสำเร็จ</h2></header>
+      <div id="saveSummaryBody" class="modal-body"></div>
+      <footer class="modal-footer"><button class="btn btn-primary" type="submit" autofocus>ตกลง</button></footer>
     </form>
   </dialog>
 

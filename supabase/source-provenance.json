@@ -8,13 +8,20 @@
     "management": {
       "archiveEntry": "supabase/functions/management/index.ts",
       "archiveSHA256": "a6d30284b23e095b7c363570ad43e650a4a26cd245d23579c403ff321e95c6ee",
-      "workingSHA256": "71a6d002b5facef2d0e6f81c7ce9e61a3ba4898ebfb532ffde8b3f6d150dc148",
+      "workingSHA256": "5eb9debca7ad727fb286634146dd6ac473e11a7ea80bcc6e1138731ae0bf9b9c",
       "normalizedMatchesZIP": false,
       "cloudSource": "UNVERIFIED",
       "localAddedLines": [
+        " // Preserve untouched SQL NULLs: send only canonical changes, including derived dependents.",
+        " const changed=new Set(__canonical.changedFields(row,after));",
+        " return Object.fromEntries(Object.entries(after).filter(([k])=>changed.has(k)&&!['system_id','village_id','source_excel_row','system_no','created_at'].includes(k)).map(([k,v])=>[k,v===''&&['latitude','longitude','capacity_m3_hr','households_served','construction_year_be','construction_year_ce','transfer_year_be','beneficiaries','monthly_production_cost','monthly_service_revenue','water_tariff'].includes(k)?null:v]));}",
         " mid=begin.jobId||mid; // Resume the server-authoritative job after refresh."
       ],
-      "workingNormalizedSHA256": "e7715d3c2a4b4f8b26f2c9529488974636dca5e5feda642daf303e4591b44493"
+      "workingNormalizedSHA256": "02148df3d7b2c2c1bba387948350327e082a605ccdca4b1eddb41cd7969b17d4",
+      "localRemovedLines": [
+        " return Object.fromEntries(Object.entries(after).filter(([k])=>!['system_id','village_id','source_excel_row','system_no','created_at'].includes(k)).map(([k,v])=>[k,v===''&&['latitude','longitude','capacity_m3_hr','households_served','construction_year_be','construction_year_ce','transfer_year_be','beneficiaries','monthly_production_cost','monthly_service_revenue','water_tariff'].includes(k)?null:v]));}"
+      ],
+      "localDiffNote": "Canonical server Auth job ID plus delta-only system updates preserving untouched NULLs; Cloud source remains UNVERIFIED."
     },
     "public-data": {
       "archiveEntry": "supabase/functions/public-data/index.ts",

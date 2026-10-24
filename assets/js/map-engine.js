@@ -169,6 +169,33 @@ export function createMapEngine(config) {
       if (!active || revision !== mapInteractionRevision ||
           (config.allowUnrenderedFocus && config.findSystem(id) !== system)) return;
       invalidate();
+      if (config.centerFocusedPopup) {
+        // Opening during an animated setView lets popup auto-pan fight the move.
+        // Settle the map first, then center the measured popup, not its marker.
+        map.closePopup();
+        map.stop();
+        map.setView(marker.getLatLng(), 16, { animate: false });
+        const popup = marker.getPopup();
+        const autoPan = popup.options.autoPan;
+        popup.options.autoPan = false;
+        try {
+          marker.openPopup();
+          const element = popup.getElement();
+          if (element) {
+            const box = element.getBoundingClientRect();
+            const frame = map.getContainer().getBoundingClientRect();
+            const mobile = window.matchMedia('(max-width: 767px)').matches;
+            const centerY = frame.top + (mobile ? 100 + (frame.height - 116) / 2 : frame.height / 2);
+            map.panBy([
+              box.left + box.width / 2 - (frame.left + frame.width / 2),
+              box.top + box.height / 2 - centerY
+            ], { animate: false });
+          }
+        } finally {
+          popup.options.autoPan = autoPan;
+        }
+        return;
+      }
       map.setView(marker.getLatLng(), 16, { animate: true });
       marker.openPopup();
     };

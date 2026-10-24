@@ -19,6 +19,7 @@
     tableScopeTotal: 0,
     page: 1,
     selectedSystem: null,
+    savedSummary: null,
     technicians: [],
     selectedTechnician: null,
     technicianDialogMode: 'create',
@@ -28,9 +29,19 @@
     sharedVillageLimit: 20,
     mutating: false,
     selectionRequest: 0,
+    historyRequest: 0,
     datasetGeneration: 0,
-    refreshRequest: 0
+    refreshRequest: 0,
+    dashboardIntent: 0,
+    dashboardAppliedRequest: 0,
+    refreshStatusIntent: 0,
+    technicianRequest: 0,
+    techniciansLoadedToken: ''
   };
+  let dashboardRequest=null;
+  let queuedDashboardRequest=null;
+  let accountsRequest=null;
+  const systemRequests=new Map();
 
   const ENUM_LABELS = {
     LOCAL_AUTHORITY:'อปท.',VILLAGE_OR_OTHER:'หมู่บ้าน/หน่วยงานอื่น',UNKNOWN:'ไม่ทราบ',
@@ -41,7 +52,7 @@
     SUFFICIENT:'เพียงพอ',INSUFFICIENT:'ไม่เพียงพอ',YES:'ใช่',NO:'ไม่ใช่',LOCAL_CREATED:'อปท. สร้าง',ACCEPTED_ASSET:'รับมอบทรัพย์สิน',
     TRANSFERRED:'ถ่ายโอน',NOT_LOCAL_AUTHORITY_ASSET:'ไม่ใช่ทรัพย์สิน อปท.',AVAILABLE:'มีเอกสาร',NOT_AVAILABLE:'ไม่มีเอกสาร',
     FLOW_CONTINUOUS:'ไหลต่อเนื่อง',FLOW_STRONG_SOMETIMES:'แรงเป็นบางช่วง',FLOW_WEAK_CONTINUOUS:'ไหลอ่อนต่อเนื่อง',YEAR_ROUND:'ตลอดปี',SEASONAL:'ตามฤดูกาล',
-    ACTIVE:'ใช้งาน',DISABLED:'ปิดใช้งาน',DELETED:'ยกเลิก'
+    ACTIVE:'ใช้งาน',DISABLED:'ปิดใช้งาน',DELETED:'ยกเลิก',VISIBLE:'แสดง',HIDDEN:'ไม่แสดง'
   };
   const MONTH_LABELS = {JAN:'ม.ค.',FEB:'ก.พ.',MAR:'มี.ค.',APR:'เม.ย.',MAY:'พ.ค.',JUN:'มิ.ย.',JUL:'ก.ค.',AUG:'ส.ค.',SEP:'ก.ย.',OCT:'ต.ค.',NOV:'พ.ย.',DEC:'ธ.ค.'};
   const QUALITY_CATEGORY_LABELS = {PHYSICAL:'กายภาพ',GENERAL_CHEMICAL:'เคมีทั่วไป',GENERAL_HEAVY_METALS:'โลหะหนักทั่วไป',TOXIC_HEAVY_METALS:'โลหะหนักเป็นพิษ',BACTERIA:'แบคทีเรีย'};
@@ -105,9 +116,13 @@
   function showBusy(text='กำลังประมวลผล...'){return window.VWSTechnicianUI.showLoading(text);}
   function hideBusy(operation){window.VWSTechnicianUI.closeLoading(operation);}
   function clearBusy(){window.VWSTechnicianUI.clearLoading();}
-  let bootOperation=null;
   function toast(message,type='success'){const ui=window.VWSTechnicianUI; (type==='error'?ui.showError:type==='warning'?ui.showWarning:ui.showSuccess)(message);}
   function setError(id,message=''){ $(id).textContent=message; }
+  function setRefreshStatus(type='',message=''){
+    const status=$('refreshStatus');
+    status.textContent=message;status.className=`refresh-status${type?` ${type}`:''}${message?'':' hidden'}`;
+    $('refreshButton').setAttribute('aria-busy',String(type==='loading'));
+  }
 
   async function api(action,payload={}) {
     const url=endpoint();
@@ -119,48 +134,50 @@
   }
   function unwrap(response){ if (!response || response.success !== true){ const err=new Error(response?.error?.message || 'คำขอไม่สำเร็จ'); err.code=response?.error?.code || 'UNKNOWN'; err.details=response?.error?.details || {}; throw err; } return response.data || {}; }
   function authPayload(extra={}){ return Object.assign({token:state.token},extra); }
-  function clearSession(){ state.token='';state.user=null;state.bootstrap=null;state.dashboard=null;window.VWSTechnicianMap?.clear();storageRemove(TOKEN_KEY); }
-  function closeBootOperation(){if(bootOperation){hideBusy(bootOperation);bootOperation=null;}}
-  function showLogin(){ state.selectionRequest++;bootOperation=null;clearBusy();closeSystemActionMenu(false);closeAccountMenu();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value='';scheduleBackToTop(); }
-  function showApp(){ closeBootOperation();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('bootView').classList.remove('swal2-container');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');scheduleBackToTop(); }
-  function showBoot(message='กำลังตรวจสอบการเข้าสู่ระบบ...',retry=false){
+  function invalidateTechnicians(){state.technicianRequest++;state.technicians=[];state.selectedTechnician=null;state.techniciansLoadedToken='';accountsRequest=null;$('techniciansTableBody').replaceChildren();$('techniciansMobileList').replaceChildren();}
+  function userIdentity(user){return user?`${user.userId||user.username||''}|${user.role||''}`:'';}
+  function setCurrentUser(user){if(userIdentity(state.user)!==userIdentity(user))invalidateTechnicians();state.user=user||null;}
+  function clearSession(){ state.refreshRequest++;state.dashboardIntent++;state.refreshStatusIntent++;state.selectionRequest++;state.historyRequest++;state.token='';setCurrentUser(null);state.bootstrap=null;state.dashboard=null;state.savedSummary=null;state.dashboardAppliedRequest=0;dashboardRequest=null;queuedDashboardRequest=null;systemRequests.clear();setRefreshStatus();window.VWSTechnicianMap?.clear();storageRemove(TOKEN_KEY); }
+  function startDashboardRequest(intentId=++state.dashboardIntent){
+    const requestId=++state.refreshRequest,token=state.token;
+    const operation=(async()=>{const dash=unwrap(await api('data.dashboard',{token:token,filters:{}}));assertDashboard(dash);return{dash:dash,requestId:requestId,intentId:intentId,token:token};})();
+    dashboardRequest=operation;
+    operation.then(()=>{if(dashboardRequest===operation)dashboardRequest=null;},()=>{if(dashboardRequest===operation)dashboardRequest=null;});
+    return operation;
+  }
+  function requestDashboard(explicitFresh=false){
+    if(!dashboardRequest)return startDashboardRequest();
+    if(!explicitFresh)return dashboardRequest;
+    if(queuedDashboardRequest)return queuedDashboardRequest;
+    const requestedToken=state.token,intentId=++state.dashboardIntent;
+    const queued=dashboardRequest.catch(()=>null).then(()=>{if(!requestedToken||requestedToken!==state.token||intentId!==state.dashboardIntent){const error=new Error('คำขอข้อมูลถูกยกเลิกเนื่องจาก Session เปลี่ยนแล้ว');error.code='STALE_RESPONSE';throw error;}if(queuedDashboardRequest===queued)queuedDashboardRequest=null;return startDashboardRequest(intentId);});
+    queuedDashboardRequest=queued;
+    queued.then(()=>{if(queuedDashboardRequest===queued)queuedDashboardRequest=null;},()=>{if(queuedDashboardRequest===queued)queuedDashboardRequest=null;});
+    return queued;
+  }
+  function acceptDashboardResult(result){
+    if(!isCurrentDashboardResult(result)||result.requestId<=state.dashboardAppliedRequest)return false;
+    state.dashboardAppliedRequest=result.requestId;state.dashboard=result.dash;return true;
+  }
+  function isCurrentDashboardResult(result){return Boolean(result&&result.token===state.token&&result.intentId===state.dashboardIntent&&result.requestId===state.refreshRequest);}
+  function showLogin(){ state.selectionRequest++;clearBusy();closeSystemActionMenu(false);closeAccountMenu();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value='';scheduleBackToTop(); }
+  function showApp(){ document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');scheduleBackToTop(); }
+  function showBoot(message='กำลังโหลดข้อมูล...',retry=false){
     document.documentElement.classList.add('has-session','boot-handoff');
-    $('skipLink').href='#bootView';
+    $('skipLink').href='#bootTitle';
     $('loginView').classList.add('hidden');
     $('appView').classList.add('hidden');
     $('bootTitle').textContent=message;
     $('bootError').textContent=retry?'ไม่สามารถตรวจสอบการเข้าสู่ระบบได้ในขณะนี้ โปรดลองอีกครั้ง':'';
     $('bootError').classList.toggle('hidden',!retry);
     $('retryResumeButton').classList.toggle('hidden',!retry);
-    const bootPopup=$('bootView').querySelector('.swal2-popup');
-    bootPopup.querySelector('.swal2-actions').classList.toggle('hidden',retry);
-    bootPopup.setAttribute('aria-busy',String(!retry));
-    if(retry)bootPopup.removeAttribute('data-loading');else bootPopup.setAttribute('data-loading','true');
-    if(retry){
-      closeBootOperation();
-      $('bootView').classList.remove('swal2-container');
-      $('bootView').classList.add('hidden');
-      window.VWSTechnicianUI.whenIdle().then(()=>{
-        if(!document.documentElement.classList.contains('boot-handoff')||$('retryResumeButton').classList.contains('hidden'))return;
-        $('bootView').classList.add('swal2-container');
-        $('bootView').classList.remove('hidden');
-      });
-    }else if(!window.Swal){
-      closeBootOperation();
-      $('bootView').classList.add('swal2-container');
-      $('bootView').classList.remove('hidden');
-    }else{
-      $('bootView').classList.remove('swal2-container');
-      if(bootOperation)window.VWSTechnicianUI.updateLoading(message,bootOperation);
-      else bootOperation=showBusy(message);
-      $('bootView').classList.add('hidden');
-    }
+    $('bootView').classList.remove('hidden');
   }
 
   async function login(username,password){
     const data=unwrap(await api('auth.login',{username,password,clientInfo:clientInfo()}));
     state.token=String(data.token||''); if(!/^MGT-[0-9a-f]{64}$/.test(state.token)) throw new Error('ข้อมูลยืนยันการเข้าสู่ระบบไม่ถูกต้อง');
-    storageSet(TOKEN_KEY,state.token); state.user=data.user; return data;
+    storageSet(TOKEN_KEY,state.token); setCurrentUser(data.user); return data;
   }
 
   async function bootstrapAndLoad(){
@@ -169,7 +186,7 @@
     try{ boot=unwrap(await api('data.bootstrap',authPayload())); }
     catch(e){
       if(e.code==='AUTH_PASSWORD_CHANGE_REQUIRED'){
-        const me=unwrap(await api('auth.me',{token:state.token})); state.user=me.user;
+        const me=unwrap(await api('auth.me',{token:state.token})); setCurrentUser(me.user);
         if(state.user?.mustChangePassword){ renderCurrentUser(); showApp(); openPasswordDialog(true); return; }
       }
       throw e;
@@ -178,9 +195,10 @@
       const error=new Error(boot.featureFlags?.technicianDistrictScope===true?'บัญชีช่างยังไม่ได้รับมอบหมายอำเภอ กรุณาติดต่อผู้ดูแลระบบ':'ระบบยังไม่พร้อมจำกัดสิทธิ์ช่างตามอำเภอ กรุณาติดต่อผู้ดูแลระบบ');
       error.code='ACCOUNT_DISTRICT_REQUIRED';throw error;
     }
-    state.bootstrap=boot; state.user=boot.user; renderCurrentUser();
-    const dash=unwrap(await api('data.dashboard',authPayload({filters:{}}))); assertDashboard(dash); state.dashboard=dash;
+    state.bootstrap=boot; setCurrentUser(boot.user); renderCurrentUser();
+    const dashboardResult=await requestDashboard(false);if(!acceptDashboardResult(dashboardResult))throw new Error('คำขอข้อมูลแดชบอร์ดถูกแทนที่ กรุณาลองใหม่');
     const canManageAccounts=hasPermission('MANAGE_TECHNICIANS');
+    if(!canManageAccounts)invalidateTechnicians();
     $('techniciansAccountButton').classList.toggle('hidden',!canManageAccounts);
     $('techniciansPanel').classList.add('hidden');
     if(!canManageAccounts&&location.hash==='#techniciansPanel')history.replaceState(null,'',location.pathname+location.search);
@@ -190,7 +208,7 @@
   async function resume(){
     if(!state.token){showLogin();return;}
     showBoot();
-    try{ const me=unwrap(await api('auth.me',{token:state.token})); state.user=me.user; await bootstrapAndLoad(); }
+    try{ const me=unwrap(await api('auth.me',{token:state.token})); setCurrentUser(me.user); await bootstrapAndLoad(); }
     catch(e){ if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_INVALID','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED','ACCOUNT_DISTRICT_REQUIRED'].includes(e.code)){clearSession();showLogin();if(e.code==='ACCOUNT_DISTRICT_REQUIRED')setError('loginError',e.message);}else{state.user=null;state.bootstrap=null;state.dashboard=null;showBoot('ยังตรวจสอบการเข้าสู่ระบบไม่สำเร็จ',true);} }
   }
 
@@ -199,10 +217,10 @@
 
   function renderDashboard(){
     state.datasetGeneration++;
+    if($('systemDialog').open&&!$('systemDetailStatus').classList.contains('hidden')){state.selectionRequest++;setSystemDetailStatus('error','ข้อมูลแดชบอร์ดเปลี่ยนแล้ว กรุณาปิดแล้วเปิดรายละเอียดอีกครั้ง');}
     const d=state.dashboard||{};
     state.villageById=new Map((d.villages||[]).map(v=>[v.village_id,v]));
     $('generatedAt').textContent=fmtDate(d.generatedAt);
-    populateFilters();
     window.VWSTechnicianMap?.init(
       id=>openSystem(id),
       id=>(state.dashboard?.waterSystems||[]).find(s=>String(s.system_id)===String(id)),
@@ -211,17 +229,6 @@
     window.VWSTechnicianAnalytics?.render(d,analyticsLabel);
   }
 
-  function populateFilters(){
-    const systems=state.dashboard?.waterSystems||[];
-    const districts=[...new Set(systems.map(s=>villageForSystem(s).district).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'th'));
-    const current=$('districtFilter').value;
-    $('districtFilter').innerHTML='<option value="">ทั้งหมด</option>'+districts.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
-    if(districts.includes(current))$('districtFilter').value=current;
-    const statuses=[...new Set(systems.map(s=>s.operational_status).filter(Boolean))];
-    const currentStatus=$('statusFilter').value;
-    $('statusFilter').innerHTML='<option value="">ทั้งหมด</option>'+statuses.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(label(v))}</option>`).join('');
-    if(statuses.includes(currentStatus))$('statusFilter').value=currentStatus;
-  }
 
   function villageForSystem(s){return {...(s.village||{}),...(state.villageById.get(s.village_id)||{})};}
   function searchableText(s){const v=villageForSystem(s);return [s.system_id,s.system_name,s.responsible_agency,s.service_agency,v.village_name,v.district,v.subdistrict,v.local_authority].map(v=>String(v||'')).join(' ').normalize('NFKC').toLocaleLowerCase('th-TH');}
@@ -234,8 +241,8 @@
     for(const mode of ['all','monitoring'])$(`systemsMode${mode==='all'?'All':'Monitoring'}`).setAttribute('aria-pressed',String(state.tableMode===mode));
     const base=state.tableMode==='monitoring'?monitoring:scope;
     state.tableBaseTotal=base.length;state.tableScopeTotal=scope.length;
-    const q=$('searchInput').value.trim().normalize('NFKC').toLocaleLowerCase('th-TH'),district=$('districtFilter').value,status=$('statusFilter').value,pub=$('publicFilter').value;
-    state.filteredSystems=base.filter(s=>{const v=villageForSystem(s);return (!q||searchableText(s).includes(q))&&(!district||v.district===district)&&(!status||s.operational_status===status)&&(!pub||publicVisibility(s)===pub);});
+    const q=$('searchInput').value.trim().normalize('NFKC').toLocaleLowerCase('th-TH');
+    state.filteredSystems=base.filter(s=>!q||searchableText(s).includes(q));
     if(state.tableMode==='monitoring')state.filteredSystems.sort((a,b)=>monitoringIssues(b).length-monitoringIssues(a).length||String(a.system_name||a.system_id).localeCompare(String(b.system_name||b.system_id),'th')||String(a.system_id).localeCompare(String(b.system_id)));
     if(resetPage)state.page=1;
     renderSystemsTable();
@@ -266,13 +273,24 @@
   function openSystemActionMenu(trigger){const id=trigger.dataset.id,s=(state.dashboard?.waterSystems||[]).find(item=>String(item.system_id)===id);if(!s)return;if(openSystemMenuTrigger===trigger){closeSystemActionMenu(true);return;}closeSystemActionMenu(false);openSystemMenuTrigger=trigger;trigger.setAttribute('aria-expanded','true');const mutable=s.managementMutable===true,menu=$('systemActionMenu');menu.innerHTML=`<button type="button" data-action="view" data-id="${escapeHtml(id)}">รายละเอียด</button><button type="button" data-action="edit" data-id="${escapeHtml(id)}" ${mutable&&hasPermission('UPDATE_SYSTEM')?'':'disabled'}>แก้ไข</button><button type="button" data-action="history" data-id="${escapeHtml(id)}">ประวัติ</button><button type="button" class="danger" data-action="delete" data-id="${escapeHtml(id)}" ${mutable&&hasPermission('DELETE_SYSTEM')?'':'disabled'}>ลบ</button>`;menu.classList.remove('hidden');positionSystemActionMenu();menu.querySelector('button:not(:disabled)')?.focus({preventScroll:true});}
   function handleSystemAction(action,id){if(action==='edit'&&!hasPermission('UPDATE_SYSTEM')||action==='delete'&&!hasPermission('DELETE_SYSTEM'))return;const s=(state.dashboard?.waterSystems||[]).find(item=>String(item.system_id)===id);if(!s)return;if(['edit','delete'].includes(action)&&s.managementMutable!==true)return;closeSystemActionMenu(false);if(action==='view'||action==='edit'||action==='delete')openSystem(id,action);else if(action==='map'){if(!window.VWSTechnicianMap?.coordinates(s))return;navigateToSection('map-section');if(!window.VWSTechnicianMap?.focus(id))toast('ระบบนี้ไม่อยู่ในขอบเขตแผนที่ปัจจุบัน','warning');}else if(action==='history'){navigateToSection('historyPanel');loadHistory(id);}}
 
-  async function fetchSystem(id){ return unwrap(await api('data.waterSystem',authPayload({systemId:id}))).system; }
+  function setSystemDetailStatus(type='',message=''){const status=$('systemDetailStatus');status.textContent=message;status.className=`detail-load-status${type?` ${type}`:''}${message?'':' hidden'}`;}
+  function fetchSystem(id){
+    const token=state.token,key=`${token}\u0000${id}`;
+    if(systemRequests.has(key))return systemRequests.get(key);
+    const operation=(async()=>unwrap(await api('data.waterSystem',{token:token,systemId:id})).system)();
+    systemRequests.set(key,operation);
+    operation.then(()=>{if(systemRequests.get(key)===operation)systemRequests.delete(key);},()=>{if(systemRequests.get(key)===operation)systemRequests.delete(key);});
+    return operation;
+  }
   async function openSystem(id,mode='view'){
     if((mode==='edit'&&!hasPermission('UPDATE_SYSTEM'))||(mode==='delete'&&!hasPermission('DELETE_SYSTEM')))return;
+    state.savedSummary=null;
     const request=++state.selectionRequest,generation=state.datasetGeneration;
-    const busy=showBusy('กำลังโหลดข้อมูลระบบ...');
-    try{ const system=await fetchSystem(id);if(request!==state.selectionRequest||generation!==state.datasetGeneration)return;state.selectedSystem=system; renderSystemDetail(); if(!$('systemDialog').open)$('systemDialog').showModal(); if(mode==='edit')openEdit(); if(mode==='delete')openDelete(); }
-    catch(e){handleApiError(e);} finally{hideBusy(busy);}
+    const preview=mode==='view'?(state.dashboard?.waterSystems||[]).find(item=>String(item.system_id)===String(id)):null;
+    if(preview){state.selectedSystem=preview;renderSystemDetail();setSystemDetailStatus('loading','กำลังตรวจสอบข้อมูลล่าสุด...');$('editSystemButton').disabled=true;$('deleteSystemButton').disabled=true;if(!$('systemDialog').open)$('systemDialog').showModal();}
+    const busy=preview?null:showBusy('กำลังโหลดข้อมูลระบบ...');
+    try{const system=await fetchSystem(id);if(request!==state.selectionRequest||generation!==state.datasetGeneration)return;state.selectedSystem=system;renderSystemDetail();setSystemDetailStatus();if(!$('systemDialog').open)$('systemDialog').showModal();if(mode==='edit')openEdit();if(mode==='delete')openDelete();}
+    catch(e){if(request!==state.selectionRequest||generation!==state.datasetGeneration)return;if(preview){setSystemDetailStatus('error','โหลดข้อมูลล่าสุดไม่สำเร็จ กรุณาปิดแล้วลองใหม่');$('editSystemButton').disabled=true;$('deleteSystemButton').disabled=true;}handleApiError(e);}finally{if(busy)hideBusy(busy);}
   }
   function detailItem(labelText,value,full=false){return `<div class="detail-item ${full?'full':''}"><span>${escapeHtml(labelText)}</span><strong>${escapeHtml(fmt(value))}</strong></div>`;}
   function detailSection(title,items){return `<section class="detail-section"><h4 class="detail-section-title">${escapeHtml(title)}</h4><div class="detail-grid">${items.join('')}</div></section>`;}
@@ -313,37 +331,50 @@
     $('sharedVillageOptions').innerHTML=matches.length?matches.slice(0,state.sharedVillageLimit).map(v=>`<label class="checkbox-option village-option"><input type="checkbox" name="shared_villages_json" value="${escapeHtml(v.village_id)}" ${state.sharedVillageIds.has(v.village_id)?'checked':''}><span><strong>${escapeHtml(sharedVillageName(v))}</strong><small>${escapeHtml([v.subdistrict,v.district,v.province,v.village_id].filter(Boolean).join(' · '))}</small></span></label>`).join(''):`<p class="selection-help village-empty">${options.length?'ไม่พบหมู่บ้านที่ตรงกับคำค้น':'ไม่มีรายชื่อหมู่บ้านให้เลือก'}</p>`;
     $('sharedVillageMore').classList.toggle('hidden',matches.length<=state.sharedVillageLimit);
   }
-  function openEdit(){const s=state.selectedSystem;if(!s||!s.managementMutable||!hasPermission('UPDATE_SYSTEM'))return;state.editTouched.clear();state.sharedVillageIds=new Set(canonicalShared(s.shared_villages_json)||[]);state.sharedVillageLimit=20;$('editDialogTitle').textContent=s.system_name||s.system_id;$('editFields').innerHTML=renderEditSections(s);renderSharedVillageSelector();$('editReason').value='';setError('editError'); if(!$('editDialog').open)$('editDialog').showModal();}
+  function openEdit(){const s=state.selectedSystem;if(!s||!s.managementMutable||!hasPermission('UPDATE_SYSTEM'))return;state.editTouched.clear();state.sharedVillageIds=new Set(canonicalShared(s.shared_villages_json)||[]);state.sharedVillageLimit=20;$('editDialogTitle').textContent=s.system_name||s.system_id;$('editFields').innerHTML=renderEditSections(s);renderSharedVillageSelector();$('editReason').value='';setError('editError'); if(!$('editDialog').open)$('editDialog').showModal();syncSaveButton();}
   function canonicalArrayString(arr){return arr.length?JSON.stringify(arr):'';}
   function canonicalShared(value){const parsed=parseJsonArray(value);if(parsed===null)return null;return [...new Set(parsed.map(v=>typeof v==='string'?v:(v?.village_id||v?.villageId||'')).filter(Boolean))].sort();}
   function collectPatch(){const s=state.selectedSystem,patch={};
     EDIT_FIELDS.forEach(([key,,type])=>{if(!state.editTouched.has(key))return;let value;
       if(['usage-array','quality-array','months-array'].includes(type)){const selected=[...document.querySelectorAll(`input[name="${key}"]:checked`)].map(x=>x.value);const before=parseJsonArray(s[key]);if(before!==null&&JSON.stringify([...new Set(selected)].sort())!==JSON.stringify([...new Set(before.map(String))].sort()))patch[key]=canonicalArrayString(selected);return;}
       if(type==='villages-array'){const ids=[...state.sharedVillageIds].sort();const before=canonicalShared(s[key]);if(before!==null&&JSON.stringify(ids)!==JSON.stringify(before))patch[key]=ids.map(village_id=>({village_id}));return;}
-      const el=$(`edit_${key}`); if(!el)return; value=el.value;
+      const el=$(`edit_${key}`); if(!el)return; value=el.value;if(['text','textarea','url'].includes(type))value=value.trim();
       if(type==='number'||type==='integer') value=value.trim()===''?'':Number(value);
       const before=s[key]??''; if((type==='number'||type==='integer')&&value!==''&&before!==''&&Number(value)===Number(before))return;if(String(value)!==String(before))patch[key]=value;
     }); return patch; }
 
+  function syncSaveButton(){ $('saveEditButton').disabled=state.mutating||!state.selectedSystem||Object.keys(collectPatch()).length===0; }
+  function changeHtml(values,businessOnly=false){return window.VWSSystemChanges.render(values,{businessOnly,fields:EDIT_FIELDS.map(f=>f[0]),label:key=>({updated_at:'เวลาแก้ไข',created_at:'เวลาสร้าง',record_version:'เวอร์ชันข้อมูล',last_mutation_id:'หมายเลขคำขอ',construction_year_ce:'ปีสร้าง ค.ศ.'}[key]||label(key)),villageName:id=>state.villageById.get(id)?.village_name||id});}
   function beginMutation(dialog){if(state.mutating)return false;state.mutating=true;dialog.querySelectorAll('button[type="submit"]').forEach(button=>button.disabled=true);return true;}
-  function endMutation(dialog){state.mutating=false;dialog.querySelectorAll('button[type="submit"]').forEach(button=>button.disabled=false);}
+  function endMutation(dialog){state.mutating=false;dialog.querySelectorAll('button[type="submit"]').forEach(button=>button.disabled=false);if(dialog.id==='editDialog')syncSaveButton();}
   function editIsDirty(){return Object.keys(collectPatch()).length>0||$('editReason').value.trim()!=='';}
-  function dismissDialog(dialog){if(state.mutating)return;if(dialog.id==='passwordDialog'&&dialog.dataset.forced==='true')return;if(dialog.id==='editDialog'&&editIsDirty()){$('discardDialog').showModal();return;}dialog.close();}
+  function dismissDialog(dialog){if(state.mutating)return;if(dialog.id==='passwordDialog'&&dialog.dataset.forced==='true')return;if(dialog.id==='editDialog'&&editIsDirty()){$('discardDialog').showModal();return;}if(dialog.id==='systemDialog')state.selectionRequest++;dialog.close();}
   function bindDialogDismissal(){document.querySelectorAll('dialog:not(#busyOverlay)').forEach(dialog=>{
     dialog.querySelectorAll('[data-dismiss-dialog]').forEach(button=>button.addEventListener('click',()=>dismissDialog(dialog)));
     dialog.addEventListener('cancel',event=>{event.preventDefault();if(dialog.id==='discardDialog'){dialog.close();return;}dismissDialog(dialog);});
     dialog.addEventListener('click',event=>{if(event.target===dialog)dismissDialog(dialog);});
   });
+    $('systemDialog').addEventListener('close',()=>{state.selectionRequest++;setSystemDetailStatus();});
     $('busyOverlay').addEventListener('cancel',event=>event.preventDefault());
     $('continueEditingButton').addEventListener('click',()=>$('discardDialog').close());
     $('confirmDiscardButton').addEventListener('click',()=>{$('discardDialog').close();$('editDialog').close();});
     $('finalDeleteDialog').addEventListener('close',()=>{pendingDelete=null;});
   }
-  async function saveEdit(){const s=state.selectedSystem,patch=collectPatch();if(!s||!s.managementMutable||!hasPermission('UPDATE_SYSTEM'))return;for(const [key,,type] of EDIT_FIELDS){if(!Object.hasOwn(patch,key)||!['number','integer'].includes(type))continue;const value=patch[key];const coordinate=key==='latitude'||key==='longitude';const min=key==='latitude'?-90:key==='longitude'?-180:0,max=key==='latitude'?90:key==='longitude'?180:Infinity;if(value!==''&&(!Number.isFinite(value)||value<min||value>max||(type==='integer'&&!Number.isInteger(value)))){setError('editError',coordinate?'พิกัดอยู่นอกช่วงที่รองรับ':'กรุณาระบุตัวเลขที่ถูกต้องและไม่ติดลบ');$(`edit_${key}`)?.focus();return;}}
+  async function saveEdit(){const s=state.selectedSystem,patch=collectPatch();if(!s||!s.managementMutable||!hasPermission('UPDATE_SYSTEM'))return;
+    // Validate only edited fields; untouched legacy blanks remain unchanged.
+    for(const [key,title,type] of EDIT_FIELDS){if(Object.hasOwn(patch,key)&&type==='enum'&&key!=='transfer_document_status'&&String(patch[key]??'').trim()===''){setError('editError',`กรุณาเลือก${title}`);$(`edit_${key}`)?.focus();return;}}
+    for(const [key,,type] of EDIT_FIELDS){if(!Object.hasOwn(patch,key)||!['number','integer'].includes(type))continue;const value=patch[key];const coordinate=key==='latitude'||key==='longitude';const min=key==='latitude'?-90:key==='longitude'?-180:0,max=key==='latitude'?90:key==='longitude'?180:Infinity;if(value!==''&&(!Number.isFinite(value)||value<min||value>max||(type==='integer'&&!Number.isInteger(value)))){setError('editError',coordinate?'พิกัดอยู่นอกช่วงที่รองรับ':'กรุณาระบุตัวเลขที่ถูกต้องและไม่ติดลบ');$(`edit_${key}`)?.focus();return;}}
     if(Object.hasOwn(patch,'latitude')||Object.hasOwn(patch,'longitude')){const latitude=Object.hasOwn(patch,'latitude')?patch.latitude:s.latitude,longitude=Object.hasOwn(patch,'longitude')?patch.longitude:s.longitude;if((latitude===''||latitude==null)!==(longitude===''||longitude==null)){setError('editError','กรุณาระบุพิกัดทั้งสองค่า หรือเว้นว่างทั้งสองค่า');return;}}
-    if(!Object.keys(patch).length){setError('editError','ไม่มีข้อมูลที่เปลี่ยนแปลง');return;}if(!beginMutation($('editDialog')))return;const busy=showBusy('กำลังบันทึกการแก้ไข...');
-    try{const data=unwrap(await api('data.updateWaterSystem',authPayload({request:{systemId:s.system_id,expectedVersion:s.recordVersion,patch,reason:$('editReason').value.trim(),clientInfo:clientInfo()}})));state.selectedSystem=data.system;$('editDialog').close();renderSystemDetail();toast('บันทึกการแก้ไขแล้ว');await reloadDashboard(false);}
+    if(!Object.keys(patch).length){setError('editError','ไม่มีข้อมูลที่เปลี่ยนแปลง');return;}if(!beginMutation($('editDialog')))return;state.savedSummary=null;const busy=showBusy('กำลังบันทึกการแก้ไข...');
+    try{const data=unwrap(await api('data.updateWaterSystem',authPayload({request:{systemId:s.system_id,expectedVersion:s.recordVersion,patch,reason:$('editReason').value.trim(),clientInfo:clientInfo()}})));state.selectedSystem=data.system;state.savedSummary={systemId:s.system_id,values:data.changeSummary||null};$('editDialog').close();renderSystemDetail();$('systemDialogBody').scrollTop=0;await reloadDashboard(false);}
     catch(e){if(e.code==='CONFLICT')setError('editError','ข้อมูลถูกแก้โดยรายการอื่น กรุณาปิดหน้าต่างแล้วเปิดข้อมูลล่าสุด');else setError('editError',e.message);}finally{hideBusy(busy);endMutation($('editDialog'));}
+    const summary=state.savedSummary,token=state.token;
+    if(summary?.systemId===s.system_id&&!$('editDialog').open){
+      await window.VWSTechnicianUI.whenIdle();
+      if(!token||token!==state.token||summary!==state.savedSummary||!$('systemDialog').open)return;
+      $('saveSummaryBody').innerHTML=changeHtml(summary.values,true);
+      if(!$('saveSummaryDialog').open)$('saveSummaryDialog').showModal();
+    }
   }
 
   let pendingDelete=null;
@@ -354,17 +385,21 @@
     catch(e){setError('deleteError',e.code==='CONFLICT'?'ข้อมูลเปลี่ยนแล้ว กรุณาโหลดรายการล่าสุดก่อนลบ':e.message);}finally{hideBusy(busy);endMutation($('deleteDialog'));}
   }
 
-  async function loadHistory(systemId){const id=String(systemId||'').trim();if(!id){$('historyList').className='history-list empty-state';$('historyList').textContent='กรุณาระบุรหัสระบบ';return;}const busy=showBusy('กำลังโหลดประวัติ...');
-    try{const data=unwrap(await api('data.entityHistory',authPayload({request:{entityType:'WATER_SYSTEM',entityId:id,limit:200}})));renderHistory(data.history||[]);$('historySystemId').value=id;}
-    catch(e){handleApiError(e);}finally{hideBusy(busy);}
+  async function loadHistory(systemId){const request=++state.historyRequest,token=state.token,id=String(systemId||'').trim();if(!id){$('historyList').className='history-list empty-state';$('historyList').textContent='กรุณาระบุรหัสระบบ';return;}const busy=showBusy('กำลังโหลดประวัติ...');
+    try{const data=unwrap(await api('data.entityHistory',{token:token,request:{entityType:'WATER_SYSTEM',entityId:id,limit:200}}));if(request!==state.historyRequest||token!==state.token)return;renderHistory(data.history||[]);$('historySystemId').value=id;}
+    catch(e){if(request===state.historyRequest&&token===state.token)handleApiError(e);}finally{hideBusy(busy);}
   }
-  function renderHistory(items){const box=$('historyList');box.className='history-list';if(!items.length){box.className='history-list empty-state';box.textContent='ไม่พบประวัติของระบบนี้';return;}box.innerHTML=items.map(a=>`<article class="history-card"><header><div><h4>${escapeHtml(label(a.action))}</h4><div class="history-meta">${escapeHtml(a.username||a.userId)} · ${escapeHtml(label(a.role))} · ${escapeHtml(fmtDate(a.timestamp))}</div></div><span class="badge ${a.status==='COMMITTED'?'good':a.status==='FAILED'?'bad':'warn'}">${escapeHtml(label(a.status))}</span></header><div class="history-change-list">เปลี่ยน: ${escapeHtml((a.changedFields||[]).map(label).join(', ')||'-')}</div>${a.reason?`<div class="history-change-list">เหตุผล: ${escapeHtml(a.reason)}</div>`:''}</article>`).join('');}
+  function renderHistory(items){const box=$('historyList');box.className='history-list';if(!items.length){box.className='history-list empty-state';box.textContent='ไม่พบประวัติของระบบนี้';return;}box.innerHTML=items.map(a=>`<article class="history-card"><header><div><h3>${escapeHtml(label(a.action))}</h3><div class="history-meta">${escapeHtml(a.username||a.userId)} · ${escapeHtml(label(a.role))} · ${escapeHtml(fmtDate(a.timestamp))}</div></div><span class="badge ${a.status==='COMMITTED'?'good':a.status==='FAILED'?'bad':'warn'}">${escapeHtml(label(a.status))}</span></header>${changeHtml(a)}${!window.VWSSystemChanges.diff(a,EDIT_FIELDS.map(f=>f[0]))?`<div class="history-change-list">ช่องที่บันทึกไว้: ${escapeHtml((a.changedFields||[]).map(label).join(', ')||'-')}</div>`:''}${a.reason?`<div class="history-change-list">เหตุผล: ${escapeHtml(a.reason)}</div>`:''}</article>`).join('');}
 
-  async function reloadDashboard(withBusy=true){const request=++state.refreshRequest,busy=withBusy?showBusy('กำลังรีเฟรชข้อมูล...'):null;try{const dash=unwrap(await api('data.dashboard',authPayload({filters:{}})));assertDashboard(dash);if(request===state.refreshRequest){state.dashboard=dash;renderDashboard();}}catch(e){if(request===state.refreshRequest)handleApiError(e);}finally{if(busy)hideBusy(busy);}}
+  async function reloadDashboard(withStatus=true){
+    const intent=withStatus?++state.refreshStatusIntent:state.refreshStatusIntent,token=state.token;
+    if(withStatus)setRefreshStatus('loading','กำลังรีเฟรชข้อมูล โดยยังใช้งานแดชบอร์ดเดิมได้');
+    try{const result=await requestDashboard(true);if(!isCurrentDashboardResult(result))return;if(acceptDashboardResult(result))renderDashboard();if(intent===state.refreshStatusIntent&&(withStatus||$('refreshButton').getAttribute('aria-busy')==='true'))setRefreshStatus('success','รีเฟรชข้อมูลแล้ว');}
+    catch(e){if(token!==state.token||e.code==='STALE_RESPONSE')return;if(intent===state.refreshStatusIntent)setRefreshStatus('error',`รีเฟรชไม่สำเร็จ: ${e.message||'เกิดข้อผิดพลาด'}`);handleApiError(e);}
+  }
   const dashboardSections=['overview','map-section','areas','system-structure','operations','quality','watchlist'];
   const workspaceTargets={historyPanel:'historyPanel',techniciansPanel:'techniciansPanel'};
   const sectionIds=[...dashboardSections,'technicianManagementSection',...Object.keys(workspaceTargets)];
-  let accountsRequest=null;
   let dashboardScrollY=0;
   let activeWorkspace='dashboard';
   let lastDashboardId='overview';
@@ -406,14 +441,24 @@
     else target.scrollIntoView({block:'start',behavior:smooth&&!matchMedia('(prefers-reduced-motion: reduce)').matches?'smooth':'instant'});
     if(updateHash&&location.hash!=='#'+id)history.pushState(null,'','#'+id);
     setActiveSection(id);
-    if(id==='techniciansPanel'&&!accountsRequest){accountsRequest=loadTechnicians().finally(()=>{accountsRequest=null;});}
+    if(id==='techniciansPanel')loadTechnicians();
     if(id==='map-section')requestAnimationFrame(()=>window.VWSTechnicianMap?.invalidate());
     return true;
   }
   function restoreSection(){let id='';try{id=decodeURIComponent(location.hash.slice(1));}catch(_){id='';}if(!sectionAllowed(id)){if(id==='techniciansPanel')history.replaceState(null,'',location.pathname+location.search);id='overview';}navigateToSection(id,{smooth:false,updateHash:false});if(!location.hash)window.scrollTo({top:0,behavior:'instant'});}
   function syncActiveSection(){if($('appView').classList.contains('hidden')||activeWorkspace!=='dashboard')return;const offset=$('appHeader').getBoundingClientRect().height+24;let active=dashboardSections[0],top=-Infinity;for(const id of dashboardSections){const element=$(id);if(!element)continue;const sectionTop=element.getBoundingClientRect().top;if(sectionTop>offset)continue;if(sectionTop>top+1){active=id;top=sectionTop;}else if(Math.abs(sectionTop-top)<=1&&id===lastDashboardId)active=id;}setActiveSection(active==='watchlist'&&state.tableMode==='all'?'technicianManagementSection':active);}
 
-  async function loadTechnicians(){if(!hasPermission('MANAGE_TECHNICIANS'))return;const busy=showBusy('กำลังโหลดบัญชีช่างเทคนิค...');try{state.technicians=unwrap(await api('technicians.list',{token:state.token})).technicians||[];renderTechnicians();}catch(e){handleApiError(e);}finally{hideBusy(busy);}}
+  function loadTechnicians(options={}){
+    if(!hasPermission('MANAGE_TECHNICIANS'))return Promise.resolve();
+    const force=options.force===true,withBusy=options.withBusy!==false;
+    if(!force&&state.techniciansLoadedToken===state.token){renderTechnicians();return Promise.resolve();}
+    if(accountsRequest)return accountsRequest;
+    const request=++state.technicianRequest,token=state.token;
+    const operation=(async()=>{const busy=withBusy?showBusy('กำลังโหลดบัญชีช่างเทคนิค...'):null;try{const technicians=unwrap(await api('technicians.list',{token:token})).technicians||[];if(request!==state.technicianRequest||token!==state.token)return;state.technicians=technicians;state.techniciansLoadedToken=token;renderTechnicians();}catch(e){if(request===state.technicianRequest&&token===state.token)handleApiError(e);}finally{if(busy)hideBusy(busy);}})();
+    accountsRequest=operation;
+    operation.then(()=>{if(accountsRequest===operation)accountsRequest=null;},()=>{if(accountsRequest===operation)accountsRequest=null;});
+    return operation;
+  }
   function technicianActions(u){const id=escapeHtml(u.userId);return u.status==='DELETED'?'':`<button class="mini-btn" data-tech-action="edit" data-id="${id}">แก้ไข</button>${u.status==='ACTIVE'?`<button class="mini-btn" data-tech-action="disable" data-id="${id}">ปิด</button>`:''}${u.status==='DISABLED'?`<button class="mini-btn primary" data-tech-action="enable" data-id="${id}">เปิด</button>`:''}<button class="mini-btn" data-tech-action="reset" data-id="${id}">รีเซ็ตรหัสผ่าน</button><button class="mini-btn danger" data-tech-action="delete" data-id="${id}">ลบบัญชี</button>`;}
   function renderTechnicians(){
     const body=$('techniciansTableBody'),mobile=$('techniciansMobileList'),visible=state.technicians.filter(u=>u.status!=='DELETED');
@@ -457,12 +502,12 @@
         unwrap(await api('technicians.update',authPayload({request:{userId:u.userId,expectedVersion:u.recordVersion,username:$('techUsername').value,displayName:$('techDisplayName').value,district,clientInfo:clientInfo()}})));
         toast('แก้ไขบัญชีช่างเทคนิคแล้ว');
       }
-      $('technicianDialog').close();$('techPassword').value='';await loadTechnicians();
+      $('technicianDialog').close();$('techPassword').value='';invalidateTechnicians();await loadTechnicians({force:true,withBusy:false});
     }catch(e){setError('technicianError',e.message);}finally{hideBusy(busy);endMutation($('technicianDialog'));}
   }
   function findTech(id){return state.technicians.find(u=>u.userId===id);}
   function openAccountAction(action,user){state.accountAction=action;state.selectedTechnician=user;$('actionReason').value='';$('actionPassword').value='';setError('actionError');const reason=action==='delete',password=action==='reset';$('actionReasonLabel').classList.toggle('hidden',!reason);$('actionPasswordLabel').classList.toggle('hidden',!password);const titles={disable:'ปิดการใช้งานบัญชี',enable:'เปิดการใช้งานบัญชี',delete:'ลบบัญชีช่างเทคนิค',reset:'รีเซ็ตรหัสผ่าน'};$('actionTitle').textContent=titles[action];$('actionDescription').textContent=`${user.displayName} (${user.username})`;$('actionConfirmButton').className=`btn ${action==='delete'?'danger':'primary'}`;$('actionDialog').showModal();}
-  async function runAccountAction(){const u=state.selectedTechnician,a=state.accountAction;const map={disable:'technicians.disable',enable:'technicians.enable',delete:'technicians.delete',reset:'technicians.resetPassword'};const req={userId:u.userId,expectedVersion:u.recordVersion,clientInfo:clientInfo()};if(a==='delete'){req.reason=$('actionReason').value.trim();if(!req.reason){setError('actionError','กรุณาระบุเหตุผล');return;}}if(a==='reset'){req.newPassword=$('actionPassword').value;if(!req.newPassword){setError('actionError','กรุณาระบุรหัสผ่านใหม่');return;}}if(!beginMutation($('actionDialog')))return;const busy=showBusy('กำลังดำเนินการบัญชี...');try{unwrap(await api(map[a],authPayload({request:req})));$('actionDialog').close();$('actionPassword').value='';toast('ดำเนินการบัญชีสำเร็จ');await loadTechnicians();}catch(e){setError('actionError',e.message);}finally{hideBusy(busy);endMutation($('actionDialog'));}}
+  async function runAccountAction(){const u=state.selectedTechnician,a=state.accountAction;const map={disable:'technicians.disable',enable:'technicians.enable',delete:'technicians.delete',reset:'technicians.resetPassword'};const req={userId:u.userId,expectedVersion:u.recordVersion,clientInfo:clientInfo()};if(a==='delete'){req.reason=$('actionReason').value.trim();if(!req.reason){setError('actionError','กรุณาระบุเหตุผล');return;}}if(a==='reset'){req.newPassword=$('actionPassword').value;if(!req.newPassword){setError('actionError','กรุณาระบุรหัสผ่านใหม่');return;}}if(!beginMutation($('actionDialog')))return;const busy=showBusy('กำลังดำเนินการบัญชี...');try{unwrap(await api(map[a],authPayload({request:req})));$('actionDialog').close();$('actionPassword').value='';toast('ดำเนินการบัญชีสำเร็จ');invalidateTechnicians();await loadTechnicians({force:true,withBusy:false});}catch(e){setError('actionError',e.message);}finally{hideBusy(busy);endMutation($('actionDialog'));}}
 
   function openPasswordDialog(forced=false){
     ['currentPassword','newPassword','confirmNewPassword'].forEach(id=>$(id).value='');setError('passwordError');
@@ -470,7 +515,7 @@
     $('passwordCloseButton').classList.toggle('hidden',forced);$('passwordCancelButton').classList.toggle('hidden',forced);
     $('passwordDialog').dataset.forced=forced?'true':'false';if(!$('passwordDialog').open)$('passwordDialog').showModal();
   }
-  async function changePassword(){const cur=$('currentPassword').value,next=$('newPassword').value,confirm=$('confirmNewPassword').value;if(next!==confirm){setError('passwordError','รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');return;}if(!beginMutation($('passwordDialog')))return;const busy=showBusy('กำลังเปลี่ยนรหัสผ่าน...');try{unwrap(await api('auth.changePassword',authPayload({request:{currentPassword:cur,newPassword:next,clientInfo:clientInfo()}})));const me=unwrap(await api('auth.me',{token:state.token}));state.user=me.user;['currentPassword','newPassword','confirmNewPassword'].forEach(id=>$(id).value='');$('passwordDialog').close();toast('เปลี่ยนรหัสผ่านแล้ว');await bootstrapAndLoad();}catch(e){setError('passwordError',e.message);}finally{hideBusy(busy);endMutation($('passwordDialog'));}}
+  async function changePassword(){const cur=$('currentPassword').value,next=$('newPassword').value,confirm=$('confirmNewPassword').value;if(next!==confirm){setError('passwordError','รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');return;}if(!beginMutation($('passwordDialog')))return;const busy=showBusy('กำลังเปลี่ยนรหัสผ่าน...');try{unwrap(await api('auth.changePassword',authPayload({request:{currentPassword:cur,newPassword:next,clientInfo:clientInfo()}})));const me=unwrap(await api('auth.me',{token:state.token}));setCurrentUser(me.user);['currentPassword','newPassword','confirmNewPassword'].forEach(id=>$(id).value='');$('passwordDialog').close();toast('เปลี่ยนรหัสผ่านแล้ว');await bootstrapAndLoad();}catch(e){setError('passwordError',e.message);}finally{hideBusy(busy);endMutation($('passwordDialog'));}}
   async function performLogout(){const token=state.token;clearSession();closeAccountMenu();showLogin();try{await api('auth.logout',{token});}catch(_){}}
   function handleApiError(e){if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED'].includes(e.code)){clearSession();document.querySelectorAll('dialog[open]:not(#busyOverlay)').forEach(d=>d.close());showLogin();toast('ช่วงการใช้งานสิ้นสุด กรุณาเข้าสู่ระบบใหม่','error');return;}toast(e.message||'เกิดข้อผิดพลาด','error');}
 
@@ -481,16 +526,16 @@
     });
     for(const id of ['editForm','deleteForm','technicianForm','actionForm','passwordForm'])$(id).addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches('input, select')&&event.target.type!=='checkbox')event.preventDefault();});
     $('retryResumeButton').addEventListener('click',resume);
-    $('editFields').addEventListener('input',event=>{if(event.target.matches('[data-shared-search]')){state.sharedVillageLimit=20;renderSharedVillageSelector();return;}const key=event.target.dataset.field||event.target.name;if(key&&key!=='shared_villages_json')state.editTouched.add(key);});
-    $('editFields').addEventListener('change',event=>{if(event.target.matches('input[name="shared_villages_json"]')){const id=event.target.value;if(event.target.checked)state.sharedVillageIds.add(id);else state.sharedVillageIds.delete(id);state.editTouched.add('shared_villages_json');renderSharedVillageSelector();[...$('sharedVillageOptions').querySelectorAll('input[name="shared_villages_json"]')].find(input=>input.value===id)?.focus();return;}const key=event.target.dataset.field||event.target.name;if(key)state.editTouched.add(key);});
-    $('editFields').addEventListener('click',event=>{const remove=event.target.closest('[data-remove-village]');if(remove){state.sharedVillageIds.delete(remove.dataset.removeVillage);state.editTouched.add('shared_villages_json');renderSharedVillageSelector();$('sharedVillageSearch')?.focus();return;}if(event.target.closest('#sharedVillageMore')){state.sharedVillageLimit+=20;renderSharedVillageSelector();}});
+    $('editFields').addEventListener('input',event=>{if(event.target.matches('[data-shared-search]')){state.sharedVillageLimit=20;renderSharedVillageSelector();return;}const key=event.target.dataset.field||event.target.name;if(key&&key!=='shared_villages_json')state.editTouched.add(key);syncSaveButton();});
+    $('editFields').addEventListener('change',event=>{if(event.target.matches('input[name="shared_villages_json"]')){const id=event.target.value;if(event.target.checked)state.sharedVillageIds.add(id);else state.sharedVillageIds.delete(id);state.editTouched.add('shared_villages_json');renderSharedVillageSelector();[...$('sharedVillageOptions').querySelectorAll('input[name="shared_villages_json"]')].find(input=>input.value===id)?.focus();syncSaveButton();return;}const key=event.target.dataset.field||event.target.name;if(key)state.editTouched.add(key);syncSaveButton();});
+    $('editFields').addEventListener('click',event=>{const remove=event.target.closest('[data-remove-village]');if(remove){state.sharedVillageIds.delete(remove.dataset.removeVillage);state.editTouched.add('shared_villages_json');renderSharedVillageSelector();$('sharedVillageSearch')?.focus();syncSaveButton();return;}if(event.target.closest('#sharedVillageMore')){state.sharedVillageLimit+=20;renderSharedVillageSelector();}});
     $('loginForm').addEventListener('submit',async e=>{e.preventDefault();setError('loginError');const u=$('loginUsername').value,p=$('loginPassword').value;const busy=showBusy('กำลังเข้าสู่ระบบ...');try{await login(u,p);$('loginPassword').value='';await bootstrapAndLoad();}catch(err){clearSession();setError('loginError',err.message);showLogin();}finally{hideBusy(busy);}});
     $('logoutButton').addEventListener('click',performLogout);$('mobileLogoutButton').addEventListener('click',performLogout);
     $('refreshButton').addEventListener('click',()=>reloadDashboard(true));
+    $('refreshTechniciansButton').addEventListener('click',()=>loadTechnicians({force:true}));
     $('changePasswordButton').addEventListener('click',()=>{closeAccountMenu();openPasswordDialog(false);});$('mobileChangePasswordButton').addEventListener('click',()=>{closeAccountMenu();openPasswordDialog(false);});
     $('mobileAccountButton').addEventListener('click',()=>{const menu=$('mobileAccountMenu'),open=menu.classList.contains('hidden');menu.classList.toggle('hidden',!open);$('mobileAccountButton').setAttribute('aria-expanded',open?'true':'false');});
     document.addEventListener('click',e=>{if(!e.target.closest('.mobile-account'))closeAccountMenu();});
-    $('filterToggleButton').addEventListener('click',()=>{const panel=$('filterPanel'),open=panel.classList.toggle('open');$('filterToggleButton').setAttribute('aria-expanded',open?'true':'false');});
     document.querySelectorAll('a.section-link').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();navigateToSection(link.hash.slice(1));}));
     document.querySelectorAll('[data-return-dashboard]').forEach(button=>button.addEventListener('click',()=>navigateToSection(lastDashboardId)));
     $('techniciansAccountButton').addEventListener('click',()=>{closeAccountMenu();navigateToSection('techniciansPanel');});
@@ -500,9 +545,8 @@
     window.addEventListener('resize',()=>{closeSystemActionMenu(false);updateHeaderOffset();requestAnimationFrame(syncActiveSection);scheduleBackToTop();},{passive:true});
     window.addEventListener('hashchange',restoreSection);window.addEventListener('popstate',restoreSection);
     if('ResizeObserver'in window)new ResizeObserver(updateHeaderOffset).observe($('appHeader'));
-    ['searchInput','districtFilter','statusFilter','publicFilter'].forEach(id=>$(id).addEventListener(id==='searchInput'?'input':'change',applyFilters));
+    $('searchInput').addEventListener('input',()=>applyFilters());
     document.querySelectorAll('[data-system-mode]').forEach(button=>button.addEventListener('click',()=>navigateToSection(button.dataset.systemMode==='all'?'technicianManagementSection':'watchlist')));
-    $('clearFiltersButton').addEventListener('click',()=>{$('searchInput').value='';$('districtFilter').value='';$('statusFilter').value='';$('publicFilter').value='';applyFilters();});
     $('prevPage').addEventListener('click',()=>{if(state.page>1){state.page--;renderSystemsTable();}});$('nextPage').addEventListener('click',()=>{if(state.page<Math.ceil(state.filteredSystems.length/PAGE_SIZE)){state.page++;renderSystemsTable();}});
     $('watchlist').addEventListener('click',e=>{const mapButton=e.target.closest('.system-map-button');if(mapButton&&!mapButton.disabled){handleSystemAction('map',mapButton.dataset.id);return;}const trigger=e.target.closest('[data-action-trigger]');if(trigger)openSystemActionMenu(trigger);});
     $('systemActionMenu').addEventListener('click',e=>{const button=e.target.closest('button[data-action]');if(button&&!button.disabled)handleSystemAction(button.dataset.action,button.dataset.id);});

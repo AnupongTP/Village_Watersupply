@@ -12,7 +12,7 @@ import {
 } from './labels.js';
 
 const PAGE_SIZE = 20;
-const listState = { mode: 'all', search: '', district: '', type: '', status: '', page: 1, scopeKey: '' };
+const listState = { mode: 'all', search: '', page: 1, scopeKey: '' };
 
 export function renderProblemList() {
   const root = document.getElementById('problemList');
@@ -30,7 +30,6 @@ export function renderProblemList() {
   document.getElementById('publicListMonitoringCount').textContent = formatNumber(monitoringCount);
   document.getElementById('publicListAll').setAttribute('aria-pressed', String(listState.mode === 'all'));
   document.getElementById('publicListMonitoring').setAttribute('aria-pressed', String(listState.mode === 'monitoring'));
-  populateListFilters(scopeSystems, villageById);
   bindListControlsOnce();
 
   const search = listState.search.trim().toLocaleLowerCase('th');
@@ -38,10 +37,7 @@ export function renderProblemList() {
     .filter(system => listState.mode === 'all' || isWatchSystem(system))
     .map(system => ({ system, village: villageById.get(system.village_id) }))
     .filter(({ system, village }) => (
-      (!listState.district || village?.district === listState.district) &&
-      (!listState.type || String(system.system_type || '').trim() === listState.type) &&
-      (!listState.status || normalizeOperationalStatus(system.operational_status) === listState.status) &&
-      (!search || [systemDisplayName(system, village), villageDisplayName(village), village?.district, village?.subdistrict, village?.local_authority]
+      (!search || [system.system_id, systemDisplayName(system, village), villageDisplayName(village), village?.district, village?.subdistrict, village?.local_authority]
         .some(value => String(value || '').toLocaleLowerCase('th').includes(search)))
     ))
     .sort(listState.mode === 'monitoring' ? compareSeverity : compareName);
@@ -96,20 +92,6 @@ export function renderProblemList() {
   bindActionsOnce(root, villageById);
 }
 
-function populateListFilters(systems, villageById) {
-  const choices = [
-    ['publicListDistrict', 'district', [...new Set(systems.map(s => villageById.get(s.village_id)?.district).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), value => value],
-    ['publicListType', 'type', [...new Set(systems.map(s => String(s.system_type || '').trim()).filter(Boolean))].sort((a, b) => systemTypeLabel(a).localeCompare(systemTypeLabel(b), 'th')), systemTypeLabel],
-    ['publicListStatus', 'status', [...new Set(systems.map(s => normalizeOperationalStatus(s.operational_status)))].sort((a, b) => operationalStatusLabel(a).localeCompare(operationalStatusLabel(b), 'th')), operationalStatusLabel]
-  ];
-  for (const [id, key, values, display] of choices) {
-    const select = document.getElementById(id);
-    if (listState[key] && !values.includes(listState[key])) listState[key] = '';
-    select.innerHTML = '<option value="">ทั้งหมด</option>' + values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(display(value))}</option>`).join('');
-    select.value = listState[key];
-  }
-}
-
 function bindListControlsOnce() {
   const all = document.getElementById('publicListAll');
   if (all.dataset.bound === '1') return;
@@ -126,18 +108,7 @@ function bindListControlsOnce() {
     listState.page = 1;
     renderProblemList();
   });
-  for (const [id, key] of [['publicListDistrict', 'district'], ['publicListType', 'type'], ['publicListStatus', 'status']]) {
-    document.getElementById(id).addEventListener('change', event => {
-      listState[key] = event.target.value;
-      listState.page = 1;
-      renderProblemList();
-    });
-  }
-  document.getElementById('publicListClear').addEventListener('click', () => {
-    Object.assign(listState, { search: '', district: '', type: '', status: '', page: 1 });
-    document.getElementById('publicListSearch').value = '';
-    renderProblemList();
-  });
+
 }
 
 function compareName(a, b) {

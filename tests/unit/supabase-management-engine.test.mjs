@@ -8,6 +8,31 @@ const context={createHash,crypto:webcrypto,TextEncoder,TextDecoder,atob,btoa,Res
 vm.runInContext(source+';globalThis.testEngine=__engine;globalThis.testSecurity=__security;',context);
 const env={TOKEN_ENCRYPTION_KEY:'1'.repeat(64),REQUEST_HMAC_KEY:'synthetic-only',AUTH_IDENTITY_DOMAIN:'invalid.test'};
 const envelope={version:2,action:'technicians.create',payload:{token:'MGT-'+'a'.repeat(64),mutationId:'30000000-0000-4000-8000-000000000002',request:{username:'synthetic',displayName:'Synthetic Display',district:'D1',password:'synthetic-password'}}};
+
+test('system update sends only changed canonical fields, not normalized legacy blanks or metadata',()=>{
+ const before={system_id:'S1',village_id:'V1',system_name:'Before',responsible_agency:null,usage_types_json:null,quality_failure_detail:null};
+ const delta=JSON.parse(JSON.stringify(context.testEngine.intended(before,{system_name:'After'},[])));
+ assert.deepEqual(delta,{system_name:'After'});
+});
+
+test('delta preserves dependent derived fields and intentional clearing',()=>{
+ const before={system_id:'S1',village_id:'V1',system_name:'Before',construction_year_be:2551,construction_year_ce:2008,responsible_agency:'Agency',latitude:19,longitude:100};
+ const delta=JSON.parse(JSON.stringify(context.testEngine.intended(before,{construction_year_be:2545,responsible_agency:'',latitude:'',longitude:''},[])));
+ assert.deepEqual(delta,{responsible_agency:'',latitude:null,longitude:null,construction_year_be:2545,construction_year_ce:2002});
+});
+
+test('system owner blank remains rejected by the real backend canonicalizer; UNKNOWN is explicit and valid',()=>{
+ const before={system_id:'S1',village_id:'V1',owner_type:'LOCAL_AUTHORITY',system_name:'Synthetic'};
+ assert.throws(()=>context.testEngine.intended(before,{owner_type:''},[]),e=>e.mgmtCode==='VALIDATION_FAILED'&&e.mgmtDetails.field==='owner_type');
+ assert.equal(context.testEngine.intended(before,{owner_type:'UNKNOWN'},[]).owner_type,'UNKNOWN');
+});
+
+test('unrelated system edits preserve legacy owner blank and supported optional enum clearing',()=>{
+ const before={system_id:'S1',village_id:'V1',owner_type:'',system_name:'Synthetic',establishment_type:'LOCAL_CREATED',transfer_document_status:'AVAILABLE',water_pressure:'FLOW_CONTINUOUS'};
+ const result=context.testEngine.intended(before,{system_name:'Edited',transfer_document_status:'',water_pressure:''},[]);
+ assert.equal(Object.hasOwn(result,'owner_type'),false);assert.equal(result.system_name,'Edited');
+ assert.equal(result.transfer_document_status,'');assert.equal(result.water_pressure,'');
+});
 test('gateway follows canonical server job ID and reuses existing Auth identity',async()=>{
  const canonical='30000000-0000-4000-8000-000000000001';const calls=[];let providerCreates=0,providerUpdates=0;
  const cipher=await context.testSecurity.seal(env.TOKEN_ENCRYPTION_KEY,{password:'synthetic-password'});

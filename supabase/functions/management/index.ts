@@ -3348,7 +3348,9 @@ const {sha,requestHash,seal,open,jwtClaims,password,fail,knownError} = __securit
 const {PUBLIC_FIELDS} = __public_fields;
 function intended(before,patch,villages){const row=Object.fromEntries(MGMT_DATA.HEADERS.SYSTEMS.map(k=>[k,before[k]??'']));const villageIndex=Object.fromEntries(villages.map(v=>[v.village_id,{object:v}]));
  const after=buildIntended(row,patch,{villageIndex},new Date()).intendedObject;
- return Object.fromEntries(Object.entries(after).filter(([k])=>!['system_id','village_id','source_excel_row','system_no','created_at'].includes(k)).map(([k,v])=>[k,v===''&&['latitude','longitude','capacity_m3_hr','households_served','construction_year_be','construction_year_ce','transfer_year_be','beneficiaries','monthly_production_cost','monthly_service_revenue','water_tariff'].includes(k)?null:v]));}
+ // Preserve untouched SQL NULLs: send only canonical changes, including derived dependents.
+ const changed=new Set(__canonical.changedFields(row,after));
+ return Object.fromEntries(Object.entries(after).filter(([k])=>changed.has(k)&&!['system_id','village_id','source_excel_row','system_no','created_at'].includes(k)).map(([k,v])=>[k,v===''&&['latitude','longitude','capacity_m3_hr','households_served','construction_year_be','construction_year_ce','transfer_year_be','beneficiaries','monthly_production_cost','monthly_service_revenue','water_tariff'].includes(k)?null:v]));}
 function publicProjection(source){const eligible=source.waterSystems.filter(s=>!s.processingGuard||s.processingGuard.mutable===true);const links=new Set(eligible.map(s=>s.village_id));
  const has=v=>v===true||v===1||v==='1'||String(v).trim().toUpperCase()==='YES'||v==='มีประปาหมู่บ้าน';
  const hidden=new Set(source.villages.filter(v=>has(v.has_village_waterworks)&&!links.has(v.village_id)).map(v=>v.village_id));

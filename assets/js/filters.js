@@ -354,6 +354,7 @@ export function matchesSystemSearch(system, village, normalizedTerm) {
   if (!term) return true;
 
   return includesSearchTerm([
+    system?.system_id,
     system?.system_name,
     village?.village_name,
     village?.district,
@@ -551,7 +552,10 @@ function updateFilterUi() {
   if (countEl) countEl.textContent = String(count);
 
   const clearButton = typeof document !== 'undefined' ? document.getElementById('btnClearFilters') : null;
-  if (clearButton) clearButton.disabled = count === 0;
+  if (clearButton) {
+    clearButton.disabled = count === 0;
+    clearButton.classList.toggle('hidden', count === 0);
+  }
 
   const scopeEl = typeof document !== 'undefined' ? document.getElementById('scopeLabel') : null;
   if (scopeEl) {

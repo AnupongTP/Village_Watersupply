@@ -50,6 +50,7 @@
       coordinates,
       deduplicateMarkers: true,
       allowUnrenderedFocus: true,
+      centerFocusedPopup: true,
       findSystem: id => findSystem?.(id),
       villageForSystem: system => villageForSystem?.(system),
       onDetail: system => onDetail?.(String(system.system_id)),
