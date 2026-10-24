@@ -1,6 +1,14 @@
 # Machine-specific API config
 assets/js/config.js
 
+# Local analysis, private data, archives and CLI linking metadata
+/output/
+/Village_Watersupply_GAS_Technician_Candidate/
+**/.temp/
+*.zip
+*.xlsx
+__pycache__/
+
 # Node dependencies
 node_modules/
 

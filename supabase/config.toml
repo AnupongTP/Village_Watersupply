@@ -1,0 +1,10 @@
+project_id = "wfxudiciylpcmjbecbhk"
+
+[functions.management]
+verify_jwt = false
+
+[functions.public-data]
+verify_jwt = false
+
+[functions.runtime-worker]
+verify_jwt = false

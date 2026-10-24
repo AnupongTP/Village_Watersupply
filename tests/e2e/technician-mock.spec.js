@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const origin = 'http://village.test';
+const origin = 'https://village.test';
 const observations = new WeakMap();
 async function captureArchitecture(page, name) {
   const directory = process.env.VWS_ARCH_SCREENSHOTS;
@@ -55,9 +55,9 @@ async function installIsolatedTechnician(page, overrides = {}) {
     const request = route.request();
     const url = new URL(request.url());
 
-    if (url.hostname === 'script.google.com') {
+    if (url.hostname === 'wfxudiciylpcmjbecbhk.supabase.co') {
       // The syntactically valid endpoint is synthetic; this route always fulfills it locally.
-      expect(url.pathname).toBe('/macros/s/SYNTHETIC/exec');
+      expect(url.pathname).toBe('/functions/v1/management');
       expect(request.method()).toBe('POST');
       const envelope = JSON.parse(request.postData() || '{}');
       expect(envelope.version).toBe(2);
@@ -91,7 +91,7 @@ async function installIsolatedTechnician(page, overrides = {}) {
     if (url.pathname === '/technician/assets/config.js') {
       return route.fulfill({
         status: 200, contentType: 'text/javascript',
-        body: "window.VWS_MANAGEMENT_CONFIG={endpoint:'https://script.google.com/macros/s/SYNTHETIC/exec'};"
+        body: "window.VWS_MANAGEMENT_CONFIG={endpoint:'https://wfxudiciylpcmjbecbhk.supabase.co/functions/v1/management'};"
       });
     }
 
@@ -185,7 +185,8 @@ test('loads a mocked system detail and logs out locally', async ({ page }) => {
   await expect(page.locator('#systemDialogBody')).toContainText(system.system_id);
   expect(network.calls.find(call => call.action === 'data.waterSystem')?.payload.systemId).toBe(system.system_id);
   await page.locator('#systemDialog').evaluate(dialog => dialog.close());
-  await page.locator('#logoutButton').click();
+  await page.locator('#mobileAccountButton').click();
+  await clickAccountAction(page, '#logoutButton');
   await expect(page.locator('#loginView')).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('vws_management_token_v2'))).toBeNull();
   expect(network.calls.at(-1).action).toBe('auth.logout');
@@ -238,6 +239,7 @@ function managementMocks(extra = {}) {
     'data.waterSystem': success({ system: editableSystem }),
     'data.updateWaterSystem': success({ system: editableSystem }),
     'data.deleteWaterSystem': success(),
+    'data.entityHistory': success({ history: [] }),
     'technicians.list': success({ technicians: [{ userId: 'QA-TECH-1', username: 'synthetic-account', displayName: 'Synthetic Account', district: 'จุน', status: 'ACTIVE', recordVersion: 'v1' }] }),
     'technicians.create': success(), 'technicians.update': success(), 'technicians.disable': success(),
     'technicians.enable': success(), 'technicians.delete': success(), 'technicians.resetPassword': success(),
@@ -268,11 +270,19 @@ async function openManagement(page, overrides = {}, start = 'management') {
   await openLogin(page);
   await submitSyntheticLogin(page);
   await expect(page.locator('#appView')).toBeVisible();
+  await expect(page.locator('#busyOverlay')).toBeHidden();
   if (start === 'management') await openToolSection(page, 'systems');
   return network;
 }
-async function clickSystemAction(page, action, rowSelector = '#systemsTableBody tr[data-system-id]') {
-  await page.locator(rowSelector).first().locator('[data-action-trigger]').click();
+async function clickAccountAction(page, selector) {
+  if (await page.locator('#mobileAccountButton').getAttribute('aria-expanded') !== 'true') {
+    await page.locator('#mobileAccountButton').click();
+  }
+  await page.locator(selector).click();
+}
+async function clickSystemAction(page, action, rowSelector = null) {
+  const visibleRows = rowSelector || (page.viewportSize()?.width < 768 ? '#systemsMobileList .system-mobile-card' : '#systemsTableBody tr[data-system-id]');
+  await page.locator(visibleRows).first().locator('[data-action-trigger]').click();
   await page.locator(`#systemActionMenu [data-action="${action}"]`).click();
 }
 
@@ -976,10 +986,10 @@ for (const viewport of [
       await expectCenteredDialog(page, '#deleteDialog');
       await page.locator('#deleteDialog .modal-footer [data-dismiss-dialog]').click();
       await page.locator('#systemDialog [data-dismiss-dialog]').first().click();
+      await page.locator('#mobileAccountButton').click();
       if (viewport.width < 1200) {
-        await page.locator('#mobileAccountButton').click();
         await page.locator('#mobileChangePasswordButton').click();
-      } else await page.locator('#changePasswordButton').click();
+      } else await clickAccountAction(page, '#changePasswordButton');
       await expectCenteredDialog(page, '#passwordDialog');
       if (process.env.VWS_PHASE_D_SCREENSHOTS) {
         fs.mkdirSync(process.env.VWS_PHASE_D_SCREENSHOTS, { recursive: true });
@@ -1454,8 +1464,6 @@ test('refresh, account listing, detail and history use the shared busy dialog', 
   list.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
   await openToolSection(page, 'history');
-  await page.locator('#historySystemId').fill(system.system_id);
-  await page.locator('#historySearchButton').click();
   await expectBusyDialog(page, 'กำลังโหลดประวัติ...');
   history.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
@@ -1500,7 +1508,7 @@ test('edit, delete, account mutation and password loading remain above their dia
   await expectBusyDialog(page, 'กำลังสร้างบัญชี...');
   account.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
-  await page.locator('#changePasswordButton').click();
+  await clickAccountAction(page, '#changePasswordButton');
   await page.locator('#currentPassword').fill('synthetic-old');
   await page.locator('#newPassword').fill('synthetic-new');
   await page.locator('#confirmNewPassword').fill('synthetic-new');
@@ -1629,8 +1637,9 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
       await expect(page.locator('#alertQualityFail')).toHaveText('1');
       await expect(page.locator('#watchlistTotal')).toHaveText('1');
       await expect(page.locator('#systemsMobileList [data-system-id]')).toHaveCount(1);
-      for (const [tab, panel] of [['area','areas'],['quality','quality'],['types','system-structure'],['monitoring','watchlist']]) {
+      for (const [tab, panel] of [['area','areas'],['quality','quality'],['types','system-structure'],['systems','watchlist']]) {
         await page.locator(`[data-tab="${tab}"]`).click();
+        if (tab === 'systems') await page.locator('#systemsModeMonitoring').click();
         await expect(page.locator(`#${panel}`)).toBeVisible();
         if (process.env.VWS_PHASE_E_SCREENSHOTS) await page.screenshot({ path: path.join(process.env.VWS_PHASE_E_SCREENSHOTS, `phase-parity-${viewport.name}-${tab}.png`), fullPage: true });
       }
@@ -1755,7 +1764,10 @@ test('overlapping read operations keep one SweetAlert until the final operation 
   });
   await page.locator('#refreshButton').click();
   await expectBusyDialog(page, 'กำลังรีเฟรชข้อมูล...');
-  await clickSystemAction(page, 'history');
+  // Intentionally start a second read while the baseline blocking loader is open.
+  // Dispatch the real handlers; do not pretend a user can click through a modal.
+  await page.locator('#systemsTableBody [data-action-trigger]').first().evaluate(button => button.click());
+  await page.locator('#systemActionMenu [data-action="history"]').evaluate(button => button.click());
   await page.locator('#historySystemId').evaluate(input => { input.value = 'QA-ANALYTICS-1'; });
   await page.locator('#historySearchButton').evaluate(button => button.click());
   await expectBusyDialog(page, 'กำลังโหลดประวัติ...');
@@ -1769,8 +1781,9 @@ for (const width of [1440, 390]) {
   test(`Phase E analytics axe check at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await openManagement(page, { 'data.dashboard': success(analyticsDataset) });
-    for (const [tab, panel] of [['area','areas'],['quality','quality'],['types','system-structure'],['monitoring','watchlist']]) {
+    for (const [tab, panel] of [['area','areas'],['quality','quality'],['types','system-structure'],['systems','watchlist']]) {
       await page.locator(`[data-tab="${tab}"]`).click();
+        if (tab === 'systems') await page.locator('#systemsModeMonitoring').click();
       const result = await new AxeBuilder({ page }).include(`#${panel}`).analyze();
       expect(result.violations, `${tab} at ${width}px`).toEqual([]);
     }
@@ -1933,12 +1946,12 @@ test('account and password dialog dismissal never dispatches mutations', async (
   await page.locator('#techniciansTableBody [data-tech-action="delete"]').click();
   await page.locator('#actionReason').fill('Synthetic reason');
   await page.locator('#actionDialog .modal-footer [data-dismiss-dialog]').click();
-  await page.locator('#changePasswordButton').click();
+  await clickAccountAction(page, '#changePasswordButton');
   await page.locator('#currentPassword').fill('synthetic-old');
   await page.locator('#newPassword').fill('synthetic-new');
   await page.locator('#confirmNewPassword').fill('synthetic-new');
   await page.locator('#passwordCloseButton').click();
-  await page.locator('#changePasswordButton').click();
+  await clickAccountAction(page, '#changePasswordButton');
   await page.locator('#passwordCancelButton').click();
   expect(mutations(network)).toEqual([expect.objectContaining({ action: 'technicians.list' })]);
 });
@@ -2027,7 +2040,7 @@ test('temporary resume failure retains token but never reveals dashboard', async
 
 test('logout prevents authenticated resume on refresh', async ({ page }) => {
   const network = await openManagement(page);
-  await page.locator('#logoutButton').click();
+  await clickAccountAction(page, '#logoutButton');
   await expect(page.locator('#loginView')).toBeVisible();
   await page.reload();
   await expect(page.locator('#loginView')).toBeVisible();
@@ -2051,6 +2064,53 @@ test('touched then restored array remains pristine; invalid untouched JSON is pr
   expect(patch).toEqual({ service_agency: 'Synthetic Agency' });
 });
 
+for (const width of [1440, 390]) test(`Supabase pending account creation retries after refresh with the same mutation ID at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+  let attempts = 0;
+  const network = await openManagement(page, {
+    'technicians.create': () => ++attempts === 1 ? failure('AUTH_JOB_PENDING', 'Synthetic pending') : success()
+  });
+  async function fillAccount() {
+    await openToolSection(page, 'technicians');
+    await page.locator('#createTechnicianButton').click();
+    await page.locator('#techUsername').fill('pending-synthetic');
+    await page.locator('#techDisplayName').fill('Pending Synthetic');
+    await page.locator('#techDistrict').fill('จุน');
+    await expect(page.locator('#techPassword')).toHaveValue('');
+    await page.locator('#techPassword').fill('synthetic-secret');
+  }
+  await fillAccount();
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianError')).toContainText('Synthetic pending');
+  // Error text arrives before SweetAlert releases the native modal top layer.
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#technicianDialog')).toBeVisible();
+  const first = network.calls.find(call => call.action === 'technicians.create');
+  expect(first.payload.mutationId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(first.payload.request.displayName).toBe('Pending Synthetic');
+  const journal = await page.evaluate(() => sessionStorage.getItem('vws_supabase_mutations_v1'));
+  expect(journal).not.toContain('synthetic-secret');
+  expect(journal).not.toContain('pending-synthetic');
+  await page.locator('#techUsername').fill('changed-pending');
+  await expect(page.locator('#techUsername')).toHaveValue('changed-pending');
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianError')).toContainText('คำขอเดิมยังรอตรวจสอบ');
+  await expect(page.locator('#busyOverlay')).toBeHidden();
+  await expect(page.locator('#technicianDialog')).toBeVisible();
+  expect(attempts).toBe(1);
+  await page.reload();
+  await expect(page.locator('#appView')).toBeVisible();
+  expect(attempts).toBe(1); // Refresh must not replay a credential-bearing request.
+  expect(await page.evaluate(() => sessionStorage.getItem('vws_supabase_mutations_v1'))).toBe(journal);
+  await fillAccount();
+  await page.locator('#technicianForm button[type="submit"]').click();
+  await expect(page.locator('#technicianDialog')).toBeHidden();
+  const creates = network.calls.filter(call => call.action === 'technicians.create');
+  expect(creates).toHaveLength(2);
+  expect(creates[1].payload.mutationId).toBe(first.payload.mutationId);
+  expect(await page.evaluate(() => sessionStorage.getItem('vws_supabase_mutations_v1'))).toBeNull();
+});
+
 test('explicit account create and password change each dispatch once', async ({ page }) => {
   const network = await openManagement(page);
   await openToolSection(page, 'technicians');
@@ -2065,7 +2125,7 @@ test('explicit account create and password change each dispatch once', async ({ 
   expect(network.calls.filter(call => call.action === 'technicians.create')).toHaveLength(1);
   expect(network.calls.find(call => call.action === 'technicians.create')?.payload.request.district).toBe('จุน');
   await page.locator('#mobileAccountButton').click();
-  await page.locator('#changePasswordButton').click();
+  await clickAccountAction(page, '#changePasswordButton');
   await page.locator('#currentPassword').fill('synthetic-old');
   await page.locator('#newPassword').fill('synthetic-new');
   await page.locator('#confirmNewPassword').fill('synthetic-new');
@@ -2364,6 +2424,7 @@ for (const width of [1440, 768, 390]) {
     const network = await installIsolatedTechnician(page, managementMocks());
     await openLogin(page);
     const scan = async state => {
+      await expect(page.locator('#busyOverlay')).toBeHidden();
       const result = await new AxeBuilder({ page }).analyze();
       expect(result.violations, `${state}: ${result.violations.map(v => `${v.id} ${v.nodes.map(n => n.target.join(',')).join(';')}`).join(' | ')}`).toEqual([]);
     };
@@ -2390,7 +2451,7 @@ for (const width of [1440, 768, 390]) {
     await scan('account action');
     await page.locator('#actionDialog [data-dismiss-dialog]').first().click();
     if (width <= 900) { await page.locator('#mobileAccountButton').click(); await page.locator('#mobileChangePasswordButton').click(); }
-    else await page.locator('#changePasswordButton').click();
+    else await clickAccountAction(page, '#changePasswordButton');
     await scan('password');
     expect(mutations(network).filter(call => call.action !== 'technicians.list')).toEqual([]);
   });

@@ -111,11 +111,11 @@
 
   async function api(action,payload={}) {
     const url=endpoint();
-    if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(url)) throw new Error('ยังไม่ได้ตั้งค่าการเชื่อมต่อระบบจัดการข้อมูล');
-    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({version:2,action,payload}),redirect:'follow',cache:'no-store',credentials:'omit'});
+    if (!window.VWSSupabaseTransport.allowed(url)) throw new Error('ยังไม่ได้ตั้งค่าการเชื่อมต่อระบบจัดการข้อมูล');
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({version:2,action,payload:await window.VWSSupabaseTransport.payload(action,payload)}),redirect:'follow',cache:'no-store',credentials:'omit'});
     const text=await res.text(); let json;
     try{ json=JSON.parse(text); }catch(_){ throw new Error(`ระบบจัดการข้อมูลส่งข้อมูลกลับมาในรูปแบบที่อ่านไม่ได้ (รหัส ${res.status})`); }
-    return json;
+    await window.VWSSupabaseTransport.received(action,payload,json);return json;
   }
   function unwrap(response){ if (!response || response.success !== true){ const err=new Error(response?.error?.message || 'คำขอไม่สำเร็จ'); err.code=response?.error?.code || 'UNKNOWN'; err.details=response?.error?.details || {}; throw err; } return response.data || {}; }
   function authPayload(extra={}){ return Object.assign({token:state.token},extra); }

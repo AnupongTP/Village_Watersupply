@@ -93,7 +93,7 @@ async function reloadData() {
     // public candidate before mutating AppState so a network/parse/validation/
     // projection failure cannot destroy the previously accepted dataset.
     const sourceData = await loadData();
-    const publicScope = buildTemporaryPublicScope(sourceData);
+    const publicScope = sourceData.projection?.policy === 'PUBLIC_ALLOWLIST_R5_1_V1' ? sourceData : buildTemporaryPublicScope(sourceData);
     const acceptedAt = new Date().toISOString();
 
     const nextData = {

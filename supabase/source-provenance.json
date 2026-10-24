@@ -1,0 +1,38 @@
+{
+  "projectRef": "wfxudiciylpcmjbecbhk",
+  "archive": "Village_Watersupply_Edge_Functions_Source_For_Codex_20261024.zip",
+  "archiveSHA256": "af42e6cff195eecdf7060ebb67dfb987345883f03adb372effc25200e9fed797",
+  "cloudSource": "UNVERIFIED",
+  "reason": "Cloud source read permission denied; deployment-source ZIP supplied by owner. No live comparison performed.",
+  "functions": {
+    "management": {
+      "archiveEntry": "supabase/functions/management/index.ts",
+      "archiveSHA256": "a6d30284b23e095b7c363570ad43e650a4a26cd245d23579c403ff321e95c6ee",
+      "workingSHA256": "71a6d002b5facef2d0e6f81c7ce9e61a3ba4898ebfb532ffde8b3f6d150dc148",
+      "normalizedMatchesZIP": false,
+      "cloudSource": "UNVERIFIED",
+      "localAddedLines": [
+        " mid=begin.jobId||mid; // Resume the server-authoritative job after refresh."
+      ],
+      "workingNormalizedSHA256": "e7715d3c2a4b4f8b26f2c9529488974636dca5e5feda642daf303e4591b44493"
+    },
+    "public-data": {
+      "archiveEntry": "supabase/functions/public-data/index.ts",
+      "archiveSHA256": "5e88964f254118e37b00a8ec1e1f297975204c3d89cd4a302af74e6f250328fb",
+      "workingSHA256": "5e88964f254118e37b00a8ec1e1f297975204c3d89cd4a302af74e6f250328fb",
+      "normalizedMatchesZIP": true,
+      "cloudSource": "UNVERIFIED",
+      "workingNormalizedSHA256": "5e88964f254118e37b00a8ec1e1f297975204c3d89cd4a302af74e6f250328fb"
+    },
+    "runtime-worker": {
+      "archiveEntry": "supabase/functions/runtime-worker/index.ts",
+      "archiveSHA256": "f83616eebf4c0c2b1b2cd8d0062837a5ae4ea782d47e773927652db955d70fa8",
+      "workingSHA256": "f83616eebf4c0c2b1b2cd8d0062837a5ae4ea782d47e773927652db955d70fa8",
+      "normalizedMatchesZIP": true,
+      "cloudSource": "UNVERIFIED",
+      "workingNormalizedSHA256": "3e63b3b775282e5c71bcc449a7633c0e22918e25e1f716667f118979076bdb40"
+    }
+  },
+  "sqlNote": "Owner confirmed Production app.audit_commit uses WHERE singleton IS TRUE; reproduced in LOCAL install source and manual upgrade patch. No Production SQL executed.",
+  "lineEndingNote": "archiveSHA256 and workingSHA256 cover raw supplied/local bytes; workingNormalizedSHA256 covers UTF-8 LF content for Git and cross-platform checks."
+}
