@@ -137,6 +137,7 @@ function renderQualityChart() {
     },
     options: doughnutOptions((_datasetIndex, index) => toggleChartFilter('drinkingWaterQuality', codes[index]))
   });
+  window.VWSDoughnutLegend.render(qualityChart, { selectedIndex: codes.indexOf(selected), onSelect: index => toggleChartFilter('drinkingWaterQuality', codes[index]) });
 }
 
 function renderQuantityChart() {
@@ -168,6 +169,7 @@ function renderQuantityChart() {
     },
     options: doughnutOptions((_datasetIndex, index) => toggleChartFilter('waterQuantity', codes[index]))
   });
+  window.VWSDoughnutLegend.render(quantityChart, { selectedIndex: codes.indexOf(selected), onSelect: index => toggleChartFilter('waterQuantity', codes[index]) });
 }
 
 function renderSystemTypeChart() {
@@ -289,7 +291,6 @@ function baseCartesianOptions({ indexAxis = 'x', legend = true, onElementClick =
 }
 
 function doughnutOptions(onElementClick) {
-  const size = narrowMode ? 12 : 13;
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -304,21 +305,14 @@ function doughnutOptions(onElementClick) {
       if (canvas?.style) canvas.style.cursor = elements?.length ? 'pointer' : 'default';
     },
     plugins: {
-      legend: {
-        position: 'bottom',
-        labels: { usePointStyle: true, boxWidth: 10, boxHeight: 10, padding: 16, color: '#334155', font: { size, family: 'Sarabun' } },
-        // Doughnut legends are dimension labels. Make them use the same filter
-        // semantics as clicking the segment instead of Chart.js' default hide/show.
-        onClick: (_event, legendItem) => {
-          if (Number.isInteger(legendItem?.index)) onElementClick(0, legendItem.index);
-        }
-      },
+      legend: { display: false },
       tooltip: { titleFont: { family: 'Sarabun' }, bodyFont: { family: 'Sarabun' } }
     }
   };
 }
 
 function setChartEmpty(canvasId, empty) {
+  if (empty) window.VWSDoughnutLegend.clear(canvasId);
   const canvas = document.getElementById(canvasId);
   const wrap = canvas?.parentElement;
   if (!canvas || !wrap) return;

@@ -133,6 +133,29 @@ for (const viewport of [
   test.describe(`Technician mocked ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
+    for (const role of ['TECHNICIAN', 'ADMIN']) {
+      test(`header area follows authenticated ${role} assignment`, async ({ page }) => {
+        const assignedUser = { ...user, role, district: 'เมืองพะเยา' };
+        await installIsolatedTechnician(page, {
+          'auth.login': success({ token, user: assignedUser }),
+          'data.bootstrap': success({ user: assignedUser, permissions: [], featureFlags: { technicianDistrictScope: true }, enumCatalog: {} })
+        });
+        await openLogin(page);
+        await submitSyntheticLogin(page);
+        await expect(page.locator('#appView')).toBeVisible();
+        await expect(page.locator('#headerAreaLabel')).toHaveText(role === 'TECHNICIAN' ? 'จังหวัดพะเยา ช่างอำเภอเมืองพะเยา' : 'จังหวัดพะเยา');
+        if (role === 'TECHNICIAN') {
+          await expect(page.locator('#headerDistrictBadge')).toBeVisible();
+          await expect(page.locator('#headerDistrictBadge')).toHaveCSS('background-color', 'rgb(224, 242, 254)');
+        } else await expect(page.locator('#headerDistrictBadge')).toBeHidden();
+        await expect(page.locator('#headerAreaLabel')).toBeVisible();
+        expect(await page.locator('#appHeader').evaluate(header => header.scrollWidth <= header.clientWidth)).toBe(true);
+        await page.locator('#mobileAccountButton').click();
+        await page.locator(viewport.name === 'mobile' ? '#mobileLogoutButton' : '#logoutButton').click();
+        await expect(page.locator('#appView')).toBeHidden();
+      });
+    }
+
     test('initializes with login form and no backend request', async ({ page }) => {
       const network = await installIsolatedTechnician(page);
       await openLogin(page);
@@ -141,6 +164,38 @@ for (const viewport of [
       expect(network.calls).toEqual([]);
       expect(network.pageErrors).toEqual([]);
       expect(network.blocked.every(host => host === 'fonts.googleapis.com')).toBe(true);
+    });
+
+    test('blank login fields show Thai inline errors and never send an authentication request', async ({ page },testInfo) => {
+      const network=await installIsolatedTechnician(page,{'auth.login':failure('AUTH_INVALID','ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')});
+      await openLogin(page);
+      expect(await page.locator('#loginForm').evaluate(form=>form.noValidate)).toBe(true);
+      await expect(page.locator('#loginUsernameError')).toBeHidden();
+      await expect(page.locator('#loginPasswordError')).toBeHidden();
+      await page.locator('#loginSubmit').click();
+      await expect(page.locator('#loginUsernameError')).toHaveText('กรุณาระบุชื่อผู้ใช้');
+      await expect(page.locator('#loginPasswordError')).toHaveText('กรุณาระบุรหัสผ่าน');
+      await expect(page.locator('#loginUsername')).toBeFocused();
+      await expect(page.locator('#loginPassword')).toHaveCSS('border-color','rgb(220, 38, 38)');
+      await page.locator('#loginUsername').fill('   ');
+      await page.locator('#loginSubmit').click();
+      await expect(page.locator('#loginUsername')).toBeFocused();
+      expect(network.calls).toEqual([]);
+      await page.locator('#loginUsername').fill('synthetic-technician');
+      await expect(page.locator('#loginUsernameError')).toBeHidden();
+      await expect(page.locator('#loginUsername')).not.toHaveAttribute('aria-invalid','true');
+      await page.locator('#loginSubmit').click();
+      await expect(page.locator('#loginPassword')).toBeFocused();
+      expect(network.calls).toEqual([]);
+      expect((await new AxeBuilder({page}).include('#loginView').analyze()).violations).toEqual([]);
+      await page.screenshot({path:testInfo.outputPath('login-inline-error.png')});
+      await page.locator('#loginPassword').fill('synthetic-password');
+      await expect(page.locator('#loginPasswordError')).toBeHidden();
+      await expect(page.locator('#loginPassword')).not.toHaveAttribute('aria-invalid','true');
+      await page.locator('#loginPassword').press('Enter');
+      await expect(page.locator('#loginError')).toHaveText('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง');
+      expect(network.calls.map(c=>c.action)).toEqual(['auth.login']);
+      await expect(page.locator('#loginPassword')).toHaveValue('');
     });
 
     test('uses synthetic login and renders the authenticated read-only dataset', async ({ page }) => {
@@ -158,13 +213,25 @@ for (const viewport of [
       expect(network.pageErrors).toEqual([]);
     });
 
+    test('server failure is not mislabeled as an incorrect username or password', async ({ page }) => {
+      const message='ระบบไม่สามารถดำเนินการได้ กรุณาลองใหม่';
+      const network=await installIsolatedTechnician(page,{'auth.login':failure('SERVER_ERROR',message)});
+      await openLogin(page);
+      await submitSyntheticLogin(page);
+      await expect(page.locator('#loginError')).toHaveText(message);
+      await expect(page.locator('#appView')).toBeHidden();
+      await expect(page.locator('#loginPassword')).toHaveValue('');
+      expect(network.calls.map(call=>call.action)).toEqual(['auth.login']);
+      expect(await page.evaluate(()=>sessionStorage.getItem('vws_management_token_v2'))).toBeNull();
+    });
+
     test('shows a mocked authentication failure without retaining a session', async ({ page }) => {
       const network = await installIsolatedTechnician(page, {
-        'auth.login': failure('AUTH_INVALID', 'Synthetic credentials rejected')
+        'auth.login': failure('AUTH_INVALID', 'ระบบไม่สามารถดำเนินการได้ กรุณาลองใหม่')
       });
       await openLogin(page);
       await submitSyntheticLogin(page);
-      await expect(page.locator('#loginError')).toHaveText('Synthetic credentials rejected');
+      await expect(page.locator('#loginError')).toHaveText('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง');
       await expect(page.locator('#appView')).toBeHidden();
       expect(await page.evaluate(() => sessionStorage.getItem('vws_management_token_v2'))).toBeNull();
       expect(network.calls.map(call => call.action)).toEqual(['auth.login']);
@@ -226,7 +293,7 @@ test('handles a mocked dashboard read error and clears the session', async ({ pa
 });
 
 const editableSystem = {
-  ...system, managementMutable: true, usage_type: '',
+  ...system, managementMutable: true, usage_type: '', shared_with_other_village: 'YES',
   usage_types_json: '["AGRICULTURE","DOMESTIC"]',
   quality_failure_categories_json: '{invalid json',
   shared_villages_json: '[{"village_id":"QA-VILLAGE-2"}]'
@@ -283,6 +350,123 @@ for (const width of [1440, 390]) test(`committed before-after summary, history a
   await page.screenshot({path:testInfo.outputPath(`history-before-after-${width}.png`)});
   expect(network.calls.filter(c=>c.action==='data.updateWaterSystem')).toHaveLength(1);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+const conditionalSystem={...editableSystem,drinking_water_quality:'FAIL',quality_failure_categories_json:'["PHYSICAL"]',quality_failure_detail:'Original failure detail',year_round_status:'SEASONAL',available_months_json:'["JAN"]',water_source_type:'MIXED',surface_water_type:'River',surface_water_agency:'River agency',shared_village_name:'Other village',establishment_type:'TRANSFERRED',establishment_agency:'',transfer_year_be:2560,transfer_agency:'Transfer agency',transfer_other:'Transfer note',transfer_document_status:'AVAILABLE',transfer_document_url:'https://example.test/transfer.pdf'};
+async function openConditionalEdit(page,before,mutationReply=null){
+  const boot=managementMocks()['data.bootstrap'].data;
+  const network=await openManagement(page,{
+    'data.bootstrap':success({...boot,enumCatalog:{...boot.enumCatalog,drinking_water_quality:['PASS','FAIL','NO_DATA'],year_round_status:['YEAR_ROUND','SEASONAL','NO_DATA'],water_source_type:['GROUNDWATER','SURFACE_WATER','MIXED'],shared_with_other_village:['YES','NO'],establishment_type:['LOCAL_CREATED','ACCEPTED_ASSET','TRANSFERRED','NOT_LOCAL_AUTHORITY_ASSET']}}),
+    'data.waterSystem':success({system:before}),
+    'data.updateWaterSystem':envelope=>{if(mutationReply)return mutationReply(envelope);const after={...before,...envelope.payload.request.patch};return success({system:after,changeSummary:{before,after}});}
+  });
+  await openEditFromTable(page,page.viewportSize().width<768);
+  return network;
+}
+const conditionalCases=[
+  {name:'quality',parent:'drinking_water_quality',inactive:'PASS',cleanup:{quality_failure_categories_json:[],quality_failure_detail:''}},
+  {name:'months',parent:'year_round_status',inactive:'YEAR_ROUND',cleanup:{available_months_json:[]}},
+  {name:'surface',parent:'water_source_type',inactive:'GROUNDWATER',cleanup:{surface_water_type:'',surface_water_agency:''}},
+  {name:'shared',parent:'shared_with_other_village',inactive:'NO',cleanup:{shared_village_name:'',shared_villages_json:[]}},
+  {name:'accepted',parent:'establishment_type',inactive:'LOCAL_CREATED',before:{establishment_type:'ACCEPTED_ASSET',establishment_agency:'Accepted agency',transfer_year_be:null,transfer_agency:'',transfer_other:'',transfer_document_status:'',transfer_document_url:''},cleanup:{establishment_agency:''}},
+  {name:'transferred',parent:'establishment_type',inactive:'LOCAL_CREATED',cleanup:{transfer_year_be:'',transfer_agency:'',transfer_other:'',transfer_document_status:'',transfer_document_url:''}}
+];
+for(const scenario of conditionalCases)for(const width of scenario.name==='quality'?[1440,390]:[1440]){
+  test(`conditional edit ${scenario.name} retains drafts and clears dependents only on Save at ${width}px`,async({page},testInfo)=>{
+    await page.setViewportSize({width,height:900});
+    const before={...conditionalSystem,...scenario.before};
+    const network=await openConditionalEdit(page,before);
+    const parent=page.locator(`#edit_${scenario.parent}`);
+    const dependent=page.locator(`[data-edit-field="${Object.keys(scenario.cleanup)[0]}"]`);
+    await expect(dependent).toBeVisible();
+    await expect(page.locator('#saveEditButton')).toBeDisabled();
+    await parent.selectOption(scenario.inactive);
+    for(const key of Object.keys(scenario.cleanup)){
+      const wrap=page.locator(`[data-edit-field="${key}"]`);await expect(wrap).toBeHidden();
+      expect(await wrap.locator('input,select,textarea,button').evaluateAll(items=>items.every(el=>el.disabled))).toBe(true);
+    }
+    await parent.selectOption(before[scenario.parent]);
+    await expect(dependent).toBeVisible();
+    await expect(page.locator('#saveEditButton')).toBeDisabled();
+    if(scenario.name==='quality'){
+      await expect(page.locator('input[name="quality_failure_categories_json"][value="PHYSICAL"]')).toBeChecked();
+      await page.locator('#edit_quality_failure_detail').fill('Retained draft');
+      await parent.selectOption('PASS');await parent.selectOption('FAIL');
+      await expect(page.locator('#edit_quality_failure_detail')).toHaveValue('Retained draft');
+      await parent.selectOption('NO_DATA');await expect(dependent).toBeHidden();await parent.selectOption('FAIL');
+      await expect(page.locator('#edit_quality_failure_detail')).toHaveValue('Retained draft');
+    }
+    await parent.selectOption(scenario.inactive);
+    expect(network.calls.filter(c=>c.action==='data.updateWaterSystem')).toHaveLength(0);
+    if(scenario.name==='quality')await page.screenshot({path:testInfo.outputPath('conditional-quality-pass.png')});
+    await page.locator('#saveEditButton').click();
+    await expect(page.locator('#saveSummaryDialog')).toBeVisible();
+    const writes=network.calls.filter(c=>c.action==='data.updateWaterSystem');expect(writes).toHaveLength(1);
+    expect(writes[0].payload.request.patch).toEqual({[scenario.parent]:scenario.inactive,...scenario.cleanup});
+    expect(writes[0].payload.request.expectedVersion).toBe(before.recordVersion);
+    if(scenario.name==='quality'){
+      await expect(page.locator('#saveSummaryBody')).toContainText('Original failure detail');
+      await expect(page.locator('#saveSummaryBody')).toContainText('ไม่ระบุ');
+    }
+  });
+}
+for(const width of [1440,390])test(`conditional edit preserves hidden legacy data and Cancel makes no changes at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  const before={...conditionalSystem,drinking_water_quality:'PASS',quality_failure_categories_json:'invalid legacy JSON',quality_failure_detail:'Legacy detail'};
+  const network=await openConditionalEdit(page,before);
+  await expect(page.locator('#edit_quality_failure_detail')).toBeHidden();
+  await expect(page.locator('#edit_quality_failure_detail')).toHaveValue('Legacy detail');
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
+  await page.locator('#edit_drinking_water_quality').selectOption('FAIL');
+  await page.locator('#editDialog .modal-footer [data-dismiss-dialog]').click();
+  await expect(page.locator('#discardDialog')).toBeVisible();await page.locator('#confirmDiscardButton').click();
+  expect(network.calls.filter(c=>c.action==='data.updateWaterSystem')).toHaveLength(0);
+  await page.locator('#systemDialog .drawer-footer [data-dismiss-dialog]').click();
+  await openEditFromTable(page,width===390);
+  await expect(page.locator('#edit_drinking_water_quality')).toHaveValue('PASS');
+  await expect(page.locator('#edit_quality_failure_detail')).toHaveValue('Legacy detail');
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
+  await page.locator('#edit_system_name').fill('Only intended name change');await page.locator('#saveEditButton').click();
+  await expect(page.locator('#saveSummaryDialog')).toBeVisible();
+  expect(network.calls.filter(c=>c.action==='data.updateWaterSystem')[0].payload.request.patch).toEqual({system_name:'Only intended name change'});
+});
+test('conditional edit failed Save keeps hidden draft values available for retry',async({page})=>{
+  const network=await openConditionalEdit(page,conditionalSystem,()=>failure('CONFLICT','Synthetic version conflict'));
+  await page.locator('#edit_quality_failure_detail').fill('Draft survives conflict');
+  await page.locator('#edit_drinking_water_quality').selectOption('PASS');
+  await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editError')).toContainText('ข้อมูลถูกแก้');
+  await expect(page.locator('#editDialog')).toBeVisible();
+  await expect(page.locator('#saveSummaryDialog')).toBeHidden();
+  await page.locator('#edit_drinking_water_quality').selectOption('FAIL');
+  await expect(page.locator('#edit_quality_failure_detail')).toHaveValue('Draft survives conflict');
+  await expect(page.locator('input[name="quality_failure_categories_json"][value="PHYSICAL"]')).toBeChecked();
+  const writes=network.calls.filter(c=>c.action==='data.updateWaterSystem');expect(writes).toHaveLength(1);
+  expect(writes[0].payload.request.patch).toEqual({drinking_water_quality:'PASS',quality_failure_categories_json:[],quality_failure_detail:''});
+});
+
+test('conditional edit validates required dependent fields before any mutation',async({page})=>{
+  const network=await openConditionalEdit(page,{...conditionalSystem,drinking_water_quality:'PASS',quality_failure_categories_json:'[]',year_round_status:'YEAR_ROUND',available_months_json:'[]',shared_with_other_village:'NO',shared_villages_json:'[]',shared_village_name:'',establishment_type:'LOCAL_CREATED',transfer_agency:''});
+  await page.locator('#edit_drinking_water_quality').selectOption('FAIL');await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editError')).toContainText('สาเหตุ');
+  await page.locator('input[name="quality_failure_categories_json"][value="PHYSICAL"]').check();
+  await page.locator('#edit_year_round_status').selectOption('SEASONAL');await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editError')).toContainText('เดือน');
+  await page.locator('input[name="available_months_json"][value="JAN"]').check();
+  await page.locator('#edit_shared_with_other_village').selectOption('YES');await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editError')).toContainText('หมู่บ้าน');
+  await page.locator('input[name="shared_villages_json"]').first().check();
+  await page.locator('#edit_establishment_type').selectOption('ACCEPTED_ASSET');await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editError')).toContainText('รับมอบ');
+  await page.locator('#edit_establishment_agency').fill('Draft accepted agency');
+  await page.locator('#edit_establishment_type').selectOption('TRANSFERRED');await page.locator('#saveEditButton').click();
+  await expect(page.locator('#editError')).toContainText('หน่วยงานถ่ายโอน');
+  expect(network.calls.filter(c=>c.action==='data.updateWaterSystem')).toHaveLength(0);
+  await page.locator('#edit_transfer_agency').fill('New transfer agency');await page.locator('#saveEditButton').click();
+  await expect(page.locator('#saveSummaryDialog')).toBeVisible();
+  const patch=network.calls.filter(c=>c.action==='data.updateWaterSystem')[0].payload.request.patch;
+  expect(patch.establishment_agency).toBeUndefined();
+  expect(patch.shared_villages_json).toHaveLength(1);
 });
 
 test('one global filter controls KPI map and list while list search remains local',async({page})=>{
@@ -690,8 +874,7 @@ test('shared-village search and pagination stay pristine; discard and conflict r
   await page.locator('#sharedVillageSearch').fill('เชียงคำ 250');
   await page.locator('#sharedVillageSearch').fill('');
   await page.locator('#sharedVillageMore').click();
-  await page.locator('#saveEditButton').click();
-  await expect(page.locator('#editError')).toContainText('ไม่มีข้อมูลที่เปลี่ยนแปลง');
+  await expect(page.locator('#saveEditButton')).toBeDisabled();
   expect(network.calls.filter(call => call.action === 'data.updateWaterSystem')).toEqual([]);
   await page.locator('#sharedVillageSearch').fill('QA-VILLAGE-250');
   await page.locator('#sharedVillageOptions input[value="QA-VILLAGE-250"]').uncheck();
@@ -1489,7 +1672,7 @@ for (const viewport of [
 }
 
 test('login busy dialog survives pending authentication and clears on failure', async ({ page }) => {
-  const hold = heldResponse(failure('AUTH_INVALID', 'Synthetic credentials rejected'));
+  const hold = heldResponse(failure('AUTH_INVALID', 'ระบบไม่สามารถดำเนินการได้ กรุณาลองใหม่'));
   await installIsolatedTechnician(page, { 'auth.login': hold.respond });
   await openLogin(page);
   await submitSyntheticLogin(page);
@@ -1498,7 +1681,7 @@ test('login busy dialog survives pending authentication and clears on failure', 
   await expect(page.locator('#busyOverlay')).toBeVisible();
   hold.release();
   await expect(page.locator('#busyOverlay')).toBeHidden();
-  await expect(page.locator('#loginError')).toHaveText('Synthetic credentials rejected');
+  await expect(page.locator('#loginError')).toHaveText('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง');
 });
 
 test('overlapping loading tokens retain the active Public popup until final cleanup', async ({ page }) => {
@@ -1669,20 +1852,37 @@ const analyticsDataset = { generatedAt: '2026-01-01T00:00:00Z', villages: [
 
 test('four Public-style charts cross-filter the authenticated Dashboard without Management mutations', async ({ page }) => {
   const network=await openManagement(page,{'data.dashboard':success(analyticsDataset)},'dashboard');
+  const legendText=id=>page.locator(`#${id}Legend button`).allTextContents();
+  expect(await legendText('quantityChart')).toEqual(['เพียงพอ 2 ระบบ','ไม่เพียงพอ 1 ระบบ','ไม่มีข้อมูล 0 ระบบ']);
+  expect(await legendText('qualityChart')).toEqual(['ผ่านเกณฑ์ 1 ระบบ','ไม่ผ่านเกณฑ์ 1 ระบบ','ไม่มีข้อมูล 1 ระบบ']);
+  await page.locator('#qualityChartLegend button').nth(1).click();
+  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await expect(page.locator('#qualityChartLegend button').nth(1)).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#qualityChartLegend button').nth(1)).toBeFocused();
+  await page.locator('#qualityChartLegend button').nth(1).press('Enter');
+  await expect(page.locator('#kpiSystems')).toHaveText('3');
+  expect((await new AxeBuilder({page}).include('.donut-summary').analyze()).violations).toEqual([]);
   for(const [canvas,index,control,value] of [
     ['districtChart',0,'filterDistrict','จุน'],
     ['qualityChart',1,'filterDrinkingWaterQuality','FAIL'],
     ['quantityChart',1,'filterWaterQuantity','INSUFFICIENT'],
     ['systemTypeChart',0,'filterSystemType','GROUNDWATER_SMALL']
   ]) {
-    await page.locator(`#${canvas}`).scrollIntoViewIfNeeded();
+    // Each preceding filter recreates all charts with a 180 ms animation.
+    await page.waitForTimeout(250);
+    await page.locator(`#${canvas}`).evaluate(element=>element.scrollIntoView({block:'center',behavior:'instant'}));
     const clickPoint=async()=>page.locator(`#${canvas}`).evaluate((element,i)=>{
       const chart=Chart.getChart(element),point=chart.getDatasetMeta(0).data[i].getCenterPoint(),box=element.getBoundingClientRect();
       return {x:box.left+point.x,y:box.top+point.y};
     },index);
     let point=await clickPoint();
+    expect(await page.evaluate(point=>document.elementFromPoint(point.x,point.y)?.closest('canvas')?.id,point)).toBe(canvas);
     await page.mouse.click(point.x,point.y);
     await expect(page.locator(`#${control}`)).toHaveValue(value);
+    if(control==='filterDistrict'){
+      expect(await legendText('quantityChart')).toEqual(['เพียงพอ 1 ระบบ','ไม่เพียงพอ 1 ระบบ','ไม่มีข้อมูล 0 ระบบ']);
+      expect(await legendText('qualityChart')).toEqual(['ผ่านเกณฑ์ 1 ระบบ','ไม่ผ่านเกณฑ์ 1 ระบบ','ไม่มีข้อมูล 0 ระบบ']);
+    }
     await page.waitForTimeout(250);
     point=await clickPoint();
     await page.mouse.click(point.x,point.y);
@@ -2599,7 +2799,7 @@ test('Phase B renders every supported field with visible controls and associated
 });
 
 test('Phase B service values serialize exactly and shared villages support touch selection', async ({ page }) => {
-  const network = await openManagement(page);
+  const network = await openManagement(page, {'data.waterSystem':success({system:{...editableSystem,shared_villages_json:'[{"village_id":"QA-VILLAGE-2"},{"village_id":"LEGACY-VILLAGE"}]'}})});
   await openEditFromTable(page);
   for (const [key, value] of Object.entries({ beneficiaries: '125', monthly_production_cost: '1300.5', monthly_service_revenue: '900', water_tariff: '9.25', service_agency: 'หน่วยงานใหม่' })) await page.locator(`#edit_${key}`).fill(value);
   await page.locator('#edit_shared_villages_json input[name="shared_villages_json"]').uncheck();
@@ -2607,7 +2807,7 @@ test('Phase B service values serialize exactly and shared villages support touch
   await expect(page.locator('#editDialog')).toBeHidden();
   const updates = network.calls.filter(call => call.action === 'data.updateWaterSystem');
   expect(updates).toHaveLength(1);
-  expect(updates[0].payload.request.patch).toEqual({ beneficiaries: 125, monthly_production_cost: 1300.5, monthly_service_revenue: 900, water_tariff: 9.25, service_agency: 'หน่วยงานใหม่', shared_villages_json: [] });
+  expect(updates[0].payload.request.patch).toEqual({ beneficiaries: 125, monthly_production_cost: 1300.5, monthly_service_revenue: 900, water_tariff: 9.25, service_agency: 'หน่วยงานใหม่', shared_villages_json: [{village_id:'LEGACY-VILLAGE'}] });
 });
 
 for (const width of [1440, 390]) {
@@ -2636,7 +2836,7 @@ for (const width of [1440, 390]) {
 }
 
 test('untouched legacy owner blank and explicitly cleared optional enums remain supported', async ({ page }) => {
-  const blankOwner = { ...editableSystem, owner_type: '', establishment_type: 'LOCAL_CREATED', transfer_document_status: 'AVAILABLE', water_pressure: 'FLOW_CONTINUOUS' };
+  const blankOwner = { ...editableSystem, owner_type: '', establishment_type: 'TRANSFERRED', transfer_agency: 'Existing transfer agency', transfer_document_status: 'AVAILABLE', water_pressure: 'FLOW_CONTINUOUS' };
   const network = await openManagement(page, { 'data.waterSystem': success({ system: blankOwner }) });
   await openEditFromTable(page);
   await page.locator('#edit_system_name').fill('Unrelated synthetic edit');

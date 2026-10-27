@@ -79,6 +79,14 @@ async function openIsolatedPublic(page) {
 
 test('single global filter and separate list search support IDs without revealing hidden systems',async({page})=>{
   const evidence=await openIsolatedPublic(page);
+  const legendText=id=>page.locator(`#${id}Legend button`).allTextContents();
+  expect(await legendText('quantityChart')).toEqual(['เพียงพอ 27 ระบบ','ไม่เพียงพอ 0 ระบบ','ไม่มีข้อมูล 0 ระบบ']);
+  expect(await legendText('qualityChart')).toEqual(['ผ่านเกณฑ์ 27 ระบบ','ไม่ผ่านเกณฑ์ 0 ระบบ','ไม่มีข้อมูล 0 ระบบ']);
+  await page.locator('#quantityChartLegend button').first().click();
+  await expect(page.locator('#filterWaterQuantity')).toHaveValue('SUFFICIENT');
+  await expect(page.locator('#quantityChartLegend button').first()).toHaveAttribute('aria-pressed','true');
+  await page.locator('#quantityChartLegend button').first().press('Enter');
+  await expect(page.locator('#filterWaterQuantity')).toHaveValue('');
   await expect(page.locator('#btnClearFilters')).toBeHidden();
   await expect(page.locator('#publicListDistrict,#publicListType,#publicListStatus,#publicListClear,#filterPublicVisibility')).toHaveCount(0);
   await page.locator('#publicListSearch').fill('s27');
@@ -88,14 +96,18 @@ test('single global filter and separate list search support IDs without revealin
   await page.locator('#publicListSearch').fill('');
   await page.locator('#filterSearch').fill('s27');
   await expect(page.locator('#kpiSystems')).toHaveText('1');
+  expect(await legendText('quantityChart')).toEqual(['เพียงพอ 1 ระบบ','ไม่เพียงพอ 0 ระบบ','ไม่มีข้อมูล 0 ระบบ']);
+  expect(await legendText('qualityChart')).toEqual(['ผ่านเกณฑ์ 1 ระบบ','ไม่ผ่านเกณฑ์ 0 ระบบ','ไม่มีข้อมูล 0 ระบบ']);
   await expect(page.locator('#btnClearFilters')).toBeVisible();
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(1);
   await page.locator('#filterSearch').fill('hidden-system');
   await expect(page.locator('#kpiSystems')).toHaveText('0');
+  await expect(page.locator('#qualityChartLegend button')).toHaveCount(0);
   await expect(page.locator('#problemList')).not.toContainText('บ้านข้อมูลซ่อน');
   await page.locator('#btnClearFilters').click();
   await expect(page.locator('#btnClearFilters')).toBeHidden();
   await expect(page.locator('#kpiSystems')).toHaveText('27');
+  await expect(page.locator('#qualityChartLegend button')).toHaveCount(3);
   expect(evidence.unexpected).toEqual([]);expect(evidence.pageErrors).toEqual([]);
 });
 

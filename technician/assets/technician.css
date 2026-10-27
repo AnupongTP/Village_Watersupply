@@ -209,6 +209,8 @@ textarea { resize: vertical; }
 .modal-body { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px; }
 .stack { display: grid; gap: 12px; }
 .form-error { min-height: 18px; margin: 0; color: #b91c1c; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+#loginForm input[aria-invalid="true"] { border-color: #dc2626; }
+#loginForm input[aria-invalid="true"]:focus { border-color: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
 .password-field input[data-validity="invalid"] { border-color: #dc2626; }
 .password-field input[data-validity="invalid"]:focus { border-color: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
 .password-field input[data-validity="valid"] { border-color: #16a34a; }
@@ -419,6 +421,10 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
   .topbar-actions #refreshButton,
   .mobile-account > #mobileAccountButton { width: 44px; min-height: 44px; }
 }
+
+.header-area-label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.header-district-badge { display: inline-block; max-width: 100%; padding: 3px 9px; border: 1px solid #bae6fd; border-radius: 999px; background: #e0f2fe; color: #075985; font-size: 12px; font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
+.header-district-badge.hidden { display: none; }
 
 /* UI/UX pass (local): readable small text and 44px form/touch targets for the Technician app. */
 .field-label,

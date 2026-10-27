@@ -105,6 +105,22 @@
     {title:'รายละเอียดแหล่งน้ำ',description:'รายละเอียดเพิ่มเติมสำหรับแหล่งน้ำ โดยเฉพาะระบบน้ำผิวดิน',keys:['water_source_detail','surface_water_type','surface_water_agency']}
   ];
 
+  const EDIT_CONDITIONS = [
+    {controller:'drinking_water_quality',values:['FAIL'],fields:['quality_failure_categories_json','quality_failure_detail']},
+    {controller:'year_round_status',values:['SEASONAL'],fields:['available_months_json']},
+    {controller:'water_source_type',values:['SURFACE_WATER','MIXED'],fields:['surface_water_type','surface_water_agency']},
+    {controller:'shared_with_other_village',values:['YES'],fields:['shared_village_name','shared_villages_json']},
+    {controller:'establishment_type',values:['ACCEPTED_ASSET'],fields:['establishment_agency']},
+    {controller:'establishment_type',values:['TRANSFERRED'],fields:['transfer_year_be','transfer_agency','transfer_other','transfer_document_status','transfer_document_url']}
+  ];
+  function editFieldActive(key){const rule=EDIT_CONDITIONS.find(rule=>rule.fields.includes(key));return !rule||rule.values.includes($(`edit_${rule.controller}`)?.value);}
+  function updateEditConditions(){
+    for(const rule of EDIT_CONDITIONS)for(const key of rule.fields){
+      const wrapper=$('editFields').querySelector(`[data-edit-field="${key}"]`);if(!wrapper)continue;
+      const active=editFieldActive(key);wrapper.classList.toggle('hidden',!active);
+      wrapper.querySelectorAll('input,select,textarea,button').forEach(control=>{control.disabled=!active;});
+    }
+  }
   function clientInfo() { return `Technician Dashboard v2 | ${navigator.userAgent}`.slice(0, 500); }
   function endpoint() { return String((window.VWS_MANAGEMENT_CONFIG || {}).endpoint || '').trim(); }
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -160,7 +176,16 @@
     state.dashboardAppliedRequest=result.requestId;state.dashboard=result.dash;return true;
   }
   function isCurrentDashboardResult(result){return Boolean(result&&result.token===state.token&&result.intentId===state.dashboardIntent&&result.requestId===state.refreshRequest);}
-  function showLogin(){ state.selectionRequest++;clearBusy();closeSystemActionMenu(false);closeAccountMenu();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value='';scheduleBackToTop(); }
+  function validateLoginField(id, required=false){
+    const input=$(id),error=$(`${id}Error`);
+    const blank=id==='loginUsername'?!input.value.trim():input.value.length===0;
+    const invalid=required&&blank;
+    if(invalid)input.setAttribute('aria-invalid','true');else input.removeAttribute('aria-invalid');
+    error.textContent=invalid?(id==='loginUsername'?'กรุณาระบุชื่อผู้ใช้':'กรุณาระบุรหัสผ่าน'):'';
+    error.classList.toggle('hidden',!invalid);
+    return !invalid;
+  }
+  function showLogin(){ state.selectionRequest++;clearBusy();closeSystemActionMenu(false);closeAccountMenu();document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#loginView';$('bootView').classList.add('hidden');$('loginView').classList.remove('hidden');$('appView').classList.add('hidden');$('loginPassword').value='';validateLoginField('loginUsername');validateLoginField('loginPassword');scheduleBackToTop(); }
   function showApp(){ document.documentElement.classList.remove('has-session','boot-handoff');$('skipLink').href='#main';$('bootView').classList.add('hidden');$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');scheduleBackToTop(); }
   function showBoot(message='กำลังโหลดข้อมูล...',retry=false){
     document.documentElement.classList.add('has-session','boot-handoff');
@@ -175,7 +200,12 @@
   }
 
   async function login(username,password){
-    const data=unwrap(await api('auth.login',{username,password,clientInfo:clientInfo()}));
+    let data;
+    try{data=unwrap(await api('auth.login',{username,password,clientInfo:clientInfo()}));}
+    catch(error){
+      if(error.code==='AUTH_INVALID')error.message='ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง';
+      throw error;
+    }
     state.token=String(data.token||''); if(!/^MGT-[0-9a-f]{64}$/.test(state.token)) throw new Error('ข้อมูลยืนยันการเข้าสู่ระบบไม่ถูกต้อง');
     storageSet(TOKEN_KEY,state.token); setCurrentUser(data.user); return data;
   }
@@ -212,7 +242,7 @@
     catch(e){ if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_INVALID','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED','ACCOUNT_DISTRICT_REQUIRED'].includes(e.code)){clearSession();showLogin();if(e.code==='ACCOUNT_DISTRICT_REQUIRED')setError('loginError',e.message);}else{state.user=null;state.bootstrap=null;state.dashboard=null;showBoot('ยังตรวจสอบการเข้าสู่ระบบไม่สำเร็จ',true);} }
   }
 
-  function renderCurrentUser(){ const name=state.user?.displayName||state.user?.username||'-',role=label(state.user?.role),showRole=role&&role!=='-'&&name.trim().toLocaleLowerCase('th')!==role.trim().toLocaleLowerCase('th'); $('currentUserName').textContent=name; $('currentUserRole').textContent=role; $('currentUserRole').classList.toggle('hidden',!showRole); $('mobileCurrentUserName').textContent=name; $('mobileCurrentUserRole').textContent=role; $('mobileCurrentUserRole').classList.toggle('hidden',!showRole); $('mobileAccountButton').setAttribute('aria-label',`เมนูบัญชีผู้ใช้ ${name}${showRole?` ${role}`:''}`); }
+  function renderCurrentUser(){ const district=String(state.user?.district||'').trim(); $('headerDistrictBadge').textContent=state.user?.role==='TECHNICIAN'&&district?`ช่างอำเภอ${district}`:''; $('headerDistrictBadge').classList.toggle('hidden',state.user?.role!=='TECHNICIAN'||!district); const name=state.user?.displayName||state.user?.username||'-',role=label(state.user?.role),showRole=role&&role!=='-'&&name.trim().toLocaleLowerCase('th')!==role.trim().toLocaleLowerCase('th'); $('currentUserName').textContent=name; $('currentUserRole').textContent=role; $('currentUserRole').classList.toggle('hidden',!showRole); $('mobileCurrentUserName').textContent=name; $('mobileCurrentUserRole').textContent=role; $('mobileCurrentUserRole').classList.toggle('hidden',!showRole); $('mobileAccountButton').setAttribute('aria-label',`เมนูบัญชีผู้ใช้ ${name}${showRole?` ${role}`:''}`); }
   function assertDashboard(dash){if(!dash||!Array.isArray(dash.villages)||!Array.isArray(dash.waterSystems)||!Array.isArray(dash.waterSources))throw new Error('รูปแบบข้อมูลแดชบอร์ดไม่ถูกต้อง');}
 
   function renderDashboard(){
@@ -319,7 +349,7 @@
     return `<label class="edit-field">${escapeHtml(title)}<input id="${id}" data-field="${key}" data-kind="${type}" type="${htmlType}" ${step?`step="${step}" ${bounds} inputmode="${type==='integer'?'numeric':'decimal'}"`:''} value="${escapeHtml(raw)}"></label>`;
   }
   function editFieldDefinitionMap(){const map={};EDIT_FIELDS.forEach(def=>{map[def[0]]=def;});return map;}
-  function renderEditSections(s){const byKey=editFieldDefinitionMap();return EDIT_GROUPS.map(group=>`<section class="edit-section"><header class="edit-section-header"><h4>${escapeHtml(group.title)}</h4><p>${escapeHtml(group.description)}</p></header><div class="edit-section-grid">${group.keys.map(key=>byKey[key]?fieldHtml(byKey[key],s):'').join('')}</div></section>`).join('');}
+  function renderEditSections(s){const byKey=editFieldDefinitionMap();return EDIT_GROUPS.map(group=>`<section class="edit-section"><header class="edit-section-header"><h4>${escapeHtml(group.title)}</h4><p>${escapeHtml(group.description)}</p></header><div class="edit-section-grid">${group.keys.map(key=>byKey[key]?fieldHtml(byKey[key],s).replace(/^(<\w+)/,`$1 data-edit-field="${key}"`):'').join('')}</div></section>`).join('');}
   function sharedVillageOptions(){const seen=new Set();return (state.dashboard?.villages||[]).filter(v=>v.village_id&&v.village_id!==state.selectedSystem?.village_id&&!seen.has(v.village_id)&&seen.add(v.village_id));}
   function sharedVillageName(v){return `${v.village_name||'(ไม่ระบุชื่อหมู่บ้าน)'}${v.village_no===''||v.village_no==null?'':` หมู่ ${v.village_no}`}`;}
   function sharedVillageSearchText(value){return String(value??'').normalize('NFKC').toLocaleLowerCase('th-TH').replace(/\s+/g,' ').trim();}
@@ -331,17 +361,41 @@
     $('sharedVillageOptions').innerHTML=matches.length?matches.slice(0,state.sharedVillageLimit).map(v=>`<label class="checkbox-option village-option"><input type="checkbox" name="shared_villages_json" value="${escapeHtml(v.village_id)}" ${state.sharedVillageIds.has(v.village_id)?'checked':''}><span><strong>${escapeHtml(sharedVillageName(v))}</strong><small>${escapeHtml([v.subdistrict,v.district,v.province,v.village_id].filter(Boolean).join(' · '))}</small></span></label>`).join(''):`<p class="selection-help village-empty">${options.length?'ไม่พบหมู่บ้านที่ตรงกับคำค้น':'ไม่มีรายชื่อหมู่บ้านให้เลือก'}</p>`;
     $('sharedVillageMore').classList.toggle('hidden',matches.length<=state.sharedVillageLimit);
   }
-  function openEdit(){const s=state.selectedSystem;if(!s||!s.managementMutable||!hasPermission('UPDATE_SYSTEM'))return;state.editTouched.clear();state.sharedVillageIds=new Set(canonicalShared(s.shared_villages_json)||[]);state.sharedVillageLimit=20;$('editDialogTitle').textContent=s.system_name||s.system_id;$('editFields').innerHTML=renderEditSections(s);renderSharedVillageSelector();$('editReason').value='';setError('editError'); if(!$('editDialog').open)$('editDialog').showModal();syncSaveButton();}
+  function openEdit(){const s=state.selectedSystem;if(!s||!s.managementMutable||!hasPermission('UPDATE_SYSTEM'))return;state.editTouched.clear();state.sharedVillageIds=new Set(canonicalShared(s.shared_villages_json)||[]);state.sharedVillageLimit=20;$('editDialogTitle').textContent=s.system_name||s.system_id;$('editFields').innerHTML=renderEditSections(s);renderSharedVillageSelector();updateEditConditions();$('editReason').value='';setError('editError'); if(!$('editDialog').open)$('editDialog').showModal();syncSaveButton();}
   function canonicalArrayString(arr){return arr.length?JSON.stringify(arr):'';}
   function canonicalShared(value){const parsed=parseJsonArray(value);if(parsed===null)return null;return [...new Set(parsed.map(v=>typeof v==='string'?v:(v?.village_id||v?.villageId||'')).filter(Boolean))].sort();}
   function collectPatch(){const s=state.selectedSystem,patch={};
-    EDIT_FIELDS.forEach(([key,,type])=>{if(!state.editTouched.has(key))return;let value;
+    EDIT_FIELDS.forEach(([key,,type])=>{if(!state.editTouched.has(key)||!editFieldActive(key))return;let value;
       if(['usage-array','quality-array','months-array'].includes(type)){const selected=[...document.querySelectorAll(`input[name="${key}"]:checked`)].map(x=>x.value);const before=parseJsonArray(s[key]);if(before!==null&&JSON.stringify([...new Set(selected)].sort())!==JSON.stringify([...new Set(before.map(String))].sort()))patch[key]=canonicalArrayString(selected);return;}
       if(type==='villages-array'){const ids=[...state.sharedVillageIds].sort();const before=canonicalShared(s[key]);if(before!==null&&JSON.stringify(ids)!==JSON.stringify(before))patch[key]=ids.map(village_id=>({village_id}));return;}
       const el=$(`edit_${key}`); if(!el)return; value=el.value;if(['text','textarea','url'].includes(type))value=value.trim();
       if(type==='number'||type==='integer') value=value.trim()===''?'':Number(value);
       const before=s[key]??''; if((type==='number'||type==='integer')&&value!==''&&before!==''&&Number(value)===Number(before))return;if(String(value)!==String(before))patch[key]=value;
-    }); return patch; }
+    });
+    // Only an explicitly changed parent can clear stored dependent values.
+    // Hidden controls retain their draft values; opening/cancelling never writes.
+    for(const rule of EDIT_CONDITIONS){
+      if(!Object.hasOwn(patch,rule.controller)||rule.values.includes(patch[rule.controller]))continue;
+      for(const key of rule.fields){
+        if(key.endsWith('_json')){const before=parseJsonArray(s[key]);if(before===null||before.length)patch[key]=[];}
+        else if(String(s[key]??'').trim()!=='')patch[key]='';
+      }
+    }
+    return patch; }
+
+  function validateConditionalPatch(patch){
+    const touches=keys=>keys.some(key=>Object.hasOwn(patch,key));
+    const value=key=>$(`edit_${key}`)?.value.trim()||'';
+    const checked=key=>$('editFields').querySelectorAll(`input[name="${key}"]:checked`).length;
+    if(touches(['drinking_water_quality','quality_failure_categories_json','quality_failure_detail'])&&value('drinking_water_quality')==='FAIL'&&!checked('quality_failure_categories_json'))return ['quality_failure_categories_json','กรุณาเลือกหมวดสาเหตุคุณภาพน้ำไม่ผ่านอย่างน้อย 1 รายการ'];
+    if(touches(['year_round_status','available_months_json'])&&value('year_round_status')==='SEASONAL'&&!checked('available_months_json'))return ['available_months_json','กรุณาเลือกเดือนที่มีน้ำใช้อย่างน้อย 1 เดือน'];
+    if(touches(['shared_with_other_village','shared_village_name','shared_villages_json'])&&value('shared_with_other_village')==='YES'&&((Object.hasOwn(patch,'shared_villages_json')&&!state.sharedVillageIds.size)||(!state.sharedVillageIds.size&&!value('shared_village_name'))))return ['shared_villages_json','กรุณาเลือกหมู่บ้านที่ใช้น้ำร่วมอย่างน้อย 1 หมู่บ้าน'];
+    if(touches(['establishment_type','establishment_agency','transfer_year_be','transfer_agency','transfer_other','transfer_document_status','transfer_document_url'])){
+      if(value('establishment_type')==='ACCEPTED_ASSET'&&!value('establishment_agency'))return ['establishment_agency','กรุณาระบุหน่วยงานที่เกี่ยวข้องกับการรับมอบทรัพย์สิน'];
+      if(value('establishment_type')==='TRANSFERRED'&&!value('transfer_agency'))return ['transfer_agency','กรุณาระบุหน่วยงานถ่ายโอน'];
+    }
+    return null;
+  }
 
   function syncSaveButton(){ $('saveEditButton').disabled=state.mutating||!state.selectedSystem||Object.keys(collectPatch()).length===0; }
   function changeHtml(values,businessOnly=false){return window.VWSSystemChanges.render(values,{businessOnly,fields:EDIT_FIELDS.map(f=>f[0]),label:key=>({updated_at:'เวลาแก้ไข',created_at:'เวลาสร้าง',record_version:'เวอร์ชันข้อมูล',last_mutation_id:'หมายเลขคำขอ',construction_year_ce:'ปีสร้าง ค.ศ.'}[key]||label(key)),villageName:id=>state.villageById.get(id)?.village_name||id});}
@@ -361,6 +415,8 @@
     $('finalDeleteDialog').addEventListener('close',()=>{pendingDelete=null;});
   }
   async function saveEdit(){const s=state.selectedSystem,patch=collectPatch();if(!s||!s.managementMutable||!hasPermission('UPDATE_SYSTEM'))return;
+    const conditionalError=validateConditionalPatch(patch);
+    if(conditionalError){const [key,message]=conditionalError;setError('editError',message);const wrapper=$('editFields').querySelector(`[data-edit-field="${key}"]`),target=$(`edit_${key}`)||wrapper?.querySelector('input,select,textarea');if(target)target.focus();else if(wrapper){wrapper.tabIndex=-1;wrapper.focus();}return;}
     // Validate only edited fields; untouched legacy blanks remain unchanged.
     for(const [key,title,type] of EDIT_FIELDS){if(Object.hasOwn(patch,key)&&type==='enum'&&key!=='transfer_document_status'&&String(patch[key]??'').trim()===''){setError('editError',`กรุณาเลือก${title}`);$(`edit_${key}`)?.focus();return;}}
     for(const [key,,type] of EDIT_FIELDS){if(!Object.hasOwn(patch,key)||!['number','integer'].includes(type))continue;const value=patch[key];const coordinate=key==='latitude'||key==='longitude';const min=key==='latitude'?-90:key==='longitude'?-180:0,max=key==='latitude'?90:key==='longitude'?180:Infinity;if(value!==''&&(!Number.isFinite(value)||value<min||value>max||(type==='integer'&&!Number.isInteger(value)))){setError('editError',coordinate?'พิกัดอยู่นอกช่วงที่รองรับ':'กรุณาระบุตัวเลขที่ถูกต้องและไม่ติดลบ');$(`edit_${key}`)?.focus();return;}}
@@ -526,10 +582,11 @@
     });
     for(const id of ['editForm','deleteForm','technicianForm','actionForm','passwordForm'])$(id).addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches('input, select')&&event.target.type!=='checkbox')event.preventDefault();});
     $('retryResumeButton').addEventListener('click',resume);
-    $('editFields').addEventListener('input',event=>{if(event.target.matches('[data-shared-search]')){state.sharedVillageLimit=20;renderSharedVillageSelector();return;}const key=event.target.dataset.field||event.target.name;if(key&&key!=='shared_villages_json')state.editTouched.add(key);syncSaveButton();});
-    $('editFields').addEventListener('change',event=>{if(event.target.matches('input[name="shared_villages_json"]')){const id=event.target.value;if(event.target.checked)state.sharedVillageIds.add(id);else state.sharedVillageIds.delete(id);state.editTouched.add('shared_villages_json');renderSharedVillageSelector();[...$('sharedVillageOptions').querySelectorAll('input[name="shared_villages_json"]')].find(input=>input.value===id)?.focus();syncSaveButton();return;}const key=event.target.dataset.field||event.target.name;if(key)state.editTouched.add(key);syncSaveButton();});
+    $('editFields').addEventListener('input',event=>{if(event.target.matches('[data-shared-search]')){state.sharedVillageLimit=20;renderSharedVillageSelector();return;}const key=event.target.dataset.field||event.target.name;if(key&&key!=='shared_villages_json')state.editTouched.add(key);if(EDIT_CONDITIONS.some(rule=>rule.controller===key))updateEditConditions();syncSaveButton();});
+    $('editFields').addEventListener('change',event=>{if(event.target.matches('input[name="shared_villages_json"]')){const id=event.target.value;if(event.target.checked)state.sharedVillageIds.add(id);else state.sharedVillageIds.delete(id);state.editTouched.add('shared_villages_json');renderSharedVillageSelector();[...$('sharedVillageOptions').querySelectorAll('input[name="shared_villages_json"]')].find(input=>input.value===id)?.focus();syncSaveButton();return;}const key=event.target.dataset.field||event.target.name;if(key)state.editTouched.add(key);if(EDIT_CONDITIONS.some(rule=>rule.controller===key))updateEditConditions();syncSaveButton();});
     $('editFields').addEventListener('click',event=>{const remove=event.target.closest('[data-remove-village]');if(remove){state.sharedVillageIds.delete(remove.dataset.removeVillage);state.editTouched.add('shared_villages_json');renderSharedVillageSelector();$('sharedVillageSearch')?.focus();syncSaveButton();return;}if(event.target.closest('#sharedVillageMore')){state.sharedVillageLimit+=20;renderSharedVillageSelector();}});
-    $('loginForm').addEventListener('submit',async e=>{e.preventDefault();setError('loginError');const u=$('loginUsername').value,p=$('loginPassword').value;const busy=showBusy('กำลังเข้าสู่ระบบ...');try{await login(u,p);$('loginPassword').value='';await bootstrapAndLoad();}catch(err){clearSession();setError('loginError',err.message);showLogin();}finally{hideBusy(busy);}});
+    for(const id of ['loginUsername','loginPassword'])$(id).addEventListener('input',()=>{if($(id).getAttribute('aria-invalid')==='true')validateLoginField(id,true);});
+    $('loginForm').addEventListener('submit',async e=>{e.preventDefault();setError('loginError');const usernameValid=validateLoginField('loginUsername',true),passwordValid=validateLoginField('loginPassword',true);if(!usernameValid||!passwordValid){$(!usernameValid?'loginUsername':'loginPassword').focus();return;}const u=$('loginUsername').value,p=$('loginPassword').value;const busy=showBusy('กำลังเข้าสู่ระบบ...');try{await login(u,p);$('loginPassword').value='';await bootstrapAndLoad();}catch(err){clearSession();setError('loginError',err.message);showLogin();}finally{hideBusy(busy);}});
     $('logoutButton').addEventListener('click',performLogout);$('mobileLogoutButton').addEventListener('click',performLogout);
     $('refreshButton').addEventListener('click',()=>reloadDashboard(true));
     $('refreshTechniciansButton').addEventListener('click',()=>loadTechnicians({force:true}));

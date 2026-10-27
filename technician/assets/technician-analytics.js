@@ -140,7 +140,7 @@
   function makeChart(id,type,labels,datasets,options={}) {
     const canvas=$(id), old=charts.get(id);if(old){old.destroy();charts.delete(id);}
     const empty=canvas.parentElement.querySelector('.chart-empty');empty?.remove();
-    if(!labels.length||!window.Chart){canvas.hidden=true;const message=document.createElement('div');message.className='chart-empty';message.textContent='ไม่พบข้อมูลตามตัวกรองที่เลือก';canvas.parentElement.append(message);return;}
+    if(!labels.length||!window.Chart){window.VWSDoughnutLegend.clear(id);canvas.hidden=true;const message=document.createElement('div');message.className='chart-empty';message.textContent='ไม่พบข้อมูลตามตัวกรองที่เลือก';canvas.parentElement.append(message);return;}
     canvas.hidden=false;
     const narrow=matchMedia('(max-width: 767px)').matches;
     const onClick=options.onClick;
@@ -149,9 +149,10 @@
     const chartOptions={responsive:true,maintainAspectRatio:false,animation:{duration:180},indexAxis,cutout:type==='doughnut'?'66%':undefined,
       onClick:(_event,elements)=>{const hit=elements?.[0];if(hit&&onClick)setTimeout(()=>onClick(hit.index),0);},
       onHover:(event,elements)=>{if(event?.native?.target?.style)event.native.target.style.cursor=elements?.length?'pointer':'default';},
-      plugins:{legend:{display:options.legend!==false,position:'bottom',labels:{usePointStyle:true,boxWidth:10,boxHeight:10,padding:16,color:'#334155',font},onClick:type==='doughnut'?(_event,item)=>{if(Number.isInteger(item?.index)&&onClick)setTimeout(()=>onClick(item.index),0);}:undefined},tooltip:{displayColors:true,titleFont:{family:'Sarabun'},bodyFont:{family:'Sarabun'}}},
+      plugins:{legend:{display:type!=='doughnut'&&options.legend!==false,position:'bottom',labels:{usePointStyle:true,boxWidth:10,boxHeight:10,padding:16,color:'#334155',font},onClick:type==='doughnut'?(_event,item)=>{if(Number.isInteger(item?.index)&&onClick)setTimeout(()=>onClick(item.index),0);}:undefined},tooltip:{displayColors:true,titleFont:{family:'Sarabun'},bodyFont:{family:'Sarabun'}}},
       scales:type==='bar'?{x:{beginAtZero:true,grid:{color:'rgba(226, 232, 240, .75)'},ticks:{color:'#475569',font,maxRotation:indexAxis==='x'?30:0,minRotation:0},border:{color:'#e2e8f0'}},y:{beginAtZero:true,grid:{color:indexAxis==='y'?'transparent':'rgba(226, 232, 240, .75)'},ticks:{color:'#475569',font},border:{color:'#e2e8f0'}}}:undefined};
     charts.set(id,new Chart(canvas,{type,data:{labels,datasets},options:chartOptions}));
+    if(type==='doughnut')window.VWSDoughnutLegend.render(charts.get(id),{selectedIndex:options.selectedIndex,onSelect:onClick});
   }
   function renderCharts() {
     const map=villageMap();
@@ -172,7 +173,7 @@
       const rows=snapshot([key]).systems;
       const counts=Object.fromEntries(codes.map(code=>[code,0]));
       for(const s of rows){const code=normal(key,s[fields[key]]);counts[Object.hasOwn(counts,code)?code:'NO_DATA']++;}
-      makeChart(id,'doughnut',rows.length?names:[],[{data:codes.map(code=>counts[code]),backgroundColor:codes.map((code,i)=>filters[key]&&filters[key]!==code?dimPalette[i]:palette[i]),borderColor:'#fff',borderWidth:3,hoverOffset:4}],{onClick:i=>setFilter(key,codes[i],true)});
+      makeChart(id,'doughnut',rows.length?names:[],[{data:codes.map(code=>counts[code]),backgroundColor:codes.map((code,i)=>filters[key]&&filters[key]!==code?dimPalette[i]:palette[i]),borderColor:'#fff',borderWidth:3,hoverOffset:4}],{selectedIndex:codes.indexOf(filters[key]),onClick:i=>setFilter(key,codes[i],true)});
     }
     const typeCounts=Object.create(null);
     for(const s of snapshot(['systemType']).systems){const code=s.system_type||'UNKNOWN';typeCounts[code]=(typeCounts[code]||0)+1;}

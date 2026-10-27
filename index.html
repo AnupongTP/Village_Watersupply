@@ -241,12 +241,12 @@
         <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--type"><canvas id="systemTypeChart"></canvas></div>
       </section>
       <section id="operations" class="dashboard-section scroll-target analysis-card" data-scroll-target>
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-droplet"></i></span><div><h2>ความเพียงพอของน้ำ</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล · สถานะใช้การไม่ได้อยู่ในสรุปเฝ้าระวัง</p></div></div>
-        <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="quantityChart"></canvas></div>
+        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-droplet"></i></span><div><h2>ความเพียงพอของน้ำ</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
+        <div class="donut-summary"><div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="quantityChart"></canvas></div><div id="quantityChartLegend" class="donut-legend" role="group" aria-label="กรองความเพียงพอของน้ำ"></div></div>
       </section>
       <section id="quality" class="dashboard-section scroll-target analysis-card" data-scroll-target>
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-flask-vial"></i></span><div><h2>คุณภาพน้ำดื่ม</h2><p>รวมหมวดไม่มีข้อมูล · เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
-        <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="qualityChart"></canvas></div>
+        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-flask-vial"></i></span><div><h2>คุณภาพน้ำดื่ม</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
+        <div class="donut-summary"><div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="qualityChart"></canvas></div><div id="qualityChartLegend" class="donut-legend" role="group" aria-label="กรองคุณภาพน้ำดื่ม"></div></div>
       </section>
     </div>
 
@@ -290,6 +290,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.26.25/dist/sweetalert2.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="assets/js/doughnut-legend.js"></script>
   <script type="module" src="assets/js/app.js"></script>
 </body>
 </html>

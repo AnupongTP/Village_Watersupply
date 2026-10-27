@@ -28,6 +28,7 @@
   <script src="../assets/vendor/sweetalert2/sweetalert2.all.min.js" defer></script>
   <script src="../assets/vendor/chartjs/chart.umd.js" defer></script>
   <script src="assets/technician-ui.js" defer></script>
+  <script src="../assets/js/doughnut-legend.js" defer></script>
   <script src="assets/technician-analytics.js" defer></script>
   <script src="assets/technician-map.js" defer></script>
   <script src="assets/supabase-transport.js"></script>
@@ -62,13 +63,15 @@
         </div>
       </div>
       <div class="auth-divider"></div>
-      <form id="loginForm" class="stack" autocomplete="on">
-        <label class="field-label">ชื่อผู้ใช้
-          <input id="loginUsername" name="username" autocomplete="username" required autofocus aria-describedby="loginError">
-        </label>
-        <label class="field-label">รหัสผ่าน
-          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required aria-describedby="loginError">
-        </label>
+      <form id="loginForm" class="stack" autocomplete="on" novalidate>
+        <div class="field-label"><label for="loginUsername">ชื่อผู้ใช้</label>
+          <input id="loginUsername" name="username" autocomplete="username" required autofocus aria-describedby="loginUsernameError loginError">
+          <p id="loginUsernameError" class="form-error hidden" role="alert"></p>
+        </div>
+        <div class="field-label"><label for="loginPassword">รหัสผ่าน</label>
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required aria-describedby="loginPasswordError loginError">
+          <p id="loginPasswordError" class="form-error hidden" role="alert"></p>
+        </div>
         <button class="btn btn-primary auth-submit" type="submit" id="loginSubmit">
           <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>เข้าสู่ระบบ</span>
         </button>
@@ -86,7 +89,7 @@
           <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-700 text-white shadow-sm sm:size-11" aria-hidden="true"><i class="fa-solid fa-droplet text-base"></i></div>
           <div class="min-w-0">
             <h1 class="text-lg font-extrabold leading-relaxed text-slate-900 sm:text-xl">ระบบข้อมูลประปาหมู่บ้าน</h1>
-            <p class="mt-0.5 text-[11px] leading-relaxed text-slate-500 sm:text-xs">จังหวัดพะเยา</p>
+            <p id="headerAreaLabel" class="header-area-label mt-0.5 text-[11px] leading-relaxed text-slate-500 sm:text-xs"><span>จังหวัดพะเยา</span> <span id="headerDistrictBadge" class="header-district-badge hidden"></span></p>
           </div>
         </div>
         <div class="topbar-actions flex shrink-0 items-center gap-2">
@@ -308,12 +311,12 @@
         <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--type"><canvas id="systemTypeChart"></canvas></div>
       </section>
       <section id="operations" class="dashboard-section scroll-target analysis-card" data-scroll-target>
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-droplet"></i></span><div><h2>ความเพียงพอของน้ำ</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล · สถานะใช้การไม่ได้อยู่ในสรุปเฝ้าระวัง</p></div></div>
-        <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="quantityChart"></canvas></div>
+        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-droplet"></i></span><div><h2>ความเพียงพอของน้ำ</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
+        <div class="donut-summary"><div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="quantityChart"></canvas></div><div id="quantityChartLegend" class="donut-legend" role="group" aria-label="กรองความเพียงพอของน้ำ"></div></div>
       </section>
       <section id="quality" class="dashboard-section scroll-target analysis-card" data-scroll-target>
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-flask-vial"></i></span><div><h2>คุณภาพน้ำดื่ม</h2><p>รวมหมวดไม่มีข้อมูล · เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
-        <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="qualityChart"></canvas></div>
+        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-flask-vial"></i></span><div><h2>คุณภาพน้ำดื่ม</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
+        <div class="donut-summary"><div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="qualityChart"></canvas></div><div id="qualityChartLegend" class="donut-legend" role="group" aria-label="กรองคุณภาพน้ำดื่ม"></div></div>
       </section>
     </div>
 
