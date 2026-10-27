@@ -272,7 +272,7 @@ test('cold load writes strictly allowlisted R5.1 dataset to IndexedDB, and warm 
   await page.goto(`${origin}/`);
   await expect(page.locator('#kpiVillages')).toHaveText('3');
   await expect(page.locator('#kpiSystems')).toHaveText('2');
-  await expect(page.locator('#publicListAllCount')).toHaveText('2');
+  await expect(page.locator('#problemList .problem-summary strong')).toHaveText('2');
   await expect(page.locator('body')).toHaveAttribute('data-data-origin', 'live');
   await expect(page.locator('#dataSourceNotice')).toBeHidden();
   await expect(page.locator('#dataUpdatedLabel')).toHaveText('โหลดข้อมูลล่าสุด');
@@ -323,7 +323,7 @@ test('cold load writes strictly allowlisted R5.1 dataset to IndexedDB, and warm 
   harness.gate = null;
   await expect(page.locator('#kpiSystems')).toHaveText('1');
   await expect(page.locator('#kpiVillages')).toHaveText('2');
-  await expect(page.locator('#publicListAllCount')).toHaveText('1');
+  await expect(page.locator('#problemList .problem-summary strong')).toHaveText('1');
   await expect(page.locator('body')).toHaveAttribute('data-data-origin', 'live');
   await expect(page.locator('#dataSourceNotice')).toBeHidden();
   await expect(page.locator('#dataUpdatedLabel')).toHaveText('โหลดข้อมูลล่าสุด');

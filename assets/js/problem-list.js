@@ -12,7 +12,7 @@ import {
 } from './labels.js';
 
 const PAGE_SIZE = 20;
-const listState = { mode: 'all', search: '', page: 1, scopeKey: '' };
+const listState = { search: '', page: 1, scopeKey: '' };
 
 export function renderProblemList() {
   const root = document.getElementById('problemList');
@@ -25,22 +25,16 @@ export function renderProblemList() {
     listState.scopeKey = scopeKey;
   }
   const scopeSystems = AppState.filtered.waterSystems;
-  const monitoringCount = scopeSystems.filter(isWatchSystem).length;
-  document.getElementById('publicListAllCount').textContent = formatNumber(scopeSystems.length);
-  document.getElementById('publicListMonitoringCount').textContent = formatNumber(monitoringCount);
-  document.getElementById('publicListAll').setAttribute('aria-pressed', String(listState.mode === 'all'));
-  document.getElementById('publicListMonitoring').setAttribute('aria-pressed', String(listState.mode === 'monitoring'));
   bindListControlsOnce();
 
   const search = listState.search.trim().toLocaleLowerCase('th');
   const rows = scopeSystems
-    .filter(system => listState.mode === 'all' || isWatchSystem(system))
     .map(system => ({ system, village: villageById.get(system.village_id) }))
     .filter(({ system, village }) => (
       (!search || [system.system_id, systemDisplayName(system, village), villageDisplayName(village), village?.district, village?.subdistrict, village?.local_authority]
         .some(value => String(value || '').toLocaleLowerCase('th').includes(search)))
     ))
-    .sort(listState.mode === 'monitoring' ? compareSeverity : compareName);
+    .sort(compareName);
 
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   listState.page = Math.min(listState.page, pageCount);
@@ -50,7 +44,7 @@ export function renderProblemList() {
     root.innerHTML = `
       <div class="empty-state">
         <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-        <strong>${listState.mode === 'all' ? 'ไม่พบระบบประปา' : 'ไม่พบระบบที่เข้าเงื่อนไขเฝ้าระวัง'}</strong>
+        <strong>ไม่พบระบบประปา</strong>
         <span>ตามขอบเขตและตัวกรองปัจจุบัน</span>
       </div>`;
     bindActionsOnce(root, villageById);
@@ -93,17 +87,10 @@ export function renderProblemList() {
 }
 
 function bindListControlsOnce() {
-  const all = document.getElementById('publicListAll');
-  if (all.dataset.bound === '1') return;
-  all.dataset.bound = '1';
-  for (const [id, mode] of [['publicListAll', 'all'], ['publicListMonitoring', 'monitoring']]) {
-    document.getElementById(id).addEventListener('click', () => {
-      listState.mode = mode;
-      listState.page = 1;
-      renderProblemList();
-    });
-  }
-  document.getElementById('publicListSearch').addEventListener('input', event => {
+  const search = document.getElementById('publicListSearch');
+  if (search.dataset.bound === '1') return;
+  search.dataset.bound = '1';
+  search.addEventListener('input', event => {
     listState.search = event.target.value;
     listState.page = 1;
     renderProblemList();
@@ -199,26 +186,6 @@ function bindActionsOnce(root, villageById) {
 
 function findSystem(systemId) {
   return AppState.data.waterSystems.find(system => String(system.system_id) === String(systemId));
-}
-
-function isWatchSystem(system) {
-  return system.operational_status === 'NOT_WORKING' ||
-         system.water_quantity === 'INSUFFICIENT' ||
-         system.drinking_water_quality === 'FAIL';
-}
-
-function compareSeverity(a, b) {
-  const diff = severityScore(b.system) - severityScore(a.system);
-  if (diff) return diff;
-  return villageDisplayName(a.village, '').localeCompare(villageDisplayName(b.village, ''), 'th');
-}
-
-function severityScore(system) {
-  let score = 0;
-  if (system.operational_status === 'NOT_WORKING') score += 100;
-  if (system.water_quantity === 'INSUFFICIENT') score += 30;
-  if (system.drinking_water_quality === 'FAIL') score += 20;
-  return score;
 }
 
 function watchBadges(system) {

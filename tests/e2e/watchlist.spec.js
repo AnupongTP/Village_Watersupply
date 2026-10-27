@@ -29,8 +29,8 @@ test('public systems list reaches every matching record through pagination and r
   await openDashboard(page);
 
   await expect(page.locator('#watchlistTotal')).toHaveText(String(SYSTEM_COUNT));
-  await expect(page.locator('#publicListAllCount')).toHaveText(String(SYSTEM_COUNT));
-  await page.locator('#publicListMonitoring').click();
+  await expect(page.locator('#problemList .problem-summary strong')).toHaveText(String(SYSTEM_COUNT));
+  await expect(page.locator('#publicListAll,#publicListMonitoring')).toHaveCount(0);
   await expect(page.locator('#publicListPageStatus')).toHaveText('หน้า 1/2');
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(20);
   await expect(page.locator('.watchlist-mobile .watch-card')).toHaveCount(20);

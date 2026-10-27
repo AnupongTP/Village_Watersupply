@@ -72,7 +72,7 @@ async function openIsolatedPublic(page) {
     return route.abort();
   });
   await page.goto(origin);
-  await expect(page.locator('#publicListAllCount')).toHaveText('27');
+  await expect(page.locator('#problemList .problem-summary strong')).toHaveText('27');
   await expect(page.locator('.swal2-container')).toHaveCount(0);
   return { unexpected, pageErrors };
 }
@@ -111,9 +111,10 @@ test('single global filter and separate list search support IDs without revealin
   expect(evidence.unexpected).toEqual([]);expect(evidence.pageErrors).toEqual([]);
 });
 
-test('all and monitoring modes, local filters, pagination and R5.1 use only accepted systems', async ({ page }) => {
+test('single public list includes normal and monitored systems, pagination and R5.1', async ({ page }) => {
   const evidence = await openIsolatedPublic(page);
-  await expect(page.locator('#publicListMonitoringCount')).toHaveText('5');
+  await expect(page.locator('#publicListAll,#publicListMonitoring,.public-list-modes')).toHaveCount(0);
+  await expect(page.locator('#watchlistTotal')).toHaveText('5');
   await expect(page.locator('#publicListPageStatus')).toHaveText('หน้า 1/2');
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(20);
   await expect(page.locator('body')).not.toContainText('ระบบข้อมูลซ่อน');
@@ -123,11 +124,12 @@ test('all and monitoring modes, local filters, pagination and R5.1 use only acce
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(7);
   const lastIds = await page.locator('.problem-table tbody tr').evaluateAll(rows => rows.map(row => row.dataset.watchSystemId));
   expect(new Set([...firstIds, ...lastIds]).size).toBe(27);
+  await expect(page.locator('#problemList')).toContainText('ไม่มีประเด็นเฝ้าระวัง');
 
-  await page.locator('#publicListMonitoring').click();
+  await page.locator('[data-monitoring-filter="not-working"]').click();
   await expect(page.locator('#publicListPageStatus')).toHaveText('หน้า 1/1');
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(5);
-  await page.locator('#publicListAll').click();
+  await page.locator('#btnClearFilters').click();
   await page.locator('#publicListSearch').fill('ระบบเผยแพร่ 27');
   await expect(page.locator('.problem-table tbody tr')).toHaveCount(1);
   await page.locator('#publicListSearch').fill('ระบบข้อมูลซ่อน');
@@ -157,16 +159,16 @@ test('list actions, global filter, charts and map stay connected to the accepted
   await expect(page.locator('.leaflet-popup')).toBeVisible();
   await expect(page.locator('.leaflet-popup [data-map-action="detail"]')).toBeVisible();
   await page.locator('#filterDistrict').selectOption('เชียงคำ');
-  await expect(page.locator('#publicListAllCount')).toHaveText('3');
+  await expect(page.locator('#problemList .problem-summary strong')).toHaveText('3');
   await expect(page.locator('#kpiSystems')).toHaveText('3');
   await expect(page.locator('.water-system-marker')).toHaveCount(3);
   await expect(page.locator('#districtChart')).toBeVisible();
   await page.locator('#btnClearFilters').click();
-  await expect(page.locator('#publicListAllCount')).toHaveText('27');
+  await expect(page.locator('#problemList .problem-summary strong')).toHaveText('27');
   const districtIndex = await chartLabelIndex(page, 'districtChart', 'เชียงคำ');
   expect(districtIndex).toBeGreaterThanOrEqual(0);
   await clickChartElement(page, 'districtChart', 0, districtIndex);
-  await expect(page.locator('#publicListAllCount')).toHaveText('3');
+  await expect(page.locator('#problemList .problem-summary strong')).toHaveText('3');
   expect(evidence.unexpected).toEqual([]);
   expect(evidence.pageErrors).toEqual([]);
 });
@@ -212,7 +214,7 @@ for (const viewport of LOCKED_VIEWPORTS) {
     await expectNoHorizontalPageOverflow(page);
     await expectHashAnchorSafe(page, 'watchlist');
     await expect(page.locator('#publicListSearch')).toBeVisible();
-    await expect(page.locator('#publicListAll')).toBeVisible();
+    await expect(page.locator('#publicListAll,#publicListMonitoring,.public-list-modes')).toHaveCount(0);
     await expect(page.locator('#waterMap')).toBeVisible();
     if (viewport.width < 1024) await expect(page.locator('.watchlist-mobile')).toBeVisible();
     else await expect(page.locator('.watchlist-scroll')).toBeVisible();
