@@ -1151,6 +1151,7 @@ for (const width of [1440,768,390]) {
 
 test('tablet Management tables chain vertical wheel and retain horizontal scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const network = await openManagement(page);
   for (const [name, wrapper, row] of [
     ['systems', '.desktop-table-wrap', '#systemsTableBody tr'],
@@ -1165,6 +1166,18 @@ test('tablet Management tables chain vertical wheel and retain horizontal scroll
       const beforeY = await page.evaluate(() => scrollY);
       await page.mouse.wheel(0, -300);
       await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(beforeY);
+      await page.evaluate(() => new Promise(resolve => {
+        let previous = scrollY;
+        let stableFrames = 0;
+        function frame() {
+          const current = scrollY;
+          stableFrames = Math.abs(current - previous) < 0.5 ? stableFrames + 1 : 0;
+          previous = current;
+          if (stableFrames >= 10) resolve();
+          else requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }));
       const movedY = await page.evaluate(() => scrollY);
       await page.mouse.wheel(0, 300);
       await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(movedY);
@@ -1494,6 +1507,7 @@ test('Technician map uses a synthetic browser location without an API mutation',
 });
 
 test('later Technician detail selection wins over a stale response', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const first = heldResponse(success({ system: visibleMapSystem }));
   const second = heldResponse(success({ system: hiddenMapSystem }));
   await openManagement(page, {
@@ -1504,7 +1518,11 @@ test('later Technician detail selection wins over a stale response', async ({ pa
   await expect(page.locator('#systemDialog')).toBeVisible();
   await expect(page.locator('#systemDetailStatus')).toHaveText('กำลังตรวจสอบข้อมูลล่าสุด...');
   await expect(page.locator('#busyOverlay')).toBeHidden();
-  await page.locator('#systemsTableBody [data-system-id="QA-MAP-HIDDEN"] [data-action-trigger]').evaluate(button => button.click());
+  await page.locator('#systemsTableBody [data-system-id="QA-MAP-HIDDEN"] [data-action-trigger]').evaluate(button => {
+    button.scrollIntoView({ block: 'center', behavior: 'instant' });
+    button.click();
+  });
+  await expect(page.locator('#systemActionMenu')).toBeVisible();
   await page.locator('#systemActionMenu [data-action="view"]').evaluate(button => button.click());
   second.release();
   await expect(page.locator('#systemDialogTitle')).toHaveText(hiddenMapSystem.system_name);
@@ -2415,12 +2433,14 @@ test('forced password change cannot be dismissed with Escape or backdrop', async
 
 test('restricted role cannot open edit or delete from desktop or mobile actions', async ({ page }) => {
   const network = await openManagement(page, { 'data.bootstrap': success({ user, permissions: [], featureFlags: { technicianDistrictScope: true }, enumCatalog: {} }) });
-  for (const parent of ['#systemsTableBody', '#systemsMobileList']) {
-    await page.locator(`${parent} [data-action-trigger]`).first().evaluate(button => button.click());
+  for (const [width, parent] of [[1440, '#systemsTableBody'], [390, '#systemsMobileList']]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.locator(`${parent} [data-action-trigger]`).first().click();
+    await expect(page.locator('#systemActionMenu')).toBeVisible();
     await expect(page.locator('#systemActionMenu [data-action="edit"]')).toBeDisabled();
     await expect(page.locator('#systemActionMenu [data-action="delete"]')).toBeDisabled();
   }
-  await clickSystemAction(page, 'view');
+  await page.locator('#systemActionMenu [data-action="view"]').click();
   await expect(page.locator('#editSystemButton')).toBeDisabled();
   await expect(page.locator('#deleteSystemButton')).toBeDisabled();
   expect(network.calls.filter(call => /^(data\.update|data\.delete)/.test(call.action))).toEqual([]);

@@ -1243,7 +1243,7 @@
   .watch-mini-unit {
     margin-left: calc(var(--spacing) * 1);
     font-size: 10px;
-    color: var(--color-slate-400);
+    color: var(--color-slate-600);
   }
   .chart-card {
     min-width: calc(var(--spacing) * 0);

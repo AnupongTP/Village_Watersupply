@@ -3,6 +3,7 @@ assets/js/config.js
 
 # Local analysis, private data, archives and CLI linking metadata
 /output/
+/auto-location-review.diff
 /Village_Watersupply_GAS_Technician_Candidate/
 **/.temp/
 *.zip
