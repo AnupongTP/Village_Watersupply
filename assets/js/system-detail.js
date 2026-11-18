@@ -54,7 +54,7 @@ export function buildSystemDetailHtml(system, village) {
         ['แหล่งน้ำของระบบ', waterSourceTypeLabel(system.water_source_type)],
         ['กำลังผลิต', valueWithUnit(system.capacity_m3_hr, 'ลบ.ม./ชม.')],
         ['ครัวเรือนรับน้ำ', valueWithUnit(system.households_served, 'ครัวเรือน')],
-        ['ปีที่ก่อสร้าง', formatYear(system.construction_year_be)],
+        ['ปีที่ก่อสร้าง', formatConstructionYear(system.construction_year_be)],
         ['อายุระบบโดยประมาณ', calculatedAge(system.construction_year_be)]
       ])}
 
@@ -157,22 +157,50 @@ function qualityBadge(value) {
   return '<span class="badge badge-muted">คุณภาพน้ำไม่มีข้อมูล</span>';
 }
 
+function currentYearBE() {
+  return Number(
+    new Intl.DateTimeFormat('en-US-u-ca-buddhist', {
+      year: 'numeric',
+      timeZone: 'Asia/Bangkok'
+    }).formatToParts(new Date()).find(part => part.type === 'year').value
+  );
+}
+
 function coordinateText(system) {
   const lat = Number(system?.latitude);
   const lng = Number(system?.longitude);
 
-  if (isBlank(system?.latitude) || isBlank(system?.longitude) || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (
+    isBlank(system?.latitude) ||
+    isBlank(system?.longitude) ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    Math.abs(lat) > 90 ||
+    Math.abs(lng) > 180
+  ) {
     return '-';
   }
 
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
-function calculatedAge(yearBE) {
+function validConstructionYear(yearBE) {
+  if (isBlank(yearBE)) return null;
   const year = Number(yearBE);
-  if (!Number.isFinite(year)) return '-';
+  const maxYear = currentYearBE();
+  return Number.isInteger(year) && year > 0 && year <= maxYear ? year : null;
+}
 
-  const age = new Date().getFullYear() + 543 - year;
+function formatConstructionYear(yearBE) {
+  const year = validConstructionYear(yearBE);
+  return year === null ? '-' : year.toLocaleString('th-TH', { useGrouping: false });
+}
+
+function calculatedAge(yearBE) {
+  const year = validConstructionYear(yearBE);
+  if (year === null) return '-';
+
+  const age = currentYearBE() - year;
   return age >= 0 && age <= 150 ? `${age.toLocaleString('th-TH')} ปี` : '-';
 }
 

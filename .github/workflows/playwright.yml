@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find assets/js tools tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+          find assets/js technician/assets tools tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
             | xargs -0 -n1 node --check
 
       - name: Build Tailwind production CSS

@@ -7,33 +7,36 @@ import {
 
 const TARGET_LOCAL_AUTHORITY_SYSTEM = 'PY-W-000001';
 const DATABASE_CODE_PATTERN = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g;
-const INTERNAL_ID_PATTERN = /\bPY-[A-Z0-9]+-\d+\b/gi;
 
-function expectNoPresentationLeaks(surfaceText) {
+function expectNoEnumLeaks(surfaceText) {
   const databaseCodes = surfaceText.match(DATABASE_CODE_PATTERN) || [];
-  const internalIds = surfaceText.match(INTERNAL_ID_PATTERN) || [];
-
   expect(databaseCodes, `database codes leaked: ${databaseCodes.join(', ')}`).toEqual([]);
-  expect(internalIds, `internal IDs leaked: ${internalIds.join(', ')}`).toEqual([]);
 }
 
-test('database enum codes and internal IDs do not leak into visible UI', async ({ page }) => {
+test('database enum codes and private fields do not leak into visible Reference UI', async ({ page }) => {
   await openDashboard(page);
 
-  const pageSurface = await collectUserFacingTextAndAttributes(page, 'body');
-  expectNoPresentationLeaks(pageSurface);
+  const execSurface = await collectUserFacingTextAndAttributes(page, 'body');
+  expectNoEnumLeaks(execSurface);
+  expect(execSurface).not.toContain('76927E3D-BF09-EEF1-E5B6-A9A2ED30F490_test.pdf');
+  expect(execSurface).not.toContain('กรมทรัพยากรน้ำบาดาล');
 
-  // Validate the map popup user-facing surface as well as the main dashboard.
-  await openMapPopupForSystem(page, TARGET_LOCAL_AUTHORITY_SYSTEM);
-  const popupSurface = await collectUserFacingTextAndAttributes(page, '.leaflet-popup');
-  expectNoPresentationLeaks(popupSurface);
+  const popup = await openMapPopupForSystem(page, TARGET_LOCAL_AUTHORITY_SYSTEM);
+  const popupSurface = await collectUserFacingTextAndAttributes(page, '#map .leaflet-popup');
+  expectNoEnumLeaks(popupSurface);
+  await popup.locator(`[data-open-system="${TARGET_LOCAL_AUTHORITY_SYSTEM}"]`).click();
 
-  // Open the exact fixture that carries owner_type=LOCAL_AUTHORITY. The old test
-  // clicked the first severity-sorted Watchlist row, which is a different owner.
-  await page.locator('[data-map-action="detail"]').click();
-  await expect(page.locator('#systemDrawer')).toHaveClass(/open/);
+  const modal = page.locator('#referenceDetail');
+  await expect(modal).toBeVisible();
+  const detailSurface = await collectUserFacingTextAndAttributes(page, '#referenceDetail');
+  expectNoEnumLeaks(detailSurface);
+  await expect(modal).toContainText('อปท.');
 
-  const drawerSurface = await collectUserFacingTextAndAttributes(page, '#drawerContent');
-  expectNoPresentationLeaks(drawerSurface);
-  await expect(page.locator('#drawerContent')).toContainText('องค์กรปกครองส่วนท้องถิ่น');
+  await page.locator('#referenceDetail .reference-drawer-x').click();
+  await page.locator('.main-nav button[data-view="detail"]').click();
+  for (const tab of ['compare', 'insight', 'table', 'vtable', 'problem']) {
+    await page.locator(`.tab-btn[data-tab="${tab}"]`).click();
+    const panelSurface = await collectUserFacingTextAndAttributes(page, `#panel-${tab}`);
+    expectNoEnumLeaks(panelSurface);
+  }
 });

@@ -1,292 +1,271 @@
-<!doctype html>
-<html lang="th">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0f67b1">
-  <meta name="color-scheme" content="light">
-  <title>ระบบข้อมูลประปาหมู่บ้าน จังหวัดพะเยา</title>
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>KwanKukkeb – Phayao Village Water Supply Dashboard</title><link rel="stylesheet" href="assets/css/reference-dashboard.css"><script defer src="assets/vendor/leaflet/leaflet.js"></script><script defer src="assets/vendor/chartjs/chart.umd.js"></script><script defer src="assets/vendor/leaflet/markercluster.js"></script><script defer src="assets/js/reference-model.js"></script><script defer src="assets/js/reference-view.js"></script><script type="module" src="assets/js/reference-start.js"></script><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700;800&amp;display=swap" rel="stylesheet"></head><body>
+<header class="app-header">
+  <div class="header-brand">
+    <div class="eyebrow">กว๊านกักเก็บ แดชบอร์ดประปาหมู่บ้าน จังหวัดพะเยา</div>
+    <h1>KwanKukkeb – Phayao Village Water Supply Dashboard</h1>
+  </div>
+  <nav class="main-nav">
+    <button class="active" data-view="exec"><span>📊 บทสรุปผู้บริหาร</span></button>
+    <button data-view="detail"><span>🔍 รายละเอียดข้อมูล</span></button>
+  </nav>
+</header>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+<section class="gf" id="gfBar" aria-label="ตัวกรองข้อมูล">
+  <div class="gf-inner">
+    <div class="gf-head">
+      <div class="gf-title"><span class="gf-ic">🔎</span>ตัวกรองข้อมูล</div>
+      <div class="gf-meta"><span class="ef-count" id="efCount"></span><small id="referenceStatus" role="status"></small></div>
+      <button class="ef-reset" id="efReset" type="button">↺ ล้างตัวกรอง</button>
+    </div>
+    <div class="gf-empty" id="gfEmpty" role="status" hidden></div>
+    <div class="gf-grid">
+      <label class="gf-field gf-search"><span>ค้นหา</span>
+        <div class="gf-sbox"><i>🔍</i><input id="fq" type="text" placeholder="ชื่อหมู่บ้าน · ชื่อระบบประปา · อปท." autocomplete="off"><button type="button" id="fqClear" aria-label="ล้างคำค้น" style="display:none;">✕</button></div>
+      </label>
+      <label class="gf-field"><span>อำเภอ</span><select id="fd"><option value="">ทั้งหมด</option></select></label>
+      <label class="gf-field"><span>อปท. (เทศบาล/อบต.)</span><select id="fla"><option value="">ทั้งหมด</option></select></label>
+      <label class="gf-field"><span>ประเภทระบบประปา</span><select id="fst"><option value="">ทั้งหมด</option></select></label>
+      <label class="gf-field"><span>สถานะ / ปัญหา</span>
+        <select id="frule"><option value="">ทั้งหมด</option>
+          <option value="ok">ใช้การได้</option><option value="ops">ใช้การไม่ได้</option><option value="dq">น้ำดื่มไม่ผ่านเกณฑ์</option>
+          <option value="qty">น้ำไม่เพียงพอ</option><option value="uq">น้ำใช้ไม่ได้</option><option value="any">มีปัญหาอย่างน้อย 1 ด้าน</option><option value="multi">มีปัญหาตั้งแต่ 2 ด้านขึ้นไป</option></select>
+      </label>
+    </div>
+    <div class="gf-chips" id="gfChips"></div>
+    <div class="gf-note" id="gfNote" style="font-size:11px;color:#5a7080;margin-top:6px;">ตัวกรองอำเภอ/อปท./คำค้นใช้กับทั้งหมู่บ้านและระบบประปา · ตัวกรองประเภทระบบและสถานะจำกัดระบบ พร้อมหมู่บ้านและครัวเรือนที่เชื่อมกับระบบตามตัวกรอง</div>
+  </div>
+</section>
 
-  <!-- Tailwind CSS production build -->
-  <link rel="stylesheet" href="assets/css/tailwind.css">
+<div class="view active" id="view-exec">
+<div class="exec-wrap">
 
-  <!-- UI libraries -->
-  <script defer src="assets/vendor/fontawesome/js/fontawesome.min.js"></script>
-  <script defer src="assets/vendor/fontawesome/js/solid.min.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-
-  <!-- Library/edge-case overrides only -->
-  <link rel="stylesheet" href="assets/css/app.css">
-</head>
-
-<body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
-  <a href="#overview" class="skip-link">ข้ามไปยังเนื้อหาหลัก</a>
-
-  <header id="appHeader" tabindex="-1" class="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md">
-    <div class="mx-auto flex min-h-16 max-w-[1600px] items-center justify-between gap-3 px-4 py-2.5 sm:px-5 xl:px-6">
-      <div class="flex min-w-0 items-center gap-3">
-        <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-700 text-white shadow-sm sm:size-11" aria-hidden="true">
-          <i class="fa-solid fa-droplet text-base"></i>
-        </div>
-        <div class="min-w-0">
-          <h1 class="text-lg font-extrabold leading-relaxed text-slate-900 sm:text-xl">ระบบข้อมูลประปาหมู่บ้าน</h1>
-          <p class="mt-0.5 text-[11px] leading-relaxed text-slate-500 sm:text-xs">จังหวัดพะเยา</p>
-        </div>
+  <div class="exec-section">
+    <div class="sec-head">
+      <div class="sec-num" style="background:#0d47a1;">🗺️</div>
+      <h2>ภาพรวมประปาหมู่บ้านและตำแหน่งระบบ</h2>
+      <span class="sec-sub">สรุปตัวเลขสำคัญ และตำแหน่งระบบประปาที่มีพิกัดบนแผนที่</span>
+    </div>
+    <div class="exec-hero">
+      <div class="exec-hero-cards">
+        <div class="kpi5" id="execKpi"></div>
+        <div class="kpi-detail" id="kpiDetail"></div>
       </div>
-
-      <div class="flex shrink-0 items-center gap-2">
-        <div class="hidden text-right sm:block">
-          <span id="dataUpdatedLabel" class="block text-[10px] leading-relaxed text-slate-400">โหลดข้อมูลล่าสุด</span>
-          <strong id="dataUpdatedAt" class="mt-0.5 block text-[11px] font-semibold leading-relaxed text-slate-600">-</strong>
+      <div class="exec-hero-map">
+        <h3 style="font-size:12.5px;font-weight:700;color:#0d47a1;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span>ตำแหน่งระบบประปาบนแผนที่ <span class="n" id="n-map"></span></span>
+        </h3>
+        <div class="map-stage" id="heroMapStage"><div id="map"></div>
+          <div class="map-layer-control" id="mapLayerControl">
+            <button class="mlc-toggle" id="mlcToggle" type="button">🗂️ ชั้นข้อมูล <span id="mlcArrow">▾</span></button>
+            <div class="mlc-panel" id="mlcPanel">
+              <div class="mlc-section-title">ระบายสีหมุดตาม</div>
+              <div class="mlc-mini-list" id="mlcColorList"></div>
+              <div class="mlc-divider"></div>
+              <div class="mlc-section-title">ชั้นข้อมูลกรอง (เลือกแสดงพร้อมกันได้หลายชั้น)</div>
+              <label class="mlc-opt mlc-parent"><input type="checkbox" id="mlcTypeEnable" checked><span class="mlc-dot" style="background:#1565c0;"></span>ประเภทระบบประปา</label>
+              <div class="mlc-sub" id="mlcTypeSub"><div class="mlc-mini-actions"><button type="button" id="mlcTypeAll">เลือกทั้งหมด</button><button type="button" id="mlcTypeNone">ยกเลิกทั้งหมด</button></div><div class="mlc-mini-list" id="mlcTypeList"></div></div>
+              <label class="mlc-opt mlc-parent"><input type="checkbox" id="mlcStatusEnable"><span class="mlc-dot" style="background:#c62828;"></span>สถานะการใช้งาน</label>
+              <div class="mlc-sub" id="mlcStatusSub" style="display:none;"><div class="mlc-mini-actions"><button type="button" id="mlcStatusAll">เลือกทั้งหมด</button><button type="button" id="mlcStatusNone">ยกเลิกทั้งหมด</button></div><div class="mlc-mini-list" id="mlcStatusList"></div></div>
+              <label class="mlc-opt mlc-parent"><input type="checkbox" id="mlcProblemEnable"><span class="mlc-dot" style="background:#e65100;"></span>ตัวกรองปัญหาที่พบเจอ</label>
+              <div class="mlc-sub" id="mlcProblemSub" style="display:none;"><div class="mlc-mini-actions"><button type="button" id="mlcProblemAll">เลือกทั้งหมด</button><button type="button" id="mlcProblemNone">ยกเลิกทั้งหมด</button></div><div class="mlc-mini-list" id="mlcProblemList"></div></div>
+              <div class="mlc-divider"></div>
+              <div class="mlc-section-title">อำเภอที่แสดงบนแผนที่</div>
+              <div class="mlc-mini-actions"><button type="button" id="mlcDistAll">เลือกทั้งหมด</button><button type="button" id="mlcDistNone">ยกเลิกทั้งหมด</button></div>
+              <div class="mlc-mini-list" id="mlcDistList"></div>
+            </div>
+          </div>
         </div>
-        <button id="btnRefresh" class="btn btn-outline" type="button" aria-busy="false">
-          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
-          <span class="hidden sm:inline">รีเฟรช</span>
-        </button>
+        <div class="map-legend" id="mapLegend"></div>
+        <div id="mapNote" style="font-size:11px;color:#5a7080;margin-top:4px;"></div>
       </div>
     </div>
-
-    <nav class="border-t border-slate-100" aria-label="เมนูส่วนต่าง ๆ ของแดชบอร์ด">
-      <div class="section-nav-scroll mx-auto flex max-w-[1600px] gap-1 overflow-x-auto px-3 py-1.5 leading-relaxed sm:px-5 xl:px-6">
-        <a href="#overview" class="section-link active">ภาพรวม</a>
-        <a href="#map-section" class="section-link">แผนที่</a>
-        <a href="#areas" class="section-link">รายพื้นที่</a>
-        <a href="#system-structure" class="section-link">ระบบประปา</a>
-        <a href="#operations" class="section-link">สถานะและปริมาณน้ำ</a>
-        <a href="#quality" class="section-link">คุณภาพน้ำ</a>
-        <a href="#watchlist" class="section-link">รายการข้อมูลระบบประปา</a>
+    <div class="exec-charts-pair">
+      <div class="chart-box chart-interactive">
+        <h3>สภาพการใช้งานของระบบประปา</h3>
+        <div class="chart-desc" id="opsDesc"></div>
+        <div class="chart-canvas-flex"><canvas id="c_ops"></canvas></div>
+        <div id="ops_legend" style="margin-top:6px;font-size:11px;"></div>
+        <div class="chart-click-hint">👆 คลิกชิ้นกราฟหรือคำอธิบายเพื่อกรอง</div>
       </div>
-    </nav>
-  </header>
-
-  <main class="mx-auto max-w-[1600px] px-3 pb-10 pt-3 sm:px-5 sm:pt-4 xl:px-6">
-    <p id="dataSourceNotice" class="data-source-notice" role="status" aria-live="polite" hidden></p>
-    <!-- Global Filter -->
-    <section id="filters" class="filter-shell z-40 mb-5 rounded-xl border border-slate-200 bg-white p-3 shadow-sm" aria-label="ตัวกรองข้อมูล">
-      <div class="flex items-center justify-between gap-3 md:hidden">
-        <div class="min-w-0">
-          <p class="eyebrow">ตัวกรองข้อมูล</p>
-          <p id="scopeLabel" class="truncate text-xs font-semibold text-slate-700" aria-live="polite">จังหวัดพะเยา</p>
-        </div>
-        <button id="btnFilterToggle" class="btn btn-outline shrink-0" type="button" aria-expanded="false" aria-controls="filterPanel">
-          <i class="fa-solid fa-sliders" aria-hidden="true"></i>
-          <span>ตัวกรอง</span>
-          <span id="filterCount" class="grid min-w-5 place-items-center rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">0</span>
-        </button>
+      <div class="chart-box">
+        <h3>ครัวเรือนใช้น้ำจากแหล่งใดเป็นหลัก</h3>
+        <div class="chart-desc">จำนวนครัวเรือนแยกตามแหล่งน้ำที่ใช้ (ตามหมู่บ้านที่แสดงอยู่) — เป็นจำนวนที่หมู่บ้านรายงาน ไม่ใช่ผลตรวจความปลอดภัยของแหล่งน้ำ</div>
+        <div class="chart-canvas-flex"><canvas id="c_hh"></canvas></div>
+        <div id="hh_legend" style="margin-top:6px;font-size:11px;"></div>
       </div>
-
-      <div id="filterPanel" class="hidden pt-3 md:block md:pt-0">
-        <div class="dashboard-filter-grid">
-          <label class="filter-field dashboard-filter-search">
-            <span>ค้นหาทั้งแดชบอร์ด</span>
-            <input id="filterSearch" class="filter-select font-sans" type="search" autocomplete="off" placeholder="ค้นหาชื่อระบบ รหัสระบบ หมู่บ้าน อำเภอ หรือ อปท.">
-          </label>
-          <label class="filter-field">
-            <span>ความเพียงพอของน้ำ</span>
-            <select id="filterWaterQuantity" class="filter-select">
-              <option value="">ทั้งหมด</option>
-            </select>
-          </label>
-          <label class="filter-field">
-            <span>อำเภอ</span>
-            <select id="filterDistrict" class="filter-select"><option value="">ทั้งหมด</option></select>
-          </label>
-          <label class="filter-field">
-            <span>อปท.</span>
-            <select id="filterLocalAuthority" class="filter-select"><option value="">ทั้งหมด</option></select>
-          </label>
-          <label class="filter-field">
-            <span>ประเภทระบบ</span>
-            <select id="filterSystemType" class="filter-select"><option value="">ทั้งหมด</option></select>
-          </label>
-          <label class="filter-field">
-            <span>สถานะระบบ</span>
-            <select id="filterOperationalStatus" class="filter-select">
-              <option value="">ทั้งหมด</option>
-            </select>
-          </label>
-          <label class="filter-field">
-            <span>คุณภาพน้ำดื่ม</span>
-            <select id="filterDrinkingWaterQuality" class="filter-select">
-              <option value="">ทั้งหมด</option>
-            </select>
-          </label>
-          <button id="btnClearFilters" class="btn btn-ghost dashboard-filter-reset hidden" type="button" disabled>
-            <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
-            <span>ล้างตัวกรอง</span>
-          </button>
-        </div>
-      </div>
-
-      <div id="activeFilterChips" class="watch-badges mt-3 hidden items-center border-t border-slate-100 pt-3" aria-live="polite"></div>
-    </section>
-
-    <!-- Overview -->
-    <section id="overview" class="dashboard-section scroll-target" data-scroll-target>
-      <div class="section-heading analysis-heading">
-        <div class="analysis-heading-main">
-          <span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-gauge-high"></i></span>
-          <div>
-            <h2 class="m-0 text-base font-extrabold leading-relaxed text-slate-900 sm:text-lg">ภาพรวมสถานการณ์ประปา</h2>
-            <p class="section-description">จำนวนหมู่บ้าน ระบบประปา ประเด็นเฝ้าระวัง และตำแหน่งบนแผนที่ตามตัวกรองปัจจุบัน</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="compact-overview grid grid-cols-1 gap-3">
-        <div class="compact-overview-summary grid min-w-0 gap-3">
-          <div class="grid grid-cols-2 gap-2.5">
-            <article class="kpi-card">
-              <div class="kpi-icon bg-sky-50 text-sky-700"><i class="fa-solid fa-house" aria-hidden="true"></i></div>
-              <div class="min-w-0"><p class="kpi-label">หมู่บ้านตามตัวกรอง</p><p id="kpiVillages" class="kpi-value">-</p></div>
-            </article>
-            <article class="kpi-card">
-              <div class="kpi-icon bg-emerald-50 text-emerald-700"><i class="fa-solid fa-faucet-drip" aria-hidden="true"></i></div>
-              <div class="min-w-0"><p class="kpi-label">หมู่บ้านมีประปา</p><p id="kpiWithWaterworks" class="kpi-value">-</p></div>
-            </article>
-            <article class="kpi-card">
-              <div class="kpi-icon bg-slate-100 text-slate-500"><i class="fa-solid fa-house-circle-xmark" aria-hidden="true"></i></div>
-              <div class="min-w-0"><p class="kpi-label">หมู่บ้านไม่มีประปา</p><p id="kpiWithoutWaterworks" class="kpi-value">-</p></div>
-            </article>
-            <article class="kpi-card">
-              <div class="kpi-icon bg-cyan-50 text-cyan-700"><i class="fa-solid fa-water" aria-hidden="true"></i></div>
-              <div class="min-w-0"><p class="kpi-label">ระบบประปา</p><p id="kpiSystems" class="kpi-value">-</p></div>
-            </article>
-          </div>
-
-          <section id="alerts" class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" aria-labelledby="alertsTitle">
-            <div class="mb-2.5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p class="eyebrow">สถานการณ์เฝ้าระวัง</p>
-                <h3 id="alertsTitle" class="text-sm font-bold leading-relaxed text-slate-800">ประเด็นสำคัญ</h3>
-              </div>
-              <div class="flex items-baseline gap-1.5 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-rose-800">
-                <span>ระบบที่ต้องเฝ้าระวัง</span>
-                <strong id="watchlistTotal" class="text-xl font-extrabold leading-none text-rose-700" aria-live="polite">-</strong>
-                <span>ระบบ</span>
-              </div>
-            </div>
-            <p class="mb-2.5 text-[11px] leading-relaxed text-slate-500">1 ระบบอาจพบมากกว่า 1 ประเด็น จึงไม่สามารถนำตัวเลขย่อยมาบวกกันเป็นยอดรวมได้</p>
-            <div class="monitoring-actions grid grid-cols-1 gap-2 md:grid-cols-3">
-              <button
-                class="watch-mini"
-                type="button"
-                data-monitoring-filter="not-working"
-                data-filter-toggle-key="operationalStatus"
-                data-filter-toggle-value="NOT_WORKING"
-                aria-pressed="false"
-                title="กรองทั้งแดชบอร์ด: ใช้การไม่ได้"
-              >
-                <span class="watch-icon bg-red-50 text-red-600"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
-                <span class="min-w-0"><span class="watch-mini-label block overflow-visible whitespace-normal text-clip leading-relaxed">ใช้การไม่ได้</span><span class="block"><strong id="alertNotWorking">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
-              </button>
-              <button
-                class="watch-mini"
-                type="button"
-                data-monitoring-filter="insufficient"
-                data-filter-toggle-key="waterQuantity"
-                data-filter-toggle-value="INSUFFICIENT"
-                aria-pressed="false"
-                title="กรองทั้งแดชบอร์ด: น้ำไม่เพียงพอ"
-              >
-                <span class="watch-icon bg-amber-50 text-amber-600"><i class="fa-solid fa-droplet-slash" aria-hidden="true"></i></span>
-                <span class="min-w-0"><span class="watch-mini-label block overflow-visible whitespace-normal text-clip leading-relaxed">น้ำไม่เพียงพอ</span><span class="block"><strong id="alertInsufficient">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
-              </button>
-              <button
-                class="watch-mini"
-                type="button"
-                data-monitoring-filter="quality-fail"
-                data-filter-toggle-key="drinkingWaterQuality"
-                data-filter-toggle-value="FAIL"
-                aria-pressed="false"
-                title="กรองทั้งแดชบอร์ด: น้ำดื่มไม่ผ่านเกณฑ์"
-              >
-                <span class="watch-icon bg-rose-50 text-rose-600"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i></span>
-                <span class="min-w-0"><span class="watch-mini-label block overflow-visible whitespace-normal text-clip leading-relaxed">น้ำดื่มไม่ผ่านเกณฑ์</span><span class="block"><strong id="alertQualityFail">-</strong><span class="watch-mini-unit">ระบบ</span></span></span>
-              </button>
-            </div>
-          </section>
-        </div>
-
-        <section id="map-section" class="map-panel scroll-target min-w-0 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3" data-scroll-target aria-labelledby="mapTitle">
-          <div class="mb-2.5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h3 id="mapTitle" class="text-sm font-bold leading-relaxed text-slate-800">แผนที่ตำแหน่งระบบประปา</h3>
-            </div>
-            <div class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
-              <button id="btnUserLocation" class="btn btn-outline" type="button" aria-busy="false">
-                <i class="fa-solid fa-crosshairs" aria-hidden="true"></i><span data-user-location-label>ตำแหน่งฉัน</span>
-              </button>
-              <button id="btnMapFit" class="btn btn-primary" type="button"><i class="fa-solid fa-expand" aria-hidden="true"></i><span>ดูทุกจุด</span></button>
-            </div>
-          </div>
-          <div class="map-stack h-80 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 md:h-[26rem] xl:h-[29rem]">
-            <div id="waterMap" class="size-full" aria-label="แผนที่ระบบประปาหมู่บ้านจังหวัดพะเยา"></div>
-          </div>
-        </section>
-      </div>
-    </section>
-
-    <div class="analysis-grid">
-      <section id="areas" class="dashboard-section scroll-target analysis-card" data-scroll-target aria-label="กราฟจำนวนหมู่บ้านและระบบประปารายอำเภอ">
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-map-location-dot"></i></span><div><h2>ข้อมูลรายอำเภอ</h2><p>จำนวนหมู่บ้านและระบบประปา · เลือกอำเภอในกราฟเพื่อกรองข้อมูล</p></div></div>
-        <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--district"><canvas id="districtChart"></canvas></div>
-      </section>
-      <section id="system-structure" class="dashboard-section scroll-target analysis-card" data-scroll-target>
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-faucet-drip"></i></span><div><h2>ประเภทระบบประปา</h2><p>จำนวนระบบตามประเภท · เลือกประเภทในกราฟเพื่อกรองข้อมูล</p></div></div>
-        <div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--type"><canvas id="systemTypeChart"></canvas></div>
-      </section>
-      <section id="operations" class="dashboard-section scroll-target analysis-card" data-scroll-target>
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-droplet"></i></span><div><h2>ความเพียงพอของน้ำ</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
-        <div class="donut-summary"><div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="quantityChart"></canvas></div><div id="quantityChartLegend" class="donut-legend" role="group" aria-label="กรองความเพียงพอของน้ำ"></div></div>
-      </section>
-      <section id="quality" class="dashboard-section scroll-target analysis-card" data-scroll-target>
-        <div class="analysis-card-heading"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-flask-vial"></i></span><div><h2>คุณภาพน้ำดื่ม</h2><p>เลือกผลในกราฟเพื่อกรองข้อมูล</p></div></div>
-        <div class="donut-summary"><div class="chart-canvas-wrap analysis-chart-wrap analysis-chart-wrap--donut"><canvas id="qualityChart"></canvas></div><div id="qualityChartLegend" class="donut-legend" role="group" aria-label="กรองคุณภาพน้ำดื่ม"></div></div>
-      </section>
     </div>
+  </div>
 
-    <section id="watchlist" class="dashboard-section scroll-target compact-watchlist" data-scroll-target>
-      <div class="section-heading analysis-heading"><div class="analysis-heading-main"><span class="analysis-heading-icon" aria-hidden="true"><i class="fa-solid fa-list-check"></i></span><div><h2 class="m-0 text-base font-extrabold leading-relaxed text-slate-900 sm:text-lg">รายการข้อมูลระบบประปา</h2><p class="section-description">ค้นหาระบบประปาและดูสถานะตามตัวกรองที่เลือก</p></div></div></div>
-      <div class="public-list-filters list-search-only" role="group" aria-label="ค้นหาในรายการระบบประปา">
-        <label class="filter-field"><span>ค้นหาในรายการ</span><input id="publicListSearch" class="filter-select" type="search" autocomplete="off" placeholder="ชื่อระบบ รหัสระบบ หมู่บ้าน อำเภอ หรือ อปท."></label>
-      </div>
-      <div id="problemList" class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" aria-live="polite"><p class="text-sm text-slate-500">กำลังประมวลผลข้อมูล...</p></div>
-    </section>
-
-
-    <footer class="mt-8 border-t border-slate-200 py-5 text-center text-[11px] text-slate-400">ระบบรายงานสถานการณ์ระบบประปา</footer>
-  </main>
-
-  <button
-    id="btnBackToTop"
-    class="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-30 hidden size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-lg transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 sm:right-5 lg:bottom-6 lg:right-6"
-    type="button"
-    aria-label="กลับด้านบน"
-    title="กลับด้านบน"
-  >
-    <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
-  </button>
-
-  <!-- Read-only detail drawer -->
-  <aside id="systemDrawer" class="drawer" aria-hidden="true" aria-label="รายละเอียดระบบประปา">
-    <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
-      <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3.5">
-        <div><p id="drawerEyebrow" class="eyebrow">ข้อมูลระบบประปา</p><h2 id="drawerTitle" class="text-base font-bold leading-relaxed text-slate-900">รายละเอียดระบบ</h2></div>
-        <button id="btnCloseDrawer" class="btn btn-outline size-10 px-0" type="button" aria-label="ปิดรายละเอียด"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-      </div>
-      <div id="drawerContent" class="min-h-0 flex-1 overflow-y-auto p-4"></div>
+  <div class="exec-section">
+    <div class="sec-head">
+      <div class="sec-num" style="background:#00838f;">🏠</div>
+      <h2>ความครอบคลุมของประปาและแหล่งน้ำของครัวเรือน</h2>
+      <span class="sec-sub">ดูว่าอำเภอไหนยังพึ่งแหล่งน้ำตนเอง/ธรรมชาติมาก — คลิกแถวเพื่อกรองทั้งหน้า</span>
     </div>
-  </aside>
+    <div class="charts-2col">
+      <div class="chart-box chart-interactive">
+        <h3>สัดส่วนครัวเรือนตามแหล่งน้ำ แยกตามอำเภอ</h3>
+        <div class="chart-desc" id="hhMixDesc"></div>
+        <div style="position:relative;width:100%;height:330px;"><canvas id="c_hhmix"></canvas></div>
+        <div class="chart-click-hint">👆 คลิกแท่งเพื่อกรองอำเภอ</div>
+      </div>
+      <div class="chart-box chart-interactive">
+        <h3>ครัวเรือนที่พึ่งแหล่งน้ำตนเอง/ธรรมชาติ (% ของครัวเรือน)</h3>
+        <div class="chart-desc">สัดส่วนที่รายงาน ไม่ใช่หลักฐานว่าไม่มีประปาหรือว่าน้ำไม่ปลอดภัย · สีแดง = สูงกว่าค่าเฉลี่ยของพื้นที่ที่แสดง</div>
+        <div style="background:#f0f5fa;border:1px solid #dbe6f0;border-radius:6px;padding:7px 10px;margin:4px 0 6px;font-size:10.5px;color:#3a5060;line-height:1.55;">📐 <b>วิธีคิด:</b> (ครัวเรือนใช้น้ำจากแหล่งของตนเอง + แหล่งน้ำธรรมชาติ) ÷ ครัวเรือนรวมทุกแหล่งของอำเภอ × 100 · ตัวเลขนี้นับจากข้อมูลที่หมู่บ้านรายงาน และยังไม่รวมหมู่บ้านที่ไม่ได้กรอกจำนวนครัวเรือน</div>
+        <div id="selfNat"></div>
+      </div>
+    </div>
+    <div class="charts-2col" style="margin-top:14px;">
+      <div class="chart-box chart-interactive">
+        <h3>หมู่บ้านที่มีประปาหมู่บ้าน แยกตามอำเภอ</h3>
+        <div class="chart-desc">% ของหมู่บ้านที่ระบุว่ามีประปาหมู่บ้าน · ตัวเลขท้ายแถว = หมู่บ้านที่ระบุว่ามีประปา แต่ยังไม่มีข้อมูลระบบ (ต้องลงข้อมูลเพิ่ม)</div>
+        <div id="wwCover"></div>
+      </div>
+      <div class="chart-box">
+        <h3>หมู่บ้านที่ควรพิจารณาก่อน: ไม่มีประปา และครัวเรือนพึ่งแหล่งน้ำตนเอง/ธรรมชาติมาก</h3>
+        <div class="chart-desc">จัดอันดับ 12 หมู่บ้านที่ยังไม่มีประปาหมู่บ้าน เรียงตามจำนวนครัวเรือนที่พึ่งแหล่งน้ำตนเอง/ธรรมชาติ</div>
+        <div id="noWwTop" style="max-height:380px;overflow:auto;"></div>
+      </div>
+    </div>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.26.25/dist/sweetalert2.all.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="assets/js/doughnut-legend.js"></script>
-  <script type="module" src="assets/js/app.js"></script>
-</body>
-</html>
+  <div class="exec-section">
+    <div class="sec-head">
+      <div class="sec-num" style="background:#c62828;">🧪</div>
+      <h2>คุณภาพน้ำและความเพียงพอ — จุดเสี่ยงที่ต้องดำเนินการ</h2>
+      <span class="sec-sub">เทียบกับค่าเฉลี่ยของพื้นที่ที่แสดง · คลิกเพื่อกรองข้อมูลทั้งหน้า</span>
+    </div>
+    <div class="charts-2col">
+      <div class="chart-box chart-interactive">
+        <h3>ระบบที่น้ำดื่มไม่ผ่านเกณฑ์ แยกตามอำเภอ</h3>
+        <div class="chart-desc" id="dqDesc"></div>
+        <div style="background:#f0f5fa;border:1px solid #dbe6f0;border-radius:6px;padding:7px 10px;margin:4px 0 6px;font-size:10.5px;color:#3a5060;line-height:1.55;">📐 <b>วิธีคิด:</b> ระบบที่ผลตรวจน้ำดื่ม "ไม่ผ่านเกณฑ์" ÷ ระบบที่<b>มีผลตรวจ</b> (ไม่นับ "ไม่มีข้อมูล") × 100 · ตัวเลขในวงเล็บ = จำนวนระบบที่มีผลตรวจ (อำเภอที่มีผลตรวจน้อยให้ใช้ด้วยความระมัดระวัง)</div>
+        <div id="dqRisk"></div>
+      </div>
+      <div class="chart-box chart-interactive">
+        <h3>น้ำดื่มไม่ผ่านเกณฑ์ แยกตามประเภทระบบ</h3>
+        <div class="chart-desc">ใช้เลือกว่าระบบประเภทไหนควรได้รับงบปรับปรุงคุณภาพน้ำก่อน — แถบแดง = ไม่ผ่าน เขียว = ผ่าน เทา = ไม่มีผลตรวจ</div>
+        <div id="dqType"></div>
+      </div>
+    </div>
+    <div class="charts-2col" style="margin-top:14px;">
+      <div class="chart-box chart-interactive">
+        <h3>ระบบที่น้ำไม่เพียงพอ แยกตามอำเภอ</h3>
+        <div class="chart-desc">% ของระบบที่ระบุว่าน้ำ "ไม่เพียงพอ" ÷ ระบบที่มีข้อมูลความเพียงพอ</div>
+        <div id="qtyRisk"></div>
+      </div>
+      <div class="chart-box">
+        <h3>ระบบที่มีปัญหาหลายด้านพร้อมกัน (ลำดับความสำคัญ)</h3>
+        <div class="chart-desc">ปัญหา 4 ด้าน: ใช้การไม่ได้ · น้ำดื่มไม่ผ่านเกณฑ์ · น้ำไม่เพียงพอ · น้ำใช้ไม่ได้ — เรียงตามจำนวนด้านที่มีปัญหา</div>
+        <div id="multiTop" style="max-height:380px;overflow:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="exec-section">
+    <div class="sec-head">
+      <div class="sec-num" style="background:#558b2f;">🔧</div>
+      <h2>อายุระบบและความเสี่ยงโครงสร้างพื้นฐาน</h2>
+      <span class="sec-sub" id="ageFormulaSub">ใช้วางแผนซ่อมบำรุงและทดแทนระบบเก่า · อายุ = ปี พ.ศ. 2569 − ปีที่สร้าง</span>
+    </div>
+    <div class="charts-2col">
+      <div class="chart-box">
+        <h3>จำนวนระบบตามช่วงอายุ และสัดส่วนที่มีปัญหา</h3>
+        <div class="chart-desc">แท่ง = จำนวนระบบ · เส้น = % ที่ใช้การไม่ได้ และ % น้ำดื่มไม่ผ่านเกณฑ์ ในช่วงอายุนั้น</div>
+        <div style="position:relative;width:100%;height:260px;"><canvas id="c_age"></canvas></div>
+        <div id="ageNote" style="font-size:11px;color:#5a7080;margin-top:6px;"></div>
+      </div>
+      <div class="chart-box chart-interactive">
+        <h3>สภาพการใช้งานแยกตามประเภทระบบ</h3>
+        <div class="chart-desc">คลิกแถวเพื่อกรองประเภทระบบ · แดง = ใช้การไม่ได้ เขียว = ใช้การได้ เทา = ไม่ทราบ</div>
+        <div id="typeOps"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="exec-section">
+    <div class="sec-head">
+      <div class="sec-num" style="background:#6a1b9a;">🏛️</div>
+      <h2>ผู้รับผิดชอบและการถ่ายโอนระบบ</h2>
+      <span class="sec-sub">ใครเป็นเจ้าของ ระบบมาจากไหน และมีเอกสารถ่ายโอนหรือไม่</span>
+    </div>
+    <div class="charts-3col">
+      <div class="chart-box"><h3>ผู้เป็นเจ้าของระบบ</h3><div class="chart-desc">แบ่งตามสถานะใช้งาน</div><div id="ownerBox"></div></div>
+      <div class="chart-box"><h3>ที่มาของระบบ</h3><div class="chart-desc">แบ่งตามสถานะใช้งาน</div><div id="estBox"></div></div>
+      <div class="chart-box"><h3>เอกสารการถ่ายโอน (เฉพาะระบบที่ถ่ายโอนมา)</h3><div class="chart-desc">แสดงสถานะเอกสารที่รายงาน เฉพาะระบบที่ระบุว่าถ่ายโอน</div><div id="tdBox"></div></div>
+    </div>
+  </div>
+
+  <div class="exec-section">
+    <div class="sec-head">
+      <div class="sec-num" style="background:#455a64;">🗂️</div>
+      <h2>คุณภาพและความครบถ้วนของข้อมูล</h2>
+      <span class="sec-sub">ข้อควรระวังก่อนนำตัวเลขไปใช้ตัดสินใจ</span>
+    </div>
+    <div class="chart-box" id="dqaBox"></div>
+  </div>
+</div>
+</div>
+
+<div class="view" id="view-detail">
+<div class="detail-wrap">
+  <h2 id="detailViewHeading" class="vws-visually-hidden">รายละเอียดข้อมูล</h2>
+  <div class="pivot-section">
+    <div style="font-size:13px;font-weight:800;color:#0d47a1;margin-bottom:10px;">สรุประบบประปา — จำแนกตามอำเภอและประเภทระบบ <span style="font-weight:400;color:#52708d;">(คลิกตัวเลข/หัวตาราง เพื่อกรองข้อมูลด้านล่าง)</span></div>
+    <div class="pivot-wrap"><table class="pivot"><thead id="pivotHead"></thead><tbody id="pivotBody"></tbody><tfoot id="pivotFoot"></tfoot></table></div>
+  </div>
+  <div class="body-section" style="display:block;">
+    <div class="main" style="width:100%;">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="compare">📋 เปรียบเทียบอำเภอ</button>
+        <button class="tab-btn" data-tab="insight">🔬 ข้อมูลเชิงลึก</button>
+        <button class="tab-btn" data-tab="table">📋 ตารางระบบประปา</button>
+        <button class="tab-btn" data-tab="vtable">🏘️ ตารางหมู่บ้าน</button>
+        <button class="tab-btn tab-danger" data-tab="problem">⚠️ ระบบที่มีปัญหา</button>
+      </div>
+      <div class="tab-panel active" id="panel-compare"><div class="panel">
+        <h3>ตารางเปรียบเทียบรายอำเภอ</h3>
+        <div style="font-size:11.5px;color:#5a7080;margin-bottom:10px;line-height:1.55;">แดง/เขียว = เทียบค่าเฉลี่ยของพื้นที่ที่แสดง (ตัวชี้วัดที่ "ยิ่งสูงยิ่งแย่" แดง = สูงกว่าค่าเฉลี่ย) · คลิกแถวเพื่อกรองอำเภอ</div>
+        <div id="districtCompare" style="overflow:auto;"></div>
+      </div></div>
+      <div class="tab-panel" id="panel-insight">
+        <div class="exec-section" id="ixSection">
+          <div class="sec-head"><div class="sec-num" style="background:#00695c;">🔬</div><h2>ข้อมูลเชิงลึกเพื่อการตัดสินใจ</h2><span class="sec-sub">คำนวณจากข้อมูลที่แสดงอยู่ตามตัวกรองด้านบน</span></div>
+          <div id="ixBody"></div>
+        </div>
+      </div>
+      <div class="tab-panel" id="panel-table"><div class="panel">
+        <h3>ตารางระบบประปา <span class="n" id="n-table"></span></h3>
+        <div class="tbl-wrap"><table class="data-tbl"><thead><tr><th>รหัส</th><th>ระบบ</th><th>หมู่บ้าน</th><th>อำเภอ</th><th>อปท.</th><th>ประเภท</th><th>สถานะ</th><th>น้ำดื่ม</th><th>ความเพียงพอ</th><th>อายุ(ปี)</th><th>ครัวเรือนที่รับน้ำ</th></tr></thead><tbody id="tblBody"></tbody></table></div>
+        <button class="loadmore" id="loadMoreBtn">โหลดเพิ่มเติม</button>
+      </div></div>
+      <div class="tab-panel" id="panel-vtable"><div class="panel">
+        <h3>ตารางหมู่บ้าน <span class="n" id="n-vtable"></span></h3>
+        <div class="tbl-wrap"><table class="data-tbl"><thead><tr><th>รหัส</th><th>หมู่บ้าน</th><th>อำเภอ</th><th>อปท.</th><th>มีประปา</th><th>ระบบ</th><th>ครัวเรือนรวม</th><th>ประปา</th><th>ธนาคารน้ำ</th><th>แหล่งตนเอง</th><th>ธรรมชาติ</th></tr></thead><tbody id="vtblBody"></tbody></table></div>
+        <button class="loadmore" id="vLoadMoreBtn">โหลดเพิ่มเติม</button>
+      </div></div>
+      <div class="tab-panel" id="panel-problem"><div class="panel panel-danger"><span id="probRowHint" class="vws-visually-hidden">กด Enter เพื่อดูตำแหน่งบนแผนที่หรือรายละเอียดระบบ</span>
+        <h3><span>⚠️ ระบบที่มีปัญหาอย่างน้อย 1 ด้าน <span class="n" id="n-prob"></span> <span class="n" id="n-prob-map"></span></span></h3>
+        <div class="damage-filter-bar">
+          <div class="df-group"><label for="dfDist">อำเภอ</label><select id="dfDist" aria-label="ตัวกรองรายการปัญหา: อำเภอ"><option value="">ทุกอำเภอ</option></select></div>
+          <div class="df-group"><label for="dfType">ประเภท</label><select id="dfType" aria-label="ตัวกรองรายการปัญหา: ประเภท"><option value="">ทุกประเภท</option></select></div>
+          <div class="df-group"><label>ปัญหา</label><div class="df-chips" id="dfProblemChips"></div></div>
+          <button class="df-reset" id="dfReset">↺ ล้าง</button>
+        </div>
+        <div class="dmg-legend" id="probLegend"></div>
+        <div class="map-stage" id="probMapStage"><div id="prob-map"></div></div>
+        <div class="dmg-hint">💡 คลิกหมุด = ดูเฉพาะระบบนั้นในรายการ · คลิกแถวในรายการ = ซูมไปที่หมุด</div>
+        <div class="damaged-list-head"><span>รายการระบบที่พบปัญหา</span><span class="n" id="n-prob-list"></span><span id="probPick"></span></div>
+        <div class="tbl-wrap"><table class="data-tbl"><thead><tr><th>รหัส</th><th>ระบบ / หมู่บ้าน</th><th>อำเภอ</th><th>อปท.</th><th>ปัญหาที่พบ</th><th>จำนวนด้าน</th><th>นำทาง</th></tr></thead><tbody id="probBody"></tbody></table></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+</div>
+<footer class="note">ข้อมูลจากแบบสำรวจประปาหมู่บ้านจังหวัดพะเยา (ชีต villages / water_systems) · จัดทำเพื่อสนับสนุนการตัดสินใจเชิงนโยบาย</footer>
+
+
+
+
+</body></html>

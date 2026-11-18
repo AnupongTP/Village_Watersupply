@@ -5,6 +5,7 @@ const serverCommand = process.platform === 'win32'
   ? 'python -m http.server 4173 --bind 127.0.0.1'
   : 'python3 -m http.server 4173 --bind 127.0.0.1';
 const isRealApi = process.env.REAL_API === '1';
+const useWebServer = isRealApi || process.env.VWS_USE_WEBSERVER === '1';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -37,12 +38,14 @@ export default defineConfig({
       }
     }
   ],
-  webServer: {
-    command: serverCommand,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-    stdout: 'ignore',
-    stderr: 'pipe'
-  }
+  ...(useWebServer ? {
+    webServer: {
+      command: serverCommand,
+      url: baseURL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      stdout: 'ignore',
+      stderr: 'pipe'
+    }
+  } : {})
 });

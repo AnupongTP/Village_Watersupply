@@ -3,65 +3,54 @@ import { openDashboard, openMapPopupForSystem } from './helpers.js';
 
 const SYSTEM_WITH_DOCUMENT = 'PY-W-000001';
 
-test('map popup exposes shared detail action and preview-first document card', async ({ page }, testInfo) => {
+test('map popup exposes shared detail action and excludes private transfer_document_url on Public', async ({ page }) => {
   await openDashboard(page);
-  await openMapPopupForSystem(page, SYSTEM_WITH_DOCUMENT);
+  const popup = await openMapPopupForSystem(page, SYSTEM_WITH_DOCUMENT);
 
-  const detailButton = page.locator('[data-map-action="detail"]');
-  const navigateButton = page.locator('[data-map-action="navigate"]');
+  const detailButton = popup.locator(`[data-open-system="${SYSTEM_WITH_DOCUMENT}"]`);
+  const navigateLink = popup.locator('a[href*="google.com/maps"]');
+  const appleLink = popup.locator('a[href*="maps.apple.com"]');
   await expect(detailButton).toBeVisible();
-  await expect(navigateButton).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('map-popup-actions.png'), fullPage: false });
+  await expect(navigateLink).toBeVisible();
+  await expect(appleLink).toBeVisible();
 
   await detailButton.click();
-  await expect(page.locator('#systemDrawer')).toHaveClass(/open/);
-  await expect(page.locator('#drawerContent')).toContainText('เอกสารอ้างอิง');
+  const modal = page.locator('#referenceDetail');
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText('ระบบประปาตัวอย่าง 1');
+  await expect(modal.locator('a[data-document-preview]')).toHaveCount(0);
 
-  const previewLink = page.locator('#drawerContent a[data-document-preview]');
-  await expect(previewLink).toBeVisible();
-  const href = await previewLink.getAttribute('href');
-  expect(href).toContain('https://docs.google.com/gview');
-  expect(await previewLink.getAttribute('download')).toBeNull();
-  await page.screenshot({ path: testInfo.outputPath('document-drawer.png'), fullPage: false });
-});
-
-test('desktop navigation opens Google Maps directions with marker coordinates', async ({ page }) => {
-  await page.addInitScript(() => {
-    window.__openedNavigationUrls = [];
-    window.open = url => {
-      window.__openedNavigationUrls.push(String(url));
-      return { opener: null };
+  // When a non-public/raw record includes transfer_document_url, system-detail renders a preview-first link without download
+  const previewCard = await page.evaluate(async () => {
+    const { buildSystemDetailHtml } = await import('/assets/js/system-detail.js');
+    const html = buildSystemDetailHtml(
+      {
+        system_id: 'PY-W-000001',
+        system_name: 'ระบบทดสอบเอกสาร',
+        establishment_type: 'TRANSFERRED',
+        transfer_document_status: 'AVAILABLE',
+        transfer_document_url: 'http://info.dla.go.th/download/WaterSupply/test.pdf'
+      },
+      { village_name: 'บ้านทดสอบ', district: 'จุน', local_authority: 'เทศบาลตำบลจุน' }
+    );
+    const wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    const link = wrap.querySelector('a[data-document-preview]');
+    return {
+      href: link?.getAttribute('href') || '',
+      download: link?.getAttribute('download')
     };
   });
-
-  await openDashboard(page);
-  await openMapPopupForSystem(page, SYSTEM_WITH_DOCUMENT);
-  await page.locator('[data-map-action="navigate"]').click();
-
-  await expect.poll(
-    () => page.evaluate(() => window.__openedNavigationUrls || []),
-    { timeout: 3_000 }
-  ).toHaveLength(1);
-
-  const opened = await page.evaluate(() => window.__openedNavigationUrls || []);
-  expect(opened[0]).toContain('https://www.google.com/maps/dir/');
-  expect(opened[0]).toContain('destination=19.320000%2C100.170000');
+  expect(previewCard.href).toContain('https://docs.google.com/gview');
+  expect(previewCard.download).toBeNull();
 });
 
-test('mobile navigation shows an app chooser instead of forcing one provider', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test('popup navigation link carries Google Maps destination coordinates and safe rel', async ({ page }) => {
   await openDashboard(page);
-  await openMapPopupForSystem(page, SYSTEM_WITH_DOCUMENT);
-  await page.locator('[data-map-action="navigate"]').click();
-
-  await expect(page.locator('.swal2-title')).toHaveText('เลือกแอปนำทาง');
-  await expect(page.locator('[data-navigation-target="google"]')).toContainText('Google Maps');
-  await expect(page.locator('[data-navigation-target="other"]')).toBeVisible();
-  await expect(page.locator('[data-navigation-target="web"]')).toContainText('Google Maps บนเว็บ');
-
-  const popupBox = await page.locator('.swal2-popup').boundingBox();
-  expect(popupBox).not.toBeNull();
-  expect(popupBox.width).toBeLessThanOrEqual(390);
-  expect(popupBox.height).toBeLessThanOrEqual(844);
-  await page.screenshot({ path: testInfo.outputPath('mobile-navigation-chooser.png'), fullPage: false });
+  const popup = await openMapPopupForSystem(page, SYSTEM_WITH_DOCUMENT);
+  const navigateLink = popup.locator('a[href*="google.com/maps"]');
+  const href = await navigateLink.getAttribute('href');
+  expect(href).toContain('https://www.google.com/maps?q=19.32,100.17');
+  expect(await navigateLink.getAttribute('target')).toBe('_blank');
+  expect(await navigateLink.getAttribute('rel')).toContain('noopener');
 });

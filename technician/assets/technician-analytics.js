@@ -184,7 +184,7 @@
     dataset=nextDataset||dataset;label=nextLabel||label;
     updateControls();
     const current=snapshot();
-    renderMetrics(current);renderCharts();
+    renderMetrics(current);if(!window.VWSReferenceTechnician)renderCharts();
     onChange(current.systems,keys.some(key=>filters[key]));
     return current;
   }

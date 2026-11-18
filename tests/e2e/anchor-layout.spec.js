@@ -1,49 +1,39 @@
 import { test, expect } from '@playwright/test';
 import { openDashboard, expectHashAnchorSafe, expectMapContained } from './helpers.js';
 
-const SECTION_IDS = [
-  'overview',
-  'map-section',
-  'areas',
-  'quality',
-  'system-structure',
-  'watchlist'
-];
+const REFERENCE_HASH_ROUTES = ['overview', 'compare', 'insight', 'table', 'vtable', 'problemList'];
 
-test('section navigation does not place target underneath sticky chrome', async ({ page }) => {
+test('view and tab navigation switch Reference workspaces cleanly', async ({ page }) => {
   await openDashboard(page);
 
-  for (const id of SECTION_IDS) {
-    await page.locator(`.section-link[href="#${id}"]`).click();
-    await expect(page).toHaveURL(new RegExp(`#${id}$`));
+  await page.locator('.main-nav button[data-view="detail"]').click();
+  await expect(page.locator('#view-detail')).toBeVisible();
+  await expect(page.locator('#view-exec')).toBeHidden();
 
-    await expect.poll(() => page.evaluate(targetId => {
-      const target = document.getElementById(targetId);
-      const header = document.getElementById('appHeader');
-      const filter = document.getElementById('filters');
-      if (!target || !header) return false;
-      const filterSticky = filter && getComputedStyle(filter).position === 'sticky';
-      const obstructionBottom = header.getBoundingClientRect().bottom +
-        (filterSticky ? filter.getBoundingClientRect().height + 8 : 0);
-      const targetTop = target.getBoundingClientRect().top;
-      return targetTop >= obstructionBottom - 2 && targetTop < window.innerHeight;
-    }, id), { timeout: 5_000 }).toBe(true);
+  for (const tab of ['compare', 'insight', 'table', 'vtable', 'problem']) {
+    await page.locator(`.tab-btn[data-tab="${tab}"]`).click();
+    await expect(page.locator(`#panel-${tab}`)).toBeVisible();
   }
+
+  await page.locator('.main-nav button[data-view="exec"]').click();
+  await expect(page.locator('#view-exec')).toBeVisible();
 });
 
-test('global filter is part of normal document flow and never sticky', async ({ page }) => {
+test('global filter bar is part of normal document flow and never sticky', async ({ page }) => {
   await openDashboard(page);
-  const position = await page.locator('#filters').evaluate(element => getComputedStyle(element).position);
+  const position = await page.locator('#gfBar').evaluate(element => getComputedStyle(element).position);
   expect(position).not.toBe('sticky');
   expect(position).not.toBe('fixed');
 });
 
-test('Leaflet map remains contained below header/navigation/filter stacking', async ({ page }) => {
+test('Leaflet map remains contained below header and global filter bar', async ({ page }) => {
   await openDashboard(page);
   await expectMapContained(page);
 });
 
-test('direct hash navigation resolves without sticky collision', async ({ page }) => {
+test('direct hash navigation resolves to Reference views and tabs', async ({ page }) => {
   await openDashboard(page);
-  for (const id of SECTION_IDS) await expectHashAnchorSafe(page, id);
+  for (const route of REFERENCE_HASH_ROUTES) {
+    await expectHashAnchorSafe(page, route);
+  }
 });

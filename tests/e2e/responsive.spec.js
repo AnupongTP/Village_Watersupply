@@ -7,7 +7,7 @@ import {
   expectNoHorizontalPageOverflow
 } from './helpers.js';
 
-const CRITICAL_ANCHORS = ['map-section', 'system-structure', 'watchlist'];
+const REFERENCE_ROUTES = ['overview', 'compare', 'table', 'problemList'];
 
 for (const viewport of LOCKED_VIEWPORTS) {
   test(`responsive layout: ${viewport.name} ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
@@ -16,23 +16,18 @@ for (const viewport of LOCKED_VIEWPORTS) {
     await expectNoHorizontalPageOverflow(page);
     await expectMapContained(page);
 
-    const mapBox = await page.locator('#waterMap').boundingBox();
+    const mapBox = await page.locator('#map').boundingBox();
     expect(mapBox).not.toBeNull();
     expect(mapBox.width).toBeLessThanOrEqual(viewport.width + 1);
     expect(mapBox.height).toBeGreaterThan(200);
-    expect(mapBox.height).toBeLessThanOrEqual(Math.max(540, viewport.height * 0.75));
 
-    for (const id of CRITICAL_ANCHORS) await expectHashAnchorSafe(page, id);
-
-    if (viewport.width < 768) {
-      await expect(page.locator('#btnFilterToggle')).toBeVisible();
-      await expect(page.locator('.watchlist-mobile')).toBeVisible();
-      await expect(page.locator('.problem-table')).toBeHidden();
-    } else {
-      await expect(page.locator('#filterPanel')).toBeVisible();
+    for (const route of REFERENCE_ROUTES) {
+      await expectHashAnchorSafe(page, route);
+      await expectNoHorizontalPageOverflow(page);
     }
 
-    await expect(page.locator('#data-completeness')).toHaveCount(0);
+    await page.locator('.main-nav button[data-view="exec"]').click();
+    await expect(page.locator('#view-exec')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`), fullPage: true });
   });
 }

@@ -41,6 +41,7 @@
   let dashboardRequest=null;
   let queuedDashboardRequest=null;
   let accountsRequest=null;
+  let lastSystemTrigger=null;
   const systemRequests=new Map();
 
   const ENUM_LABELS = {
@@ -153,7 +154,7 @@
   function invalidateTechnicians(){state.technicianRequest++;state.technicians=[];state.selectedTechnician=null;state.techniciansLoadedToken='';accountsRequest=null;$('techniciansTableBody').replaceChildren();$('techniciansMobileList').replaceChildren();}
   function userIdentity(user){return user?`${user.userId||user.username||''}|${user.role||''}`:'';}
   function setCurrentUser(user){if(userIdentity(state.user)!==userIdentity(user))invalidateTechnicians();state.user=user||null;}
-  function clearSession(){ state.refreshRequest++;state.dashboardIntent++;state.refreshStatusIntent++;state.selectionRequest++;state.historyRequest++;state.token='';setCurrentUser(null);state.bootstrap=null;state.dashboard=null;state.savedSummary=null;state.dashboardAppliedRequest=0;dashboardRequest=null;queuedDashboardRequest=null;systemRequests.clear();setRefreshStatus();window.VWSTechnicianMap?.clear();storageRemove(TOKEN_KEY); }
+  function clearSession(){window.VWSReferenceTechnician?.destroy(); state.refreshRequest++;state.dashboardIntent++;state.refreshStatusIntent++;state.selectionRequest++;state.historyRequest++;state.token='';setCurrentUser(null);state.bootstrap=null;state.dashboard=null;state.savedSummary=null;state.dashboardAppliedRequest=0;dashboardRequest=null;queuedDashboardRequest=null;systemRequests.clear();setRefreshStatus();state.datasetGeneration++;state.selectedSystem=null;state.villageById=new Map();state.filteredSystems=[];state.editTouched.clear();state.sharedVillageIds.clear();pendingDelete=null;lastSystemTrigger=null;activeWorkspace='dashboard';lastDashboardId='overview';$('historySystemId').value='';$('historyList').className='history-list empty-state';$('historyList').textContent='ระบุรหัสระบบเพื่อดูประวัติ';$('systemDialogBody').replaceChildren();$('editFields').replaceChildren();$('saveSummaryBody').replaceChildren();$('systemsTableBody').replaceChildren();$('systemsMobileList').replaceChildren();setSystemDetailStatus();setError('editError');setError('deleteError');$('dashboardWorkspace').classList.remove('hidden');$('historyPanel').classList.add('hidden');$('techniciansPanel').classList.add('hidden');document.querySelectorAll('dialog[open]:not(#busyOverlay)').forEach(d=>d.close());if(document.querySelector('body > .swal2-container'))window.Swal?.close?.();if(['#historyPanel','#techniciansPanel'].includes(location.hash))history.replaceState(null,'',location.pathname+location.search);window.VWSTechnicianMap?.clear();storageRemove(TOKEN_KEY); }
   function startDashboardRequest(intentId=++state.dashboardIntent){
     const requestId=++state.refreshRequest,token=state.token;
     const operation=(async()=>{const dash=unwrap(await api('data.dashboard',{token:token,filters:{}}));assertDashboard(dash);return{dash:dash,requestId:requestId,intentId:intentId,token:token};})();
@@ -211,16 +212,9 @@
   }
 
   async function bootstrapAndLoad(){
-    if (state.user?.mustChangePassword){ renderCurrentUser(); showApp(); openPasswordDialog(true); return; }
-    let boot;
-    try{ boot=unwrap(await api('data.bootstrap',authPayload())); }
-    catch(e){
-      if(e.code==='AUTH_PASSWORD_CHANGE_REQUIRED'){
-        const me=unwrap(await api('auth.me',{token:state.token})); setCurrentUser(me.user);
-        if(state.user?.mustChangePassword){ renderCurrentUser(); showApp(); openPasswordDialog(true); return; }
-      }
-      throw e;
-    }
+    const token=state.token;
+    const boot=unwrap(await api('data.bootstrap',authPayload()));
+    if(!token||token!==state.token){const error=new Error('คำขอข้อมูลถูกยกเลิกเนื่องจาก Session เปลี่ยนแล้ว');error.code='STALE_RESPONSE';throw error;}
     if(boot.user?.role==='TECHNICIAN' && (boot.featureFlags?.technicianDistrictScope!==true || !boot.user.district)){
       const error=new Error(boot.featureFlags?.technicianDistrictScope===true?'บัญชีช่างยังไม่ได้รับมอบหมายอำเภอ กรุณาติดต่อผู้ดูแลระบบ':'ระบบยังไม่พร้อมจำกัดสิทธิ์ช่างตามอำเภอ กรุณาติดต่อผู้ดูแลระบบ');
       error.code='ACCOUNT_DISTRICT_REQUIRED';throw error;
@@ -232,7 +226,7 @@
     $('techniciansAccountButton').classList.toggle('hidden',!canManageAccounts);
     $('techniciansPanel').classList.add('hidden');
     if(!canManageAccounts&&location.hash==='#techniciansPanel')history.replaceState(null,'',location.pathname+location.search);
-    showApp(); renderDashboard(); window.VWSTechnicianMap?.locateAutomatically(); requestAnimationFrame(()=>restoreSection());
+    showApp(); renderDashboard(); if(!window.VWSReferenceTechnician)window.VWSTechnicianMap?.locateAutomatically(); requestAnimationFrame(()=>restoreSection());
   }
 
   async function resume(){
@@ -251,12 +245,12 @@
     const d=state.dashboard||{};
     state.villageById=new Map((d.villages||[]).map(v=>[v.village_id,v]));
     $('generatedAt').textContent=fmtDate(d.generatedAt);
-    window.VWSTechnicianMap?.init(
+    if(!window.VWSReferenceTechnician)window.VWSTechnicianMap?.init(
       id=>openSystem(id),
       id=>(state.dashboard?.waterSystems||[]).find(s=>String(s.system_id)===String(id)),
       villageForSystem
     );
-    window.VWSTechnicianAnalytics?.render(d,analyticsLabel);
+    window.VWSTechnicianAnalytics?.render(d,analyticsLabel);window.VWSReferenceTechnician?.render(d,id=>openSystem(id),state.user,{onEditSystem:id=>handleSystemAction('edit',id),canEditSystem:s=>s.managementMutable===true&&hasPermission('UPDATE_SYSTEM')});
   }
 
 
@@ -278,10 +272,11 @@
     renderSystemsTable();
   }
   function systemActionTrigger(s){return `<button class="system-action-trigger" type="button" data-action-trigger data-id="${escapeHtml(s.system_id)}" aria-label="จัดการระบบ ${escapeHtml(s.system_name||s.system_id)}" aria-haspopup="true" aria-expanded="false" aria-controls="systemActionMenu"><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i><span class="icon-fallback" aria-hidden="true">⋮</span></button>`;}
+  function systemEditControl(s){if(!hasPermission('UPDATE_SYSTEM'))return '';if(s.managementMutable!==true)return '<span class="system-edit-locked">แก้ไขไม่ได้: ข้อมูลต้นทางมีปัญหา</span>';return `<button class="system-edit-button" type="button" data-action="edit" data-id="${escapeHtml(s.system_id)}" aria-label="แก้ไขระบบ ${escapeHtml(s.system_name||s.system_id)}">แก้ไข</button>`;}
   function systemMapButton(s){const canMap=Boolean(window.VWSTechnicianMap?.coordinates(s)),name=escapeHtml(s.system_name||s.system_id),description=canMap?`แสดงระบบ ${name} บนแผนที่`:`ระบบ ${name} ไม่มีพิกัดสำหรับแสดงบนแผนที่`;return `<button class="system-map-button" type="button" data-action="map" data-id="${escapeHtml(s.system_id)}" aria-label="${description}" title="${description}" ${canMap?'':'disabled'}><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i></button>`;}
   function issueBadges(s){const issues=monitoringIssues(s);return issues.length?issues.map(code=>`<span class="badge ${code==='NOT_WORKING'?'bad':'warn'}">${escapeHtml(code==='FAIL'?'น้ำดื่มไม่ผ่านเกณฑ์':code==='INSUFFICIENT'?'น้ำไม่เพียงพอ':'ใช้การไม่ได้')}</span>`).join(''):'<span class="muted">–</span>';}
   function visibilityBadge(s){const value=publicVisibility(s);return `<span class="badge ${value==='VISIBLE'?'good':value==='HIDDEN'?'warn':'info'}">${value==='VISIBLE'?'แสดง':value==='HIDDEN'?'ไม่แสดง':'ไม่ทราบ'}</span>`;}
-  function systemRowHtml(s,mobile=false){const v=villageForSystem(s),name=escapeHtml(s.system_name||'(ไม่มีชื่อระบบ)'),id=escapeHtml(s.system_id),village=escapeHtml(v.village_name||'-'),area=escapeHtml([v.subdistrict,v.district].filter(Boolean).join(' · ')),type=escapeHtml(label(s.system_type)),status=`<span class="badge ${s.operational_status==='WORKING'?'good':s.operational_status==='NOT_WORKING'?'bad':'warn'}">${escapeHtml(label(s.operational_status))}</span>`,issues=issueBadges(s),visibility=visibilityBadge(s),households=escapeHtml(fmt(s.households_served)),action=`<div class="system-row-actions">${systemMapButton(s)}${systemActionTrigger(s)}</div>`;
+  function systemRowHtml(s,mobile=false){const v=villageForSystem(s),name=escapeHtml(s.system_name||'(ไม่มีชื่อระบบ)'),id=escapeHtml(s.system_id),village=escapeHtml(v.village_name||'-'),area=escapeHtml([v.subdistrict,v.district].filter(Boolean).join(' · ')),type=escapeHtml(label(s.system_type)),status=`<span class="badge ${s.operational_status==='WORKING'?'good':s.operational_status==='NOT_WORKING'?'bad':'warn'}">${escapeHtml(label(s.operational_status))}</span>`,issues=issueBadges(s),visibility=visibilityBadge(s),households=escapeHtml(fmt(s.households_served)),action=`<div class="system-row-actions">${systemEditControl(s)}${systemMapButton(s)}${systemActionTrigger(s)}</div>`;
     if(mobile)return `<article class="system-mobile-card" data-system-id="${id}"><div class="system-mobile-head"><div class="min-w-0"><div class="system-name">${name}</div><div class="system-id">${id}</div></div>${action}</div><p class="system-mobile-village">${village}${area?` · ${area}`:''}</p><div class="system-mobile-badges">${status}${issues}${visibility}</div><div class="system-mobile-detail">${type} · ${households==='-'?'ไม่ระบุจำนวนครัวเรือน':`${households} ครัวเรือน`}</div></article>`;
     return `<tr data-system-id="${id}"><td><div class="system-name">${name}</div><div class="system-id">${id}</div></td><td>${village}<div class="system-id">${area}</div></td><td>${type}</td><td>${status}</td><td><div class="system-issue-badges">${issues}</div></td><td>${visibility}</td><td>${households}</td><td>${action}</td></tr>`;
   }
@@ -294,14 +289,15 @@
     $('systemsScopeNote').textContent=globalActive?`ภายใต้ตัวกรองแดชบอร์ด · ขอบเขต ${scopeTotal.toLocaleString('th-TH')} ระบบ`:'ข้อมูลระบบที่บัญชีนี้เข้าถึงได้';
     $('pageStatus').textContent=`หน้า ${state.page}/${pages}`;
     $('prevPage').disabled=state.page<=1;$('nextPage').disabled=state.page>=pages;
-    if(!page.length){body.innerHTML='<tr><td class="empty-row" colspan="8">ไม่พบข้อมูลตามตัวกรอง</td></tr>';mobile.innerHTML='<div class="empty-state">ไม่พบข้อมูลตามตัวกรอง</div>';return;}
+    if(!page.length){body.innerHTML='<tr><td class="empty-row" colspan="8">ไม่พบข้อมูลตามตัวกรอง</td></tr>';mobile.innerHTML='<div class="empty-state">ไม่พบข้อมูลตามตัวกรอง</div>';window.VWSReferenceTechnician?.syncManageMap?.(state.filteredSystems);return;}
     body.innerHTML=page.map(s=>systemRowHtml(s)).join('');mobile.innerHTML=page.map(s=>systemRowHtml(s,true)).join('');
+    window.VWSReferenceTechnician?.syncManageMap?.(state.filteredSystems);
   }
   let openSystemMenuTrigger=null;
   function closeSystemActionMenu(restoreFocus=false){const trigger=openSystemMenuTrigger;openSystemMenuTrigger=null;$('systemActionMenu').classList.add('hidden');$('systemActionMenu').innerHTML='';if(trigger){trigger.setAttribute('aria-expanded','false');if(restoreFocus&&trigger.isConnected)trigger.focus();}}
   function positionSystemActionMenu(){if(!openSystemMenuTrigger)return;const button=openSystemMenuTrigger.getBoundingClientRect(),menu=$('systemActionMenu');if(!openSystemMenuTrigger.isConnected||button.bottom<0||button.top>innerHeight){closeSystemActionMenu(false);return;}const popup=menu.getBoundingClientRect();menu.style.left=`${Math.max(8,Math.min(button.right-popup.width,innerWidth-popup.width-8))}px`;menu.style.top=`${button.bottom+popup.height+8<=innerHeight?button.bottom+4:Math.max(8,button.top-popup.height-4)}px`;}
   function openSystemActionMenu(trigger){const id=trigger.dataset.id,s=(state.dashboard?.waterSystems||[]).find(item=>String(item.system_id)===id);if(!s)return;if(openSystemMenuTrigger===trigger){closeSystemActionMenu(true);return;}closeSystemActionMenu(false);openSystemMenuTrigger=trigger;trigger.setAttribute('aria-expanded','true');const mutable=s.managementMutable===true,menu=$('systemActionMenu');menu.innerHTML=`<button type="button" data-action="view" data-id="${escapeHtml(id)}">รายละเอียด</button><button type="button" data-action="edit" data-id="${escapeHtml(id)}" ${mutable&&hasPermission('UPDATE_SYSTEM')?'':'disabled'}>แก้ไข</button><button type="button" data-action="history" data-id="${escapeHtml(id)}">ประวัติ</button><button type="button" class="danger" data-action="delete" data-id="${escapeHtml(id)}" ${mutable&&hasPermission('DELETE_SYSTEM')?'':'disabled'}>ลบ</button>`;menu.classList.remove('hidden');positionSystemActionMenu();menu.querySelector('button:not(:disabled)')?.focus({preventScroll:true});}
-  function handleSystemAction(action,id){if(action==='edit'&&!hasPermission('UPDATE_SYSTEM')||action==='delete'&&!hasPermission('DELETE_SYSTEM'))return;const s=(state.dashboard?.waterSystems||[]).find(item=>String(item.system_id)===id);if(!s)return;if(['edit','delete'].includes(action)&&s.managementMutable!==true)return;closeSystemActionMenu(false);if(action==='view'||action==='edit'||action==='delete')openSystem(id,action);else if(action==='map'){if(!window.VWSTechnicianMap?.coordinates(s))return;navigateToSection('map-section');if(!window.VWSTechnicianMap?.focus(id))toast('ระบบนี้ไม่อยู่ในขอบเขตแผนที่ปัจจุบัน','warning');}else if(action==='history'){navigateToSection('historyPanel');loadHistory(id);}}
+  function handleSystemAction(action,id){if(action==='edit'&&!hasPermission('UPDATE_SYSTEM')||action==='delete'&&!hasPermission('DELETE_SYSTEM'))return;const s=(state.dashboard?.waterSystems||[]).find(item=>String(item.system_id)===id);if(!s)return;if(['edit','delete'].includes(action)&&s.managementMutable!==true)return;closeSystemActionMenu(false);if(action==='view'||action==='edit'||action==='delete')openSystem(id,action);else if(action==='map'){if(!window.VWSTechnicianMap?.coordinates(s))return;if(window.VWSReferenceTechnician?.ownsMapAction?.()){if(!window.VWSReferenceTechnician.focusManageMap(id))toast('ระบบนี้ถูกกรองออกจากรายการปัจจุบัน','warning');return;}navigateToSection('map-section');if(!window.VWSTechnicianMap?.focus(id))toast('ระบบนี้ไม่อยู่ในขอบเขตแผนที่ปัจจุบัน','warning');}else if(action==='history'){navigateToSection('historyPanel');loadHistory(id);}}
 
   function setSystemDetailStatus(type='',message=''){const status=$('systemDetailStatus');status.textContent=message;status.className=`detail-load-status${type?` ${type}`:''}${message?'':' hidden'}`;}
   function fetchSystem(id){
@@ -312,10 +308,13 @@
     operation.then(()=>{if(systemRequests.get(key)===operation)systemRequests.delete(key);},()=>{if(systemRequests.get(key)===operation)systemRequests.delete(key);});
     return operation;
   }
+  async function syncHistoryButton(id,request){const button=$('referenceHistoryButton'),token=state.token;button.hidden=true;try{const data=unwrap(await api('data.entityHistory',{token,request:{entityType:'WATER_SYSTEM',entityId:String(id),limit:1}}));if(request!==state.selectionRequest||token!==state.token)return;button.hidden=!(Array.isArray(data?.history)&&data.history.length);}catch(_){button.hidden=true;}}
   async function openSystem(id,mode='view'){
     if((mode==='edit'&&!hasPermission('UPDATE_SYSTEM'))||(mode==='delete'&&!hasPermission('DELETE_SYSTEM')))return;
+    if(!$('systemDialog').open&&document.activeElement instanceof HTMLElement)lastSystemTrigger=document.activeElement;
     state.savedSummary=null;
     const request=++state.selectionRequest,generation=state.datasetGeneration;
+    if(mode==='view')syncHistoryButton(id,request);
     const preview=mode==='view'?(state.dashboard?.waterSystems||[]).find(item=>String(item.system_id)===String(id)):null;
     if(preview){state.selectedSystem=preview;renderSystemDetail();setSystemDetailStatus('loading','กำลังตรวจสอบข้อมูลล่าสุด...');$('editSystemButton').disabled=true;$('deleteSystemButton').disabled=true;if(!$('systemDialog').open)$('systemDialog').showModal();}
     const busy=preview?null:showBusy('กำลังโหลดข้อมูลระบบ...');
@@ -402,13 +401,13 @@
   function beginMutation(dialog){if(state.mutating)return false;state.mutating=true;dialog.querySelectorAll('button[type="submit"]').forEach(button=>button.disabled=true);return true;}
   function endMutation(dialog){state.mutating=false;dialog.querySelectorAll('button[type="submit"]').forEach(button=>button.disabled=false);if(dialog.id==='editDialog')syncSaveButton();}
   function editIsDirty(){return Object.keys(collectPatch()).length>0||$('editReason').value.trim()!=='';}
-  function dismissDialog(dialog){if(state.mutating)return;if(dialog.id==='passwordDialog'&&dialog.dataset.forced==='true')return;if(dialog.id==='editDialog'&&editIsDirty()){$('discardDialog').showModal();return;}if(dialog.id==='systemDialog')state.selectionRequest++;dialog.close();}
+  function dismissDialog(dialog){if(state.mutating)return;if(dialog.id==='editDialog'&&editIsDirty()){$('discardDialog').showModal();return;}if(dialog.id==='systemDialog')state.selectionRequest++;dialog.close();}
   function bindDialogDismissal(){document.querySelectorAll('dialog:not(#busyOverlay)').forEach(dialog=>{
     dialog.querySelectorAll('[data-dismiss-dialog]').forEach(button=>button.addEventListener('click',()=>dismissDialog(dialog)));
     dialog.addEventListener('cancel',event=>{event.preventDefault();if(dialog.id==='discardDialog'){dialog.close();return;}dismissDialog(dialog);});
     dialog.addEventListener('click',event=>{if(event.target===dialog)dismissDialog(dialog);});
   });
-    $('systemDialog').addEventListener('close',()=>{state.selectionRequest++;setSystemDetailStatus();});
+    $('systemDialog').addEventListener('close',()=>{state.selectionRequest++;setSystemDetailStatus();const trigger=lastSystemTrigger;lastSystemTrigger=null;if(state.token&&trigger?.isConnected&&!$('editDialog').open&&!$('deleteDialog').open&&$('historyPanel').classList.contains('hidden'))trigger.focus({preventScroll:true});});
     $('busyOverlay').addEventListener('cancel',event=>event.preventDefault());
     $('continueEditingButton').addEventListener('click',()=>$('discardDialog').close());
     $('confirmDiscardButton').addEventListener('click',()=>{$('discardDialog').close();$('editDialog').close();});
@@ -488,10 +487,10 @@
     const previousWorkspace=activeWorkspace;
     if(activeWorkspace==='dashboard'&&workspace!=='dashboard')dashboardScrollY=window.scrollY;
     if(workspace==='dashboard'){lastDashboardId=id;if(id==='watchlist'||id==='technicianManagementSection'){state.tableMode=id==='watchlist'?'monitoring':'all';applyFilters();}}
-    $('dashboardWorkspace').classList.toggle('hidden',workspace!=='dashboard');
+    $('dashboardWorkspace').classList.toggle('hidden',workspace!=='dashboard'&&!window.VWSReferenceTechnician?.ownsWorkspace?.(workspace));
     for(const targetId of Object.values(workspaceTargets))$(targetId).classList.toggle('hidden',targetId!==workspace);
-    activeWorkspace=workspace;
-    const target=id==='technicianManagementSection'?$('watchlist'):$(id);if(!target)return false;
+    activeWorkspace=workspace;window.VWSReferenceTechnician?.syncWorkspace?.(workspace);if(workspace==='dashboard')window.VWSReferenceTechnician?.activate(id);
+    const manageTabs=(id==='technicianManagementSection'||id==='watchlist')&&window.VWSReferenceTechnician?.ownsMapAction?.()?document.querySelector('#view-manage .manage-tabs'):null;const target=manageTabs||(id==='technicianManagementSection'?$('watchlist'):$(id));if(!target)return false;
     updateHeaderOffset();
     if(workspace==='dashboard'&&previousWorkspace!=='dashboard')window.scrollTo({top:dashboardScrollY,behavior:'instant'});
     else target.scrollIntoView({block:'start',behavior:smooth&&!matchMedia('(prefers-reduced-motion: reduce)').matches?'smooth':'instant'});
@@ -565,20 +564,21 @@
   function openAccountAction(action,user){state.accountAction=action;state.selectedTechnician=user;$('actionReason').value='';$('actionPassword').value='';setError('actionError');const reason=action==='delete',password=action==='reset';$('actionReasonLabel').classList.toggle('hidden',!reason);$('actionPasswordLabel').classList.toggle('hidden',!password);const titles={disable:'ปิดการใช้งานบัญชี',enable:'เปิดการใช้งานบัญชี',delete:'ลบบัญชีช่างเทคนิค',reset:'รีเซ็ตรหัสผ่าน'};$('actionTitle').textContent=titles[action];$('actionDescription').textContent=`${user.displayName} (${user.username})`;$('actionConfirmButton').className=`btn ${action==='delete'?'danger':'primary'}`;$('actionDialog').showModal();}
   async function runAccountAction(){const u=state.selectedTechnician,a=state.accountAction;const map={disable:'technicians.disable',enable:'technicians.enable',delete:'technicians.delete',reset:'technicians.resetPassword'};const req={userId:u.userId,expectedVersion:u.recordVersion,clientInfo:clientInfo()};if(a==='delete'){req.reason=$('actionReason').value.trim();if(!req.reason){setError('actionError','กรุณาระบุเหตุผล');return;}}if(a==='reset'){req.newPassword=$('actionPassword').value;if(!req.newPassword){setError('actionError','กรุณาระบุรหัสผ่านใหม่');return;}}if(!beginMutation($('actionDialog')))return;const busy=showBusy('กำลังดำเนินการบัญชี...');try{unwrap(await api(map[a],authPayload({request:req})));$('actionDialog').close();$('actionPassword').value='';toast('ดำเนินการบัญชีสำเร็จ');invalidateTechnicians();await loadTechnicians({force:true,withBusy:false});}catch(e){setError('actionError',e.message);}finally{hideBusy(busy);endMutation($('actionDialog'));}}
 
-  function openPasswordDialog(forced=false){
+  function openPasswordDialog(){
     ['currentPassword','newPassword','confirmNewPassword'].forEach(id=>$(id).value='');setError('passwordError');
-    $('passwordDialogDescription').textContent=forced?'บัญชีนี้ต้องเปลี่ยนรหัสผ่านก่อนใช้งานแดชบอร์ดช่างเทคนิค':'เปลี่ยนรหัสผ่านของบัญชีที่กำลังเข้าสู่ระบบ';
-    $('passwordCloseButton').classList.toggle('hidden',forced);$('passwordCancelButton').classList.toggle('hidden',forced);
-    $('passwordDialog').dataset.forced=forced?'true':'false';if(!$('passwordDialog').open)$('passwordDialog').showModal();
+    $('passwordDialogDescription').textContent='เปลี่ยนรหัสผ่านของบัญชีที่กำลังเข้าสู่ระบบ';
+    if(!$('passwordDialog').open)$('passwordDialog').showModal();
   }
   async function changePassword(){const cur=$('currentPassword').value,next=$('newPassword').value,confirm=$('confirmNewPassword').value;if(next!==confirm){setError('passwordError','รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');return;}if(!beginMutation($('passwordDialog')))return;const busy=showBusy('กำลังเปลี่ยนรหัสผ่าน...');try{unwrap(await api('auth.changePassword',authPayload({request:{currentPassword:cur,newPassword:next,clientInfo:clientInfo()}})));const me=unwrap(await api('auth.me',{token:state.token}));setCurrentUser(me.user);['currentPassword','newPassword','confirmNewPassword'].forEach(id=>$(id).value='');$('passwordDialog').close();toast('เปลี่ยนรหัสผ่านแล้ว');await bootstrapAndLoad();}catch(e){setError('passwordError',e.message);}finally{hideBusy(busy);endMutation($('passwordDialog'));}}
   async function performLogout(){const token=state.token;clearSession();closeAccountMenu();showLogin();try{await api('auth.logout',{token});}catch(_){}}
   function handleApiError(e){if(['SESSION_INVALID','SESSION_REVOKED','SESSION_EXPIRED','SESSION_IDLE_EXPIRED','AUTH_ACCOUNT_DISABLED','AUTH_ACCOUNT_DELETED'].includes(e.code)){clearSession();document.querySelectorAll('dialog[open]:not(#busyOverlay)').forEach(d=>d.close());showLogin();toast('ช่วงการใช้งานสิ้นสุด กรุณาเข้าสู่ระบบใหม่','error');return;}toast(e.message||'เกิดข้อผิดพลาด','error');}
 
   function bind(){
+{const pw=$('loginPassword'),tg=$('loginPasswordToggle');const setShown=on=>{pw.type=on?'text':'password';tg.setAttribute('aria-pressed',String(on));tg.setAttribute('aria-label',on?'ซ่อนรหัสผ่าน':'แสดงรหัสผ่าน');const ic=tg.querySelector('i');if(ic)ic.className=on?'fa-solid fa-eye-slash':'fa-solid fa-eye';};tg.addEventListener('click',()=>{setShown(pw.type==='password');pw.focus();});$('loginForm').addEventListener('submit',()=>setShown(false),true);}
+$('referenceHistoryButton').addEventListener('click',()=>{const id=state.selectedSystem?.system_id;if(!id)return;$('systemDialog').close();handleSystemAction('history',id);});
     bindDialogDismissal();
     window.VWSTechnicianAnalytics?.bind({
-      onChange:(systems,filtered)=>{window.VWSTechnicianMap?.render(systems,filtered);applyFilters();}
+      onChange:(systems,filtered)=>{if(!window.VWSReferenceTechnician)window.VWSTechnicianMap?.render(systems,filtered);applyFilters();}
     });
     for(const id of ['editForm','deleteForm','technicianForm','actionForm','passwordForm'])$(id).addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches('input, select')&&event.target.type!=='checkbox')event.preventDefault();});
     $('retryResumeButton').addEventListener('click',resume);
@@ -590,7 +590,7 @@
     $('logoutButton').addEventListener('click',performLogout);$('mobileLogoutButton').addEventListener('click',performLogout);
     $('refreshButton').addEventListener('click',()=>reloadDashboard(true));
     $('refreshTechniciansButton').addEventListener('click',()=>loadTechnicians({force:true}));
-    $('changePasswordButton').addEventListener('click',()=>{closeAccountMenu();openPasswordDialog(false);});$('mobileChangePasswordButton').addEventListener('click',()=>{closeAccountMenu();openPasswordDialog(false);});
+    $('changePasswordButton').addEventListener('click',()=>{closeAccountMenu();openPasswordDialog();});$('mobileChangePasswordButton').addEventListener('click',()=>{closeAccountMenu();openPasswordDialog();});
     $('mobileAccountButton').addEventListener('click',()=>{const menu=$('mobileAccountMenu'),open=menu.classList.contains('hidden');menu.classList.toggle('hidden',!open);$('mobileAccountButton').setAttribute('aria-expanded',open?'true':'false');});
     document.addEventListener('click',e=>{if(!e.target.closest('.mobile-account'))closeAccountMenu();});
     document.querySelectorAll('a.section-link').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();navigateToSection(link.hash.slice(1));}));
@@ -605,7 +605,7 @@
     $('searchInput').addEventListener('input',()=>applyFilters());
     document.querySelectorAll('[data-system-mode]').forEach(button=>button.addEventListener('click',()=>navigateToSection(button.dataset.systemMode==='all'?'technicianManagementSection':'watchlist')));
     $('prevPage').addEventListener('click',()=>{if(state.page>1){state.page--;renderSystemsTable();}});$('nextPage').addEventListener('click',()=>{if(state.page<Math.ceil(state.filteredSystems.length/PAGE_SIZE)){state.page++;renderSystemsTable();}});
-    $('watchlist').addEventListener('click',e=>{const mapButton=e.target.closest('.system-map-button');if(mapButton&&!mapButton.disabled){handleSystemAction('map',mapButton.dataset.id);return;}const trigger=e.target.closest('[data-action-trigger]');if(trigger)openSystemActionMenu(trigger);});
+    $('watchlist').addEventListener('click',e=>{const edit=e.target.closest('.system-edit-button');if(edit&&!edit.disabled){handleSystemAction('edit',edit.dataset.id);return;}const mapButton=e.target.closest('.system-map-button');if(mapButton&&!mapButton.disabled){handleSystemAction('map',mapButton.dataset.id);return;}const trigger=e.target.closest('[data-action-trigger]');if(trigger)openSystemActionMenu(trigger);});
     $('systemActionMenu').addEventListener('click',e=>{const button=e.target.closest('button[data-action]');if(button&&!button.disabled)handleSystemAction(button.dataset.action,button.dataset.id);});
     document.addEventListener('click',e=>{if(openSystemMenuTrigger&&!e.target.closest('#systemActionMenu')&&!e.target.closest('[data-action-trigger]'))closeSystemActionMenu(false);});
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&openSystemMenuTrigger){e.preventDefault();closeSystemActionMenu(true);}});

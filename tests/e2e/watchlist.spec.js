@@ -1,63 +1,53 @@
+import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
-import { openDashboard } from './helpers.js';
+import { resolveUiSourcePath } from '../support/source-root.mjs';
+import { openDashboard, installBasePublicRoutes } from './helpers.js';
 
-const SYSTEM_COUNT = 25;
+const SYSTEM_COUNT = 105;
 
-async function installLargeWatchlistFixture(page) {
-  await page.route('**/data/mock/water_systems.json', async route => {
-    const response = await route.fetch();
-    const base = await response.json();
-    const template = base[0];
-    const systems = Array.from({ length: SYSTEM_COUNT }, (_, index) => ({
-      ...template,
-      system_id: `QA-W-${String(index + 1).padStart(6, '0')}`,
-      system_name: `ระบบประปาทดสอบรายการที่ ${index + 1}`,
-      latitude: 19.20 + (index % 5) * 0.005,
-      longitude: 99.80 + Math.floor(index / 5) * 0.005,
-      operational_status: 'WORKING',
-      drinking_water_quality: 'FAIL',
-      water_quantity: 'SUFFICIENT',
-      transfer_document_status: 'NO_DATA',
-      transfer_document_url: ''
-    }));
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(systems) });
-  });
+async function installLargeProblemFixture(page) {
+  await installBasePublicRoutes(page);
+  const villages = JSON.parse(fs.readFileSync(resolveUiSourcePath('data/mock/villages.json'), 'utf8'));
+  const systems = JSON.parse(fs.readFileSync(resolveUiSourcePath('data/mock/water_systems.json'), 'utf8'));
+  const template = systems[0];
+  const generated = Array.from({ length: SYSTEM_COUNT }, (_, index) => ({
+    ...template,
+    system_id: `QA-W-${String(index + 1).padStart(6, '0')}`,
+    village_id: villages[0].village_id,
+    system_name: `ระบบประปาทดสอบรายการที่ ${index + 1}`,
+    latitude: 19.20 + (index % 5) * 0.005,
+    longitude: 99.80 + Math.floor(index / 5) * 0.005,
+    operational_status: 'WORKING',
+    drinking_water_quality: 'FAIL',
+    water_quantity: 'SUFFICIENT',
+    transfer_document_status: 'NO_DATA',
+    transfer_document_url: ''
+  }));
+  await page.route('**/data/mock/water_systems.json', route => route.fulfill({ json: generated }));
 }
 
-test('public systems list reaches every matching record through pagination and remains internally scrollable', async ({ page }) => {
-  await installLargeWatchlistFixture(page);
+test('detail systems table batches 100 rows with #loadMoreBtn and problem view tracks matching problem rows', async ({ page }) => {
+  await installLargeProblemFixture(page);
   await openDashboard(page);
 
-  await expect(page.locator('#watchlistTotal')).toHaveText(String(SYSTEM_COUNT));
-  await expect(page.locator('#problemList .problem-summary strong')).toHaveText(String(SYSTEM_COUNT));
-  await expect(page.locator('#publicListAll,#publicListMonitoring')).toHaveCount(0);
-  await expect(page.locator('#publicListPageStatus')).toHaveText('หน้า 1/2');
-  await expect(page.locator('.problem-table tbody tr')).toHaveCount(20);
-  await expect(page.locator('.watchlist-mobile .watch-card')).toHaveCount(20);
-  const firstPageIds = await page.locator('.problem-table tbody tr').evaluateAll(rows => rows.map(row => row.dataset.watchSystemId));
+  await expect(page.locator('#efCount')).toContainText(`แสดง ${SYSTEM_COUNT} ระบบ จาก ${SYSTEM_COUNT}`);
+  await page.locator('.main-nav button[data-view="detail"]').click();
+  await page.locator('.tab-btn[data-tab="table"]').click();
 
-  const desktopScroll = await page.locator('.watchlist-scroll').evaluate(node => ({
-    clientHeight: node.clientHeight,
-    scrollHeight: node.scrollHeight,
-    overflowY: getComputedStyle(node).overflowY
-  }));
-  expect(desktopScroll.overflowY).toBe('auto');
-  expect(desktopScroll.scrollHeight).toBeGreaterThan(desktopScroll.clientHeight);
+  await expect(page.locator('#tblBody tr')).toHaveCount(100);
+  await expect(page.locator('#loadMoreBtn')).toBeVisible();
+  const firstBatchIds = await page.locator('#tblBody tr').evaluateAll(rows => rows.map(row => row.cells[0]?.textContent));
 
-  await page.locator('#publicListNext').click();
-  await expect(page.locator('#publicListPageStatus')).toHaveText('หน้า 2/2');
-  await expect(page.locator('.problem-table tbody tr')).toHaveCount(5);
-  const secondPageIds = await page.locator('.problem-table tbody tr').evaluateAll(rows => rows.map(row => row.dataset.watchSystemId));
-  expect(new Set([...firstPageIds, ...secondPageIds]).size).toBe(SYSTEM_COUNT);
+  await page.locator('#loadMoreBtn').click();
+  await expect(page.locator('#tblBody tr')).toHaveCount(SYSTEM_COUNT);
+  await expect(page.locator('#loadMoreBtn')).toBeHidden();
+  const allIds = await page.locator('#tblBody tr').evaluateAll(rows => rows.map(row => row.cells[0]?.textContent));
+  expect(new Set(allIds).size).toBe(SYSTEM_COUNT);
+  expect(allIds.slice(0, 100)).toEqual(firstBatchIds);
 
-  await page.locator('#publicListPrevious').click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('.watchlist-mobile')).toBeVisible();
-  const mobileScroll = await page.locator('.watchlist-mobile').evaluate(node => ({
-    clientHeight: node.clientHeight,
-    scrollHeight: node.scrollHeight,
-    overflowY: getComputedStyle(node).overflowY
-  }));
-  expect(mobileScroll.overflowY).toBe('auto');
-  expect(mobileScroll.scrollHeight).toBeGreaterThan(mobileScroll.clientHeight);
+  await page.locator('.tab-btn[data-tab="problem"]').click();
+  await expect(page.locator('#n-prob')).toContainText(`${SYSTEM_COUNT} ระบบ`);
+  await expect(page.locator('#probBody tr.dmg-row')).toHaveCount(SYSTEM_COUNT);
+  const tableScroll = await page.locator('#panel-problem .tbl-wrap').evaluate(el => getComputedStyle(el).overflowX);
+  expect(['auto', 'scroll']).toContain(tableScroll);
 });

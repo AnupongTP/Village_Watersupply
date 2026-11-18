@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
+import { repoRoot, resolveUiSourcePath, resolveUiSourceRoot } from '../support/source-root.mjs';
 import { projectPublicDataset } from '../../tools/public-dataset/projection.mjs';
 import { prepareLocalPublicCandidate } from '../../tools/public-dataset/local-integration.mjs';
 import { createVerifiedSnapshotStore } from '../../tools/public-dataset/snapshot.mjs';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const uiRoot = resolveUiSourceRoot();
 const origin = 'http://village.test';
+const BLANK_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e2e8f0"/></svg>';
 const fixture = {
   success: true,
   villages: [
@@ -17,7 +18,7 @@ const fixture = {
   ],
   waterSystems: [
     { system_id: 's1', village_id: 'v1', system_name: 'Hidden system', latitude: '', longitude: 100 },
-    { system_id: 's3', village_id: 'v3', system_name: 'Visible system', latitude: 19, longitude: 100 }
+    { system_id: 's3', village_id: 'v3', system_name: 'Visible system', latitude: 19.2, longitude: 100.1 }
   ],
   waterSources: [
     { source_id: 'r1', village_id: 'v1', source_type: 'PWA' },
@@ -29,14 +30,15 @@ const manifest = { complete: true, counts: { villages: 3, waterSystems: 2, water
 
 test('isolated browser R5.1 output agrees with local projection for synthetic source data', async ({ page }) => {
   const forbidden = [];
-  await page.addInitScript({ content: fs.readFileSync(path.join(root, 'tools/qa/browser-mocks.js'), 'utf8') });
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
     if (url.origin !== origin) {
-      // External resources are fully intercepted. No Production or CDN network request is sent.
-      if (url.pathname.endsWith('.css')) return route.fulfill({ contentType: 'text/css', body: '' });
-      if (url.pathname.endsWith('.js')) return route.fulfill({ contentType: 'text/javascript', body: '' });
-      if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ contentType: 'text/css', body: '' });
+      if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+        return route.fulfill({ contentType: 'text/css', body: '' });
+      }
+      if (url.hostname.endsWith('.arcgisonline.com') || url.hostname.endsWith('.tile.openstreetmap.org')) {
+        return route.fulfill({ contentType: 'image/svg+xml', body: BLANK_TILE });
+      }
       forbidden.push(url.hostname);
       return route.abort();
     }
@@ -49,23 +51,28 @@ test('isolated browser R5.1 output agrees with local projection for synthetic so
       '/data/mock/village_water_sources.json': fixture.waterSources
     };
     if (Object.hasOwn(dataFiles, url.pathname)) return route.fulfill({ json: dataFiles[url.pathname] });
-    const relative = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
-    const file = path.resolve(root, relative);
-    if (!file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    const pathname = decodeURIComponent(url.pathname);
+    const rel = (pathname.endsWith('/') ? `${pathname}index.html` : pathname).replace(/^\/+/, '');
+    const file = resolveUiSourcePath(rel);
+    const allowed = file.startsWith(`${uiRoot}${path.sep}`) ||
+      (file.startsWith(`${repoRoot}${path.sep}`) && /^(?:data\/mock|tools)\//.test(rel));
+    if (!allowed || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
       return route.fulfill({ status: 404, body: 'Not found' });
     }
-    const contentType = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' }[path.extname(file)] || 'application/octet-stream';
+    const contentType = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' }[path.extname(file)] || 'application/octet-stream';
     return route.fulfill({ contentType, body: fs.readFileSync(file) });
   });
+
   await page.goto(origin);
   const projection = projectPublicDataset(fixture, manifest);
-  await expect(page.locator('#kpiVillages')).toHaveText(String(projection.villages.length));
-  await expect(page.locator('#kpiSystems')).toHaveText(String(projection.waterSystems.length));
+  await expect(page.locator('#efCount')).toContainText(`${projection.waterSystems.length} ระบบ`);
+  await expect(page.locator('#efCount')).toContainText(`${projection.villages.length} หมู่บ้าน`);
   await expect(page.locator('body')).not.toContainText('Unlinked waterworks');
   await expect(page.locator('body')).not.toContainText('Hidden system');
-  await page.locator('#filterSearch').fill('Linked coordinate-less');
-  await expect(page.locator('#kpiVillages')).toHaveText('1');
-  await expect(page.locator('#kpiSystems')).toHaveText('0');
+
+  await page.locator('#fq').fill('Linked coordinate-less');
+  await expect(page.locator('#efCount')).toContainText('แสดง 0 ระบบ จาก 1 · 1 หมู่บ้าน จาก 2');
+
   const prepare = () => prepareLocalPublicCandidate(fixture, manifest, {
     verifyRead: () => ({
       complete: true, consistentRead: true, authority: 'synthetic browser oracle',

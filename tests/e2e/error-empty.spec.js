@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { collectRuntimeErrors } from './helpers.js';
+import { collectRuntimeErrors, installBasePublicRoutes } from './helpers.js';
 
 test('API/network failure resolves to a visible initial-load error state instead of a broken page', async ({ page }) => {
+  await installBasePublicRoutes(page);
   await page.route('**/data/mock/villages.json', route => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -9,12 +10,12 @@ test('API/network failure resolves to a visible initial-load error state instead
   }));
 
   await page.goto('/');
-  await expect(page.locator('.swal2-title')).toHaveText('ไม่สามารถโหลดข้อมูลได้', { timeout: 20_000 });
-  await expect(page.locator('.swal2-html-container')).toContainText('โหลดข้อมูลตัวอย่างหมู่บ้านไม่สำเร็จ');
-  await expect(page.locator('body')).toContainText('ระบบข้อมูลประปาหมู่บ้าน');
+  await expect(page.locator('#referenceStatus')).toContainText('โหลดข้อมูลไม่สำเร็จ', { timeout: 20_000 });
+  await expect(page.locator('body')).toContainText('KwanKukkeb');
 });
 
-test('refresh failure preserves the last accepted public data and successful-load timestamp', async ({ page }) => {
+test('refresh failure preserves the last accepted public data and shows distinct error status', async ({ page }) => {
+  await installBasePublicRoutes(page);
   let villageRequests = 0;
   await page.route('**/data/mock/villages.json', route => {
     villageRequests += 1;
@@ -31,21 +32,18 @@ test('refresh failure preserves the last accepted public data and successful-loa
   await page.route('**/data/mock/village_water_sources.json', route => route.fulfill({ json: [] }));
 
   await page.goto('/');
-  await expect(page.locator('#kpiVillages')).toHaveText('1', { timeout: 20_000 });
-  await expect(page.locator('.swal2-container')).toHaveCount(0, { timeout: 20_000 });
-  const beforeTimestamp = await page.locator('#dataUpdatedAt').innerText();
+  await expect(page.locator('#efCount')).toContainText('1 ระบบ', { timeout: 20_000 });
+  await expect(page.locator('#referenceStatus')).toHaveText('โหลดข้อมูลล่าสุดแล้ว');
 
   await page.locator('#btnRefresh').click();
-  await expect(page.locator('.swal2-title')).toHaveText('รีเฟรชข้อมูลไม่สำเร็จ', { timeout: 20_000 });
-  await expect(page.locator('.swal2-html-container')).toContainText('ข้อมูลเดิมที่โหลดสำเร็จล่าสุดยังคงแสดงอยู่');
-  await expect(page.locator('#kpiVillages')).toHaveText('1');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-  await expect(page.locator('#dataUpdatedAt')).toHaveText(beforeTimestamp);
-  await expect(page.locator('#btnRefresh')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#referenceStatus')).toContainText('อัปเดตไม่สำเร็จ กำลังแสดงข้อมูลที่โหลดก่อนหน้านี้', { timeout: 20_000 });
+  await expect(page.locator('#efCount')).toContainText('1 ระบบ');
+  await expect(page.locator('#btnRefresh')).toBeEnabled();
 });
 
 test('empty datasets render explicit empty states without runtime exceptions', async ({ page }) => {
   const runtimeErrors = collectRuntimeErrors(page);
+  await installBasePublicRoutes(page);
 
   for (const file of ['villages.json', 'water_systems.json', 'village_water_sources.json']) {
     await page.route(`**/data/mock/${file}`, route => route.fulfill({
@@ -56,10 +54,9 @@ test('empty datasets render explicit empty states without runtime exceptions', a
   }
 
   await page.goto('/');
-  await expect(page.locator('#kpiVillages')).toHaveText('0', { timeout: 20_000 });
-  await expect(page.locator('#kpiSystems')).toHaveText('0');
-  await expect(page.locator('#problemList .empty-state')).toBeVisible();
-  await expect(page.locator('.chart-empty')).toHaveCount(4);
-  await expect(page.locator('.water-system-marker')).toHaveCount(0);
+  await expect(page.locator('#efCount')).toContainText('แสดง 0 ระบบ จาก 0 · 0 หมู่บ้าน จาก 0', { timeout: 20_000 });
+  await expect(page.locator('#gfEmpty')).toBeVisible();
+  await expect(page.locator('#heroMapStage .map-empty')).toBeVisible();
+  await expect(page.locator('#map .dvicon')).toHaveCount(0);
   expect(runtimeErrors).toEqual([]);
 });

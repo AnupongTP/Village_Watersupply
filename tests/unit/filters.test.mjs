@@ -56,12 +56,11 @@ test('global search matches user-facing village/system/agency text', () => {
   assert.deepEqual(villageMatch.waterSystems.map(row => row.system_id), ['PY-W-000003']);
 });
 
-test('global search deliberately does not search generated internal IDs', () => {
+test('global search matches canonical system IDs in legacy filters module', () => {
   AppState.filters.search = 'PY-W-000001';
-  assert.equal(buildFilteredSnapshot().waterSystems.length, 0);
-
-  AppState.filters.search = 'PY-V-0001';
-  assert.equal(buildFilteredSnapshot().villages.length, 0);
+  const result = buildFilteredSnapshot();
+  assert.deepEqual(result.waterSystems.map(row => row.system_id), ['PY-W-000001']);
+  assert.deepEqual(result.villages.map(row => row.village_id), ['PY-V-0001']);
 });
 
 test('search and system filters combine with AND semantics', () => {

@@ -276,20 +276,26 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
 .busy-overlay:not([open]) { display: none; }
 .busy-overlay::backdrop { background: transparent; }
 .technician-swal-toast { font-family: "Sarabun", sans-serif; font-size: 14px; }
+/* CANDIDATE-POLISH-2: compact Reference toast (white card, #e4e0fb border, 14px text). */
+.swal2-popup.swal2-toast.technician-swal-toast { width: auto; max-width: min(360px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid #e4e0fb; border-radius: 12px; background: #fff; color: #1c1b4b; box-shadow: 0 8px 24px rgba(60,50,150,.18); }
+.technician-swal-toast .swal2-title { margin: 0 0 0 8px; padding: 0; font-size: 14px !important; font-weight: 700; line-height: 1.4; color: #1c1b4b !important; }
+.technician-swal-toast .swal2-icon { width: 22px; height: 22px; min-width: 22px; margin: 0; font-size: 11px; }
+.technician-swal-toast .swal2-timer-progress-bar { background: #7c5cf0; }
 /* Session resume shows public chrome only; there is no modal or cached data. */
 .resume-shell { min-height: 100vh; background: var(--mgmt-bg); }
 .resume-header { border-bottom: 1px solid var(--mgmt-border); background: #fff; }
 .resume-brand { display: flex; align-items: center; gap: 12px; max-width: 1600px; margin: auto; padding: 14px 24px; }
 .resume-brand h1 { margin: 0; font-size: 23px; font-weight: 800; color: var(--mgmt-text); }
 .resume-brand p { margin: 3px 0 0; font-size: 12px; color: #64748b; }
-.resume-nav { display: flex; gap: 26px; padding: 16px 24px; border-top: 1px solid #f1f5f9; overflow-x: auto; white-space: nowrap; font-size: 14px; font-weight: 600; color: #475569; }
 .resume-content { max-width: 1600px; margin: auto; padding: 24px; }
 .resume-content h2 { margin: 0; font-size: 14px; font-weight: 400; color: #475569; }
 .resume-content #bootError { margin: 12px 0; font-size: 14px; color: #b91c1c; }
-@media (max-width: 767px) { .resume-brand { padding: 14px 16px; }.resume-brand h1 { font-size: 19px; }.resume-nav { padding: 14px 16px; gap: 22px; }.resume-content { padding: 20px 16px; } }
+@media (max-width: 767px) { .resume-brand { padding: 14px 16px; }.resume-brand h1 { font-size: 19px; }.resume-content { padding: 20px 16px; } }
 .toast-region { position: fixed; z-index: 11000; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: grid; gap: 7px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
-.toast { border: 1px solid #a7f3d0; border-radius: 10px; background: #ecfdf5; padding: 10px 12px; color: #065f46; font-size: 10px; font-weight: 700; box-shadow: 0 10px 30px rgba(15,23,42,.12); }
-.toast.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.toast { max-width: 100%; box-sizing: border-box; border: 1px solid #e4e0fb; border-left: 4px solid #5b3fd6; border-radius: 12px; background: #fff; padding: 10px 14px; color: #1c1b4b; font-size: 14px; font-weight: 700; line-height: 1.4; box-shadow: 0 8px 24px rgba(60,50,150,.18); overflow-wrap: anywhere; }
+.toast.success { border-left-color: #15803d; }
+.toast.warning { border-left-color: #b45309; }
+.toast.error { border-left-color: #b91c1c; }
 
 @media (max-width: 1199px) {
   .filter-panel { grid-template-columns: minmax(240px,1.4fr) repeat(2,minmax(150px,1fr)); }
@@ -360,7 +366,7 @@ fieldset legend { padding: 0 5px; color: #334155; font-size: 13px; font-weight: 
   .auth-card { padding: 16px; border-radius: 14px; }
   .auth-brand-row .brand-mark { width: 44px; height: 44px; border-radius: 12px; }
   .auth-brand-row h1 { font-size: 20px; }
-  .toast-region { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); }
+  .toast-region { right: 16px; bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(100vw - 32px); }
 }
 
 @media (max-width: 390px) {

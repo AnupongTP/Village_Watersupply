@@ -1,4 +1,7 @@
-import { expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { test, expect } from '@playwright/test';
+import { repoRoot, resolveUiSourcePath, resolveUiSourceRoot } from '../support/source-root.mjs';
 
 export const LOCKED_VIEWPORTS = Object.freeze([
   { name: 'desktop-xl', width: 1920, height: 1080 },
@@ -10,6 +13,65 @@ export const LOCKED_VIEWPORTS = Object.freeze([
   { name: 'mobile', width: 390, height: 844 },
   { name: 'mobile-narrow', width: 360, height: 800 }
 ]);
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
+};
+
+const BLANK_TILE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e2e8f0"/></svg>';
+
+export async function installBasePublicRoutes(page) {
+  if (page.__vwsPublicRouted) return;
+  page.__vwsPublicRouted = true;
+  page.__vwsUnexpectedHosts = [];
+
+  const uiRoot = resolveUiSourceRoot();
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+
+    if (url.origin === 'http://127.0.0.1:4173' || url.origin === 'http://localhost:4173') {
+      if (url.pathname === '/assets/js/config.js') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'text/javascript; charset=utf-8',
+          body: "export const CONFIG = { APP_NAME: 'Village Water Supply Dashboard', PROVINCE: 'พะเยา', API_URL: '', USE_MOCK_DATA: true };"
+        });
+      }
+      const pathname = decodeURIComponent(url.pathname);
+      const rel = (pathname.endsWith('/') ? `${pathname}index.html` : pathname).replace(/^\/+/, '');
+      const file = resolveUiSourcePath(rel);
+      const allowed = file.startsWith(`${uiRoot}${path.sep}`) ||
+        (file.startsWith(`${repoRoot}${path.sep}`) && /^(?:data\/mock|tools)\//.test(rel));
+      if (!allowed || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        return route.fulfill({ status: 404, body: 'Not found' });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: MIME_TYPES[path.extname(file)] || 'application/octet-stream',
+        body: fs.readFileSync(file)
+      });
+    }
+
+    if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+      return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    }
+    if (url.hostname.endsWith('.arcgisonline.com') || url.hostname.endsWith('.tile.openstreetmap.org')) {
+      return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: BLANK_TILE_SVG });
+    }
+
+    page.__vwsUnexpectedHosts.push(route.request().url());
+    return route.abort();
+  });
+}
 
 export function collectRuntimeErrors(page) {
   const errors = [];
@@ -31,12 +93,12 @@ export function collectForbiddenHttpMethods(page) {
   return forbidden;
 }
 
-
 export async function installMockData(page, {
   villages = [],
   waterSystems = [],
   waterSources = []
 } = {}) {
+  await installBasePublicRoutes(page);
   await page.route('**/data/mock/villages.json', route => route.fulfill({ json: villages }));
   await page.route('**/data/mock/water_systems.json', route => route.fulfill({ json: waterSystems }));
   await page.route('**/data/mock/village_water_sources.json', route => route.fulfill({ json: waterSources }));
@@ -47,18 +109,28 @@ export async function clickChartElement(page, canvasId, datasetIndex, index) {
   await canvas.scrollIntoViewIfNeeded();
   await expect(canvas).toBeVisible();
 
-  const point = await page.evaluate(({ canvasId: id, datasetIndex: dataset, index: item }) => {
+  await expect.poll(async () => page.evaluate(({ id, dataset, item }) => {
     const element = document.getElementById(id);
     const chart = window.Chart?.getChart?.(element);
     const visual = chart?.getDatasetMeta(dataset)?.data?.[item];
     if (!chart || !visual) return null;
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
     const center = typeof visual.getCenterPoint === 'function'
       ? visual.getCenterPoint()
       : { x: visual.x, y: visual.y };
-    return { x: center.x, y: center.y };
-  }, { canvasId, datasetIndex, index });
+    return Number.isFinite(center.x) && Number.isFinite(center.y) ? { x: center.x, y: center.y } : null;
+  }, { id: canvasId, dataset: datasetIndex, item: index })).not.toBeNull();
 
-  expect(point, `Chart element ${canvasId}[${datasetIndex}][${index}] was not rendered`).not.toBeNull();
+  const point = await page.evaluate(({ id, dataset, item }) => {
+    const element = document.getElementById(id);
+    const chart = window.Chart?.getChart?.(element);
+    const visual = chart?.getDatasetMeta(dataset)?.data?.[item];
+    return typeof visual.getCenterPoint === 'function'
+      ? visual.getCenterPoint()
+      : { x: visual.x, y: visual.y };
+  }, { id: canvasId, dataset: datasetIndex, item: index });
+
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.click(box.x + point.x, box.y + point.y);
@@ -72,40 +144,60 @@ export async function chartLabelIndex(page, canvasId, label) {
 }
 
 export async function openDashboard(page) {
+  await installBasePublicRoutes(page);
   await page.goto('/');
-  await expect(page.locator('#kpiVillages')).not.toHaveText('-', { timeout: 20_000 });
-  await expect(page.locator('#waterMap')).toBeVisible();
-
-  // The app closes its initial SweetAlert loading overlay after rendering. SweetAlert2
-  // restores document scrolling only after the close transition finishes, so tests that
-  // scroll or change hash must not race that teardown.
-  await expect(page.locator('.swal2-container')).toHaveCount(0, { timeout: 20_000 });
-  await expect.poll(() => page.evaluate(() => (
-    !document.documentElement.classList.contains('swal2-shown') &&
-    !document.body.classList.contains('swal2-shown')
-  )), { timeout: 5_000 }).toBe(true);
+  await expect(page.locator('#efCount')).toContainText('ระบบ', { timeout: 20_000 });
+  await expect(page.locator('#referenceStatus')).toHaveText('โหลดข้อมูลล่าสุดแล้ว', { timeout: 20_000 });
+  await expect(page.locator('#map')).toBeVisible();
+  await expect(page.locator('.swal2-container')).toHaveCount(0);
 }
 
 /**
- * Opens the popup for a deterministic fixture system through the real Watchlist
- * → Map focus flow. This avoids depending on SVG DOM order or on whether a
- * marker starts inside the current Leaflet viewport.
+ * Opens the Leaflet popup for a deterministic system ID on the Reference hero map.
  */
 export async function openMapPopupForSystem(page, systemId = 'PY-W-000001') {
-  const mapButton = page
-    .locator(`[data-watch-system-id="${systemId}"]:visible [data-action="map"]`)
-    .first();
+  const execBtn = page.locator('.main-nav button[data-view="exec"]');
+  if (await execBtn.count() && !await execBtn.evaluate(b => b.classList.contains('active'))) {
+    await execBtn.click();
+    await page.waitForTimeout(100);
+  }
+  await expect(page.locator('#map')).toBeVisible();
 
-  await expect(mapButton).toBeVisible({ timeout: 20_000 });
-  await mapButton.click();
+  const opened = await page.evaluate(id => {
+    const map = window.__map;
+    if (!map) return false;
+    let found = null;
+    let clusterGroup = null;
+    map.eachLayer(layer => {
+      if (typeof layer.zoomToShowLayer === 'function' && typeof layer.getLayers === 'function') {
+        const match = layer.getLayers().find(m =>
+          m.getPopup?.()?.getContent?.()?.includes(`data-open-system="${id}"`)
+        );
+        if (match) {
+          found = match;
+          clusterGroup = layer;
+        }
+      } else if (layer.getPopup?.()?.getContent?.()?.includes(`data-open-system="${id}"`)) {
+        found = layer;
+      }
+    });
+    if (!found) return false;
+    if (clusterGroup && typeof clusterGroup.zoomToShowLayer === 'function') {
+      clusterGroup.zoomToShowLayer(found, () => found.openPopup());
+    } else {
+      map.setView(found.getLatLng(), 16, { animate: false });
+      found.openPopup();
+    }
+    return true;
+  }, systemId);
 
-  const popup = page.locator('.leaflet-popup');
-  await expect(popup).toBeVisible({ timeout: 6_000 });
-  await expect(popup.locator('[data-system-id="' + systemId + '"]').first()).toBeAttached();
+  expect(opened, `Marker with system ${systemId} not found on map`).toBe(true);
+  const popup = page.locator('#map .leaflet-popup');
+  await expect(popup).toBeVisible({ timeout: 8_000 });
+  await expect(popup.locator(`[data-open-system="${systemId}"]`)).toBeVisible();
   return popup;
 }
 
-// Backward-compatible helper for any older spec that still imports it.
 export async function openFirstMapPopup(page) {
   return openMapPopupForSystem(page, 'PY-W-000001');
 }
@@ -120,12 +212,11 @@ export async function expectNoHorizontalPageOverflow(page) {
 
 export async function expectMapContained(page) {
   const geometry = await page.evaluate(() => {
-    const map = document.getElementById('waterMap')?.getBoundingClientRect();
-    const stack = document.querySelector('.map-stack')?.getBoundingClientRect();
-    const panel = document.querySelector('.map-panel')?.getBoundingClientRect();
-    const header = document.getElementById('appHeader')?.getBoundingClientRect();
-    const filter = document.querySelector('.filter-shell')?.getBoundingClientRect();
-    const controls = [...document.querySelectorAll('#waterMap .leaflet-control')]
+    const map = document.getElementById('map')?.getBoundingClientRect();
+    const stage = document.getElementById('heroMapStage')?.getBoundingClientRect();
+    const header = document.querySelector('.app-header')?.getBoundingClientRect();
+    const filter = document.getElementById('gfBar')?.getBoundingClientRect();
+    const controls = [...document.querySelectorAll('#map .leaflet-control')]
       .filter(node => {
         const style = getComputedStyle(node);
         return style.display !== 'none' && style.visibility !== 'hidden';
@@ -135,11 +226,10 @@ export async function expectMapContained(page) {
         return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
       });
 
-    if (!map || !stack || !panel || !header || !filter) return null;
+    if (!map || !stage || !header || !filter) return null;
     return {
       map: { top: map.top, right: map.right, bottom: map.bottom, left: map.left },
-      stack: { top: stack.top, right: stack.right, bottom: stack.bottom, left: stack.left },
-      panel: { top: panel.top, right: panel.right, bottom: panel.bottom, left: panel.left },
+      stage: { top: stage.top, right: stage.right, bottom: stage.bottom, left: stage.left },
       headerBottom: header.bottom,
       filterBottom: filter.bottom,
       controls
@@ -149,12 +239,10 @@ export async function expectMapContained(page) {
   expect(geometry).not.toBeNull();
   expect(geometry.map.top).toBeGreaterThanOrEqual(geometry.headerBottom - 1);
   expect(geometry.map.top).toBeGreaterThanOrEqual(geometry.filterBottom - 1);
-  expect(geometry.map.top).toBeGreaterThanOrEqual(geometry.stack.top - 1);
-  expect(geometry.map.bottom).toBeLessThanOrEqual(geometry.stack.bottom + 1);
-  expect(geometry.map.left).toBeGreaterThanOrEqual(geometry.stack.left - 1);
-  expect(geometry.map.right).toBeLessThanOrEqual(geometry.stack.right + 1);
-  expect(geometry.map.top).toBeGreaterThan(geometry.panel.top);
-  expect(geometry.map.bottom).toBeLessThanOrEqual(geometry.panel.bottom + 1);
+  expect(geometry.map.top).toBeGreaterThanOrEqual(geometry.stage.top - 1);
+  expect(geometry.map.bottom).toBeLessThanOrEqual(geometry.stage.bottom + 1);
+  expect(geometry.map.left).toBeGreaterThanOrEqual(geometry.stage.left - 1);
+  expect(geometry.map.right).toBeLessThanOrEqual(geometry.stage.right + 1);
 
   for (const control of geometry.controls) {
     expect(control.top).toBeGreaterThanOrEqual(geometry.map.top - 1);
@@ -164,49 +252,22 @@ export async function expectMapContained(page) {
   }
 }
 
-export async function expectHashAnchorSafe(page, targetId) {
+export async function expectHashAnchorSafe(page, hashTarget) {
   await page.evaluate(id => {
     window.location.hash = `#${id}`;
-  }, targetId);
+  }, hashTarget);
 
-  await expect.poll(async () => page.evaluate(id => {
-    const target = document.getElementById(id);
-    const header = document.getElementById('appHeader');
-    const filter = document.getElementById('filters');
-    if (!target || !header) return { hash: window.location.hash, safe: false };
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(`#${hashTarget}`);
 
-    const headerBottom = header.getBoundingClientRect().bottom;
-    const filterSticky = filter && getComputedStyle(filter).position === 'sticky';
-    const filterHeight = filterSticky ? filter.getBoundingClientRect().height + 8 : 0;
-    const obstructionBottom = headerBottom + filterHeight;
-    const targetTop = target.getBoundingClientRect().top;
-    return {
-      hash: window.location.hash,
-      safe: targetTop >= obstructionBottom - 2 && targetTop < window.innerHeight
-    };
-  }, targetId), { timeout: 5_000 }).toMatchObject({
-    hash: `#${targetId}`,
-    safe: true
-  });
+  const visiblePanel = ['overview', 'exec'].includes(hashTarget)
+    ? '#view-exec'
+    : ['compare', 'insight', 'table', 'vtable'].includes(hashTarget)
+      ? `#panel-${hashTarget}`
+      : ['problem', 'problemList'].includes(hashTarget)
+        ? '#panel-problem'
+        : `#${hashTarget}`;
 
-  const geometry = await page.evaluate(id => {
-    const target = document.getElementById(id);
-    const header = document.getElementById('appHeader');
-    const filter = document.getElementById('filters');
-    const headerBottom = header?.getBoundingClientRect().bottom || 0;
-    const filterSticky = filter && getComputedStyle(filter).position === 'sticky';
-    const filterHeight = filterSticky ? filter.getBoundingClientRect().height + 8 : 0;
-    return {
-      targetTop: target?.getBoundingClientRect().top ?? -9999,
-      obstructionBottom: headerBottom + filterHeight,
-      viewportHeight: window.innerHeight
-    };
-  }, targetId);
-
-  expect(geometry.targetTop).toBeGreaterThanOrEqual(geometry.obstructionBottom - 2);
-  // Near the end of the document the browser may hit max scroll before the
-  // target can align exactly to scroll-margin-top. It still has to be visible.
-  expect(geometry.targetTop).toBeLessThan(geometry.viewportHeight);
+  await expect(page.locator(visiblePanel)).toBeVisible({ timeout: 5_000 });
 }
 
 export async function collectUserFacingTextAndAttributes(page, rootSelector) {

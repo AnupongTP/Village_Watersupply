@@ -2,273 +2,90 @@ import { test, expect } from '@playwright/test';
 import {
   chartLabelIndex,
   clickChartElement,
+  installMockData,
   openDashboard
 } from './helpers.js';
 
+const CHART_FIXTURE = {
+  villages: [
+    { village_id: 'PY-V-0001', district: 'จุน', local_authority: 'เทศบาลตำบลจุน', village_name: 'บ้านจุน', has_village_waterworks: true, pwa_households: 10, mwa_households: 0, commercial_households: 0, other_village_pipe_households: 0, waterbank_households: 0, self_source_households: 5, natural_source_households: 0 },
+    { village_id: 'PY-V-0002', district: 'เมืองพะเยา', local_authority: 'เทศบาลเมืองพะเยา', village_name: 'บ้านเมือง', has_village_waterworks: true, pwa_households: 12, mwa_households: 0, commercial_households: 0, other_village_pipe_households: 0, waterbank_households: 0, self_source_households: 3, natural_source_households: 0 }
+  ],
+  waterSystems: [
+    { system_id: 'PY-W-000001', village_id: 'PY-V-0001', system_name: 'ระบบจุน', latitude: 19.32, longitude: 100.17, system_type: 'GROUNDWATER_SMALL', operational_status: 'WORKING', drinking_water_quality: 'FAIL', water_quantity: 'SUFFICIENT' },
+    { system_id: 'PY-W-000002', village_id: 'PY-V-0002', system_name: 'ระบบเมือง', latitude: 19.17, longitude: 99.9, system_type: 'SURFACE_SMALL', operational_status: 'NOT_WORKING', drinking_water_quality: 'NO_DATA', water_quantity: 'INSUFFICIENT' }
+  ],
+  waterSources: []
+};
+
 async function expectFilterChip(page, text) {
-  await expect(page.locator('#activeFilterChips')).toBeVisible();
-  await expect(page.locator('#activeFilterChips')).toContainText(text);
+  await expect(page.locator('#gfChips')).toBeVisible();
+  await expect(page.locator('#gfChips')).toContainText(text);
 }
 
 test('global search filters the whole dashboard and clear-all restores province scope', async ({ page }) => {
   await openDashboard(page);
-  await expect(page.locator('#kpiSystems')).toHaveText('2');
+  await expect(page.locator('#efCount')).toContainText('2 ระบบ');
 
-  await page.locator('#filterSearch').fill('เทศบาลเมืองพะเยา');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-  await expectFilterChip(page, 'ค้นหา: “เทศบาลเมืองพะเยา”');
+  await page.locator('#fq').fill('เทศบาลเมืองพะเยา');
+  await expect(page.locator('#efCount')).toContainText('1 ระบบ');
+  await expectFilterChip(page, 'ค้นหา: เทศบาลเมืองพะเยา');
+  await expect(page.locator('#map .dvicon')).toHaveCount(1);
 
-  // Public R5.1 no longer exposes Data Completeness. Verify the same unified
-  // search scope through public surfaces instead.
-  await expect(page.locator('.water-system-marker')).toHaveCount(1);
-  await expect(page.locator('#watchlistTotal')).toHaveText('1');
-  await expect.poll(async () => page.evaluate(() => {
-    const chart = window.Chart?.getChart?.(document.getElementById('districtChart'));
-    const datasets = chart?.data?.datasets || [];
-    const systems = datasets.find(dataset => dataset.label === 'ระบบประปา');
-    if (systems) return systems.data.reduce((sum, value) => sum + Number(value || 0), 0);
-    // Fallback to the second grouped dataset used by the current chart.
-    return (datasets[1]?.data || []).reduce((sum, value) => sum + Number(value || 0), 0);
-  })).toBe(1);
-
-  await page.locator('#btnClearFilters').click();
-  await expect(page.locator('#filterSearch')).toHaveValue('');
-  await expect(page.locator('#kpiSystems')).toHaveText('2');
-  await expect(page.locator('.water-system-marker')).toHaveCount(2);
-  await expect(page.locator('#activeFilterChips')).toBeHidden();
-  await expect(page.locator('#scopeLabel')).toHaveText('จังหวัดพะเยา');
+  await page.locator('#efReset').click();
+  await expect(page.locator('#fq')).toHaveValue('');
+  await expect(page.locator('#efCount')).toContainText('2 ระบบ');
+  await expect(page.locator('#map .dvicon')).toHaveCount(2);
+  await expect(page.locator('#gfChips')).toBeEmpty();
+  await expect(page.locator('#efReset')).toBeHidden();
 });
 
-test('district chart toggles a district cross-filter without discarding independent filters', async ({ page }) => {
+test('district chart cross-filters without discarding independent filters', async ({ page }) => {
+  await installMockData(page, CHART_FIXTURE);
   await openDashboard(page);
 
-  await page.locator('#filterSystemType').selectOption('GROUNDWATER_SMALL');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await page.locator('#fst').selectOption('GROUNDWATER_SMALL');
+  await expect(page.locator('#efCount')).toContainText('1 ระบบ');
 
-  let index = await chartLabelIndex(page, 'districtChart', 'จุน');
+  const index = await chartLabelIndex(page, 'c_hhmix', 'จุน');
   expect(index).toBeGreaterThanOrEqual(0);
-  await clickChartElement(page, 'districtChart', 1, index);
+  await clickChartElement(page, 'c_hhmix', 0, index);
 
-  await expect(page.locator('#filterDistrict')).toHaveValue('จุน');
-  await expect(page.locator('#filterSystemType')).toHaveValue('GROUNDWATER_SMALL');
+  await expect(page.locator('#fd')).toHaveValue('จุน');
+  await expect(page.locator('#fst')).toHaveValue('GROUNDWATER_SMALL');
   await expectFilterChip(page, 'อำเภอ: จุน');
-  await expectFilterChip(page, 'ประเภทระบบ: ประปาบาดาลขนาดเล็ก');
+  await expectFilterChip(page, 'ประเภทระบบ: บาดาลขนาดเล็ก');
 
-  index = await chartLabelIndex(page, 'districtChart', 'จุน');
-  await clickChartElement(page, 'districtChart', 1, index);
-  await expect(page.locator('#filterDistrict')).toHaveValue('');
-  await expect(page.locator('#filterSystemType')).toHaveValue('GROUNDWATER_SMALL');
+  await page.locator('#gfChips button[aria-label="ล้าง"]').first().click();
+  await expect(page.locator('#fd')).toHaveValue('');
+  await expect(page.locator('#fst')).toHaveValue('GROUNDWATER_SMALL');
 });
 
-test('system type chart toggles the shared system-type filter', async ({ page }) => {
+test('operational doughnut toggles the shared rule filter and individual chip clears only that dimension', async ({ page }) => {
   await openDashboard(page);
 
-  let index = await chartLabelIndex(page, 'systemTypeChart', 'ประปาบาดาลขนาดเล็ก');
-  expect(index).toBeGreaterThanOrEqual(0);
-  await clickChartElement(page, 'systemTypeChart', 0, index);
+  await clickChartElement(page, 'c_ops', 0, 1); // NOT_WORKING -> rule='ops'
+  await expect(page.locator('#frule')).toHaveValue('ops');
+  await expect(page.locator('#efCount')).toContainText('1 ระบบ');
+  await expectFilterChip(page, 'สถานะ/ปัญหา: ใช้การไม่ได้');
 
-  await expect(page.locator('#filterSystemType')).toHaveValue('GROUNDWATER_SMALL');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-  await expectFilterChip(page, 'ประเภทระบบ: ประปาบาดาลขนาดเล็ก');
-
-  index = await chartLabelIndex(page, 'systemTypeChart', 'ประปาบาดาลขนาดเล็ก');
-  await clickChartElement(page, 'systemTypeChart', 0, index);
-  await expect(page.locator('#filterSystemType')).toHaveValue('');
-  await expect(page.locator('#kpiSystems')).toHaveText('2');
+  await page.locator('#gfChips button[aria-label="ล้าง"]').click();
+  await expect(page.locator('#frule')).toHaveValue('');
+  await expect(page.locator('#efCount')).toContainText('2 ระบบ');
 });
 
-test('quality doughnut toggles drinking-water quality and keeps alternate segments available', async ({ page }) => {
+test('type status bar rows and rule dropdown synchronize across executive and detail views', async ({ page }) => {
   await openDashboard(page);
 
-  await clickChartElement(page, 'qualityChart', 0, 1); // FAIL
-  await expect(page.locator('#filterDrinkingWaterQuality')).toHaveValue('FAIL');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-  await expectFilterChip(page, 'คุณภาพน้ำดื่ม: ไม่ผ่านเกณฑ์');
+  await page.locator('#frule').selectOption('qty');
+  await expect(page.locator('#efCount')).toContainText('1 ระบบ');
+  await expectFilterChip(page, 'สถานะ/ปัญหา: น้ำไม่เพียงพอ');
 
-  // Self-exclusion means the chart still contains the NO_DATA segment, allowing
-  // a direct switch instead of requiring a reset first.
-  await clickChartElement(page, 'qualityChart', 0, 2);
-  await expect(page.locator('#filterDrinkingWaterQuality')).toHaveValue('NO_DATA');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
+  await page.locator('[data-view="detail"]').click();
+  await page.locator('[data-tab="table"]').click();
+  await expect(page.locator('#tblBody tr')).toHaveCount(1);
+  await expect(page.locator('#tblBody')).toContainText('PY-W-000002');
+
+  await page.locator('#efReset').click();
+  await expect(page.locator('#tblBody tr')).toHaveCount(2);
 });
-
-test('quantity doughnut toggles the shared water-quantity filter and chip can clear only that dimension', async ({ page }) => {
-  await openDashboard(page);
-
-  await clickChartElement(page, 'quantityChart', 0, 0); // SUFFICIENT
-  await expect(page.locator('#filterWaterQuantity')).toHaveValue('SUFFICIENT');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-  await expectFilterChip(page, 'ความเพียงพอของน้ำ: เพียงพอ');
-
-  await page.locator('[data-filter-remove="waterQuantity"]').click();
-  await expect(page.locator('#filterWaterQuantity')).toHaveValue('');
-  await expect(page.locator('#kpiSystems')).toHaveText('2');
-});
-
-test('monitoring summary cards toggle the shared filter state and update the whole dashboard', async ({ page }) => {
-  await openDashboard(page);
-
-  const card = page.locator('[data-monitoring-filter="not-working"]');
-  await expect(card).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('#alertNotWorking')).toHaveText('1');
-
-  await card.click();
-  await expect(card).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('NOT_WORKING');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-  await expect(page.locator('.water-system-marker')).toHaveCount(1);
-
-  // Public R5.1 intentionally removed Data Completeness. KPI, Map, Watchlist,
-  // filters and charts remain the shared-scope acceptance surfaces.
-  await expect(page.locator('#watchlistTotal')).toHaveText('1');
-  await expectFilterChip(page, 'สถานะ: ใช้การไม่ได้');
-  await expect.poll(async () => page.evaluate(() => {
-    const chart = window.Chart?.getChart?.(document.getElementById('qualityChart'));
-    return (chart?.data?.datasets?.[0]?.data || []).reduce((sum, value) => sum + Number(value), 0);
-  })).toBe(1);
-
-  await card.click();
-  await expect(card).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('');
-  await expect(page.locator('#kpiSystems')).toHaveText('2');
-  await expect(page.locator('.water-system-marker')).toHaveCount(2);
-});
-
-test('monitoring quick filters preserve independent area and system-type scope', async ({ page }) => {
-  await openDashboard(page);
-
-  await page.locator('#filterDistrict').selectOption({ label: 'เมืองพะเยา' });
-  await page.locator('#filterSystemType').selectOption('SURFACE_SMALL');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-
-  const card = page.locator('[data-monitoring-filter="not-working"]');
-  await card.click();
-
-  await expect(page.locator('#filterDistrict')).toHaveValue('เมืองพะเยา');
-  await expect(page.locator('#filterSystemType')).toHaveValue('SURFACE_SMALL');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('NOT_WORKING');
-  await expect(card).toHaveAttribute('aria-pressed', 'true');
-  await expectFilterChip(page, 'อำเภอ: เมืองพะเยา');
-  await expectFilterChip(page, 'ประเภทระบบ: ประปาผิวดินขนาดเล็ก');
-  await expectFilterChip(page, 'สถานะ: ใช้การไม่ได้');
-
-  await card.click();
-  await expect(page.locator('#filterDistrict')).toHaveValue('เมืองพะเยา');
-  await expect(page.locator('#filterSystemType')).toHaveValue('SURFACE_SMALL');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-});
-
-test('monitoring quick filters combine with AND semantics and clear independently', async ({ page }) => {
-  await openDashboard(page);
-
-  const notWorking = page.locator('[data-monitoring-filter="not-working"]');
-  const insufficient = page.locator('[data-monitoring-filter="insufficient"]');
-  const qualityFail = page.locator('[data-monitoring-filter="quality-fail"]');
-
-  await notWorking.click();
-  await insufficient.click();
-  await expect(notWorking).toHaveAttribute('aria-pressed', 'true');
-  await expect(insufficient).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('NOT_WORKING');
-  await expect(page.locator('#filterWaterQuantity')).toHaveValue('INSUFFICIENT');
-  await expect(page.locator('#kpiSystems')).toHaveText('1');
-
-  await qualityFail.click();
-  await expect(qualityFail).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#filterDrinkingWaterQuality')).toHaveValue('FAIL');
-  await expect(page.locator('#kpiSystems')).toHaveText('0');
-  await expect(page.locator('.water-system-marker')).toHaveCount(0);
-
-  await notWorking.click();
-  await expect(notWorking).toHaveAttribute('aria-pressed', 'false');
-  await expect(insufficient).toHaveAttribute('aria-pressed', 'true');
-  await expect(qualityFail).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('');
-  await expect(page.locator('#filterWaterQuantity')).toHaveValue('INSUFFICIENT');
-  await expect(page.locator('#filterDrinkingWaterQuality')).toHaveValue('FAIL');
-  await expect(page.locator('#kpiSystems')).toHaveText('0');
-
-  await page.locator('#btnClearFilters').click();
-  for (const quickFilter of [notWorking, insufficient, qualityFail]) {
-    await expect(quickFilter).toHaveAttribute('aria-pressed', 'false');
-  }
-  await expect(page.locator('#kpiSystems')).toHaveText('2');
-});
-
-test('dropdowns, chips and chart cross-filters keep monitoring cards synchronized', async ({ page }) => {
-  await openDashboard(page);
-
-  const notWorking = page.locator('[data-monitoring-filter="not-working"]');
-  const insufficient = page.locator('[data-monitoring-filter="insufficient"]');
-  const qualityFail = page.locator('[data-monitoring-filter="quality-fail"]');
-
-  await page.locator('#filterOperationalStatus').selectOption('WORKING');
-  await expect(notWorking).toHaveAttribute('aria-pressed', 'false');
-  // Faceted count self-excludes Operational Status, so the alternative remains discoverable.
-  await expect(page.locator('#alertNotWorking')).toHaveText('1');
-
-  await page.locator('#filterOperationalStatus').selectOption('NOT_WORKING');
-  await expect(notWorking).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('[data-filter-remove="operationalStatus"]').click();
-  await expect(notWorking).toHaveAttribute('aria-pressed', 'false');
-
-  await page.locator('#filterWaterQuantity').selectOption('INSUFFICIENT');
-  await expect(insufficient).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('[data-filter-remove="waterQuantity"]').click();
-  await expect(insufficient).toHaveAttribute('aria-pressed', 'false');
-
-  await clickChartElement(page, 'qualityChart', 0, 1); // FAIL
-  await expect(qualityFail).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#filterDrinkingWaterQuality')).toHaveValue('FAIL');
-  await page.locator('[data-filter-remove="drinkingWaterQuality"]').click();
-  await expect(qualityFail).toHaveAttribute('aria-pressed', 'false');
-});
-
-test('monitoring quick-filter buttons preserve native keyboard toggle behavior', async ({ page }) => {
-  await openDashboard(page);
-
-  const card = page.locator('[data-monitoring-filter="not-working"]');
-  await card.focus();
-  await expect(card).toBeFocused();
-
-  await page.keyboard.press('Enter');
-  await expect(card).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('NOT_WORKING');
-  await expect(card).toBeFocused();
-
-  await page.keyboard.press('Space');
-  await expect(card).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('#filterOperationalStatus')).toHaveValue('');
-  await expect(card).toBeFocused();
-});
-
-for (const viewport of [
-  { name: 'mobile-390', width: 390, height: 844 },
-  { name: 'mobile-360', width: 360, height: 800 }
-]) {
-  test(`monitoring quick-filter selected state stays compact at ${viewport.width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await openDashboard(page);
-
-    const card = page.locator('[data-monitoring-filter="insufficient"]');
-    await card.click();
-    await expect(card).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('#filterWaterQuantity')).toHaveValue('INSUFFICIENT');
-
-    const geometry = await page.evaluate(() => ({
-      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      cards: [...document.querySelectorAll('.watch-mini')].map(element => ({
-        scrollWidth: element.scrollWidth,
-        clientWidth: element.clientWidth
-      }))
-    }));
-    expect(geometry.pageOverflow).toBeLessThanOrEqual(1);
-    expect(geometry.cards.every(cardBox => cardBox.scrollWidth <= cardBox.clientWidth + 2)).toBe(true);
-
-    await page.screenshot({
-      path: testInfo.outputPath(`${viewport.name}-monitoring-selected.png`),
-      fullPage: false
-    });
-  });
-}

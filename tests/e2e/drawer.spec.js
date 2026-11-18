@@ -1,66 +1,41 @@
 import { test, expect } from '@playwright/test';
 import { openDashboard } from './helpers.js';
 
-const SYSTEM_ID = 'PY-W-000001';
-
-function visibleDetailButton(page) {
-  return page.locator(`[data-watch-system-id="${SYSTEM_ID}"]:visible [data-action="detail"]`).first();
+async function openFromTable(page) {
+  await page.locator('.main-nav button[data-view="detail"]').click();
+  await page.locator('.tab-btn[data-tab="table"]').click();
+  const row = page.locator('#tblBody tr').first();
+  await expect(row).toBeVisible();
+  await row.focus();
+  await row.click();
+  const modal = page.locator('#referenceDetail');
+  await expect(modal).toBeVisible();
+  return row;
 }
 
-async function openFromWatchlist(page) {
-  const button = visibleDetailButton(page);
-  await expect(button).toBeVisible();
-  await button.focus();
-  await button.click();
-  await expect(page.locator('#systemDrawer')).toHaveClass(/open/);
-  await expect(page.locator('#systemDrawer')).toHaveAttribute('aria-hidden', 'false');
-  await expect(page.locator('#btnCloseDrawer')).toBeFocused();
-  return button;
-}
-
-test('drawer closes by X, Escape and backdrop and restores trigger focus', async ({ page }) => {
+test('detail dialog closes by button and Escape and restores trigger focus', async ({ page }) => {
   await openDashboard(page);
 
-  let trigger = await openFromWatchlist(page);
-  await page.locator('#btnCloseDrawer').click();
-  await expect(page.locator('#systemDrawer')).not.toHaveClass(/open/);
-  await expect(page.locator('#systemDrawer')).toHaveAttribute('aria-hidden', 'true');
+  let trigger = await openFromTable(page);
+  await page.locator('#referenceDetail .reference-drawer-x').click();
+  await expect(page.locator('#referenceDetail')).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
-  trigger = await openFromWatchlist(page);
+  trigger = await openFromTable(page);
   await page.keyboard.press('Escape');
-  await expect(page.locator('#systemDrawer')).not.toHaveClass(/open/);
-  await expect(trigger).toBeFocused();
-
-  trigger = await openFromWatchlist(page);
-  await page.locator('#systemDrawer').click({ position: { x: 8, y: 8 } });
-  await expect(page.locator('#systemDrawer')).not.toHaveClass(/open/);
+  await expect(page.locator('#referenceDetail')).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
 
-test('mobile drawer fills the viewport, scrolls internally and keeps content readable', async ({ page }) => {
+test('mobile detail dialog stays within viewport and scrolls internally without horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openDashboard(page);
-  await openFromWatchlist(page);
+  await openFromTable(page);
 
-  const geometry = await page.locator('.drawer-panel').evaluate(node => {
-    const rect = node.getBoundingClientRect();
-    return {
-      width: rect.width,
-      height: rect.height,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight
-    };
-  });
-  expect(geometry.width).toBeGreaterThanOrEqual(geometry.viewportWidth - 2);
-  expect(geometry.height).toBeGreaterThanOrEqual(geometry.viewportHeight - 2);
-
-  const content = await page.locator('#drawerContent').evaluate(node => ({
-    overflowY: getComputedStyle(node).overflowY,
-    clientHeight: node.clientHeight,
-    scrollHeight: node.scrollHeight
-  }));
-  expect(content.overflowY).toBe('auto');
-  expect(content.scrollHeight).toBeGreaterThanOrEqual(content.clientHeight);
-  await expect(page.locator('#drawerContent')).toContainText('ข้อมูลพื้นที่');
+  const box = await page.locator('#referenceDetail').boundingBox();
+  expect(box).not.toBeNull();
+  expect(box.width).toBeLessThanOrEqual(390);
+  expect(box.height).toBeLessThanOrEqual(844);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await expect(page.locator('#referenceDetail')).toContainText('ข้อมูลระบบประปา');
 });
