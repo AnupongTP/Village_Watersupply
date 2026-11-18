@@ -48,7 +48,7 @@ declare c app.accounts;a app.accounts;j integration.auth_jobs;b jsonb;r jsonb;ac
   select * into a from app.accounts where actor_id=j.request->>'userId'for update;
   if not found or a.record_version<>(j.request->>'approvedVersion')::bigint then raise exception 'CONFLICT';end if;
   b=to_jsonb(a);
-  update app.accounts set status='ACTIVE',must_change_password=j.action='technicians.resetPassword',record_version=record_version+1,
+  update app.accounts set status='ACTIVE',must_change_password=false,record_version=record_version+1,
    entitlement_version=entitlement_version+1,updated_at=now()where actor_id=a.actor_id returning * into a;
   update app.sessions set revoked_at=now()where actor_id=a.actor_id;
   if j.action='auth.changePassword'then

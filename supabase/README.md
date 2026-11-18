@@ -2,6 +2,32 @@
 
 Project reference: `wfxudiciylpcmjbecbhk`.
 
+## Optional password changes (LOCAL policy update)
+
+Mandatory password changes are retired. New accounts and administrator password resets
+return `mustChangePassword: false`. Users can still change their password from the
+account menu; reset and voluntary changes retain the existing session revocation,
+authorization, idempotency and audit flow.
+
+For an existing database, review and run **only** `sql/disable-forced-password-change.sql`
+in SQL Editor. It replaces three existing functions without changing their ACLs or
+owners and clears legacy flags with an audit receipt per changed account. It does not
+change passwords or Supabase Auth users. An active ADMIN account is required to attribute
+the administrative policy audit. Reapplying the patch does not duplicate those audits.
+For a fresh installation, run the patch after the baseline and existing upgrade patches
+to clear any imported legacy flags. Never rerun the baseline on an existing database.
+
+Then publish the updated website `technician/assets/technician.js`.
+Apply SQL first: a frontend-only change cannot remove the old database gate.
+No Edge Function deployment is required: the unchanged management function receives
+`mustChangePassword: false` from the database contract. The legacy Feature 3 guard
+and its authentication/authorization checks remain unchanged.
+These are manual installation instructions; no Hosted SQL or deployment was executed.
+
+Focused LOCAL checks: `node tests/backend/supabase-password-policy.mjs` and the
+password/login/resume cases in `tests/e2e/technician-mock.spec.js` using the isolated
+Playwright configuration. SQL tests use only the existing local Docker container.
+
 ## Source boundary
 
 `source-provenance.json` records the owner's Edge Function handoff ZIP and SHA-256 values.

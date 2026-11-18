@@ -4,7 +4,7 @@ create function app.version(j jsonb) returns text language sql stable set search
  select encode(extensions.digest((select epoch::text from app.authority)||j::text,'sha256'),'hex') $$;
 create function app.account_json(a app.accounts) returns jsonb language sql stable set search_path=pg_catalog,public,app as $$
  select jsonb_build_object('userId',a.actor_id,'username',a.username,'displayName',a.display_name,'role',a.role,'status',a.status,'district',a.district,
- 'mustChangePassword',a.must_change_password,'recordVersion',app.version(to_jsonb(a)),'lastLoginAt',a.last_login_at) $$;
+ 'mustChangePassword',false,'recordVersion',app.version(to_jsonb(a)),'lastLoginAt',a.last_login_at) $$;
 create function app.context(t text,allow_password boolean default false) returns app.accounts language plpgsql set search_path=pg_catalog,public,app as $$
 declare s app.sessions;a app.accounts;begin
  -- Global authority gate gives deterministic ordering for this initial candidate. Benchmark before partitioning it.
@@ -19,7 +19,6 @@ declare s app.sessions;a app.accounts;begin
  if not found then raise exception 'AUTH_ACCOUNT_DELETED';end if;
  if a.status<>'ACTIVE' then raise exception 'AUTH_ACCOUNT_DISABLED';end if;
  if s.auth_epoch<>a.entitlement_version then raise exception 'SESSION_REVOKED';end if;
- if a.must_change_password and not allow_password then raise exception 'AUTH_PASSWORD_CHANGE_REQUIRED';end if;
  if a.role='TECHNICIAN' and coalesce(a.district,'')='' then raise exception 'ACCOUNT_DISTRICT_REQUIRED';end if;
  return a;end $$;
 create function app.touch(t text) returns void language sql set search_path=pg_catalog,app as $$
