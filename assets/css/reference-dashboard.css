@@ -2032,3 +2032,6 @@ footer.note{color:#697278}
 
 #referenceDetail .reference-drawer-header{padding:16px 24px 16px 18px}
 @media(max-width:767px){#referenceDetail .reference-drawer-header{padding:12px 18px 12px 14px}}
+
+/* mobile-header-static */
+@media(max-width:767px){.app-header{position:static!important}}
