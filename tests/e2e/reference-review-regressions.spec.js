@@ -982,7 +982,9 @@ for (const [width, height] of [[1440, 900], [768, 900], [390, 844]]) test(`CANDI
   // CANDIDATE-MINOR-2: scroll offset follows the real header height, not a fixed 150px.
   const h = await page.evaluate(() => ({var: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--reference-header-height')), height: document.querySelector('#referenceDashboard .app-header').getBoundingClientRect().height, margin: parseFloat(getComputedStyle(document.querySelector('#view-manage #watchlist')).scrollMarginTop)}));
   expect(Math.abs(h.var - h.height), JSON.stringify(h)).toBeLessThanOrEqual(1);
-  expect(Math.abs(h.margin - (h.height + 12)), JSON.stringify(h)).toBeLessThanOrEqual(1.5);
+  // Phones (<=767px): the Reference header scrolls away (mobile-header-static), so only a 12px margin is kept.
+  const expectedMargin = page.viewportSize().width <= 767 ? 12 : h.height + 12;
+  expect(Math.abs(h.margin - expectedMargin), JSON.stringify(h)).toBeLessThanOrEqual(1.5);
 });
 
 
@@ -1434,7 +1436,8 @@ for (const vp of [{width: 1440, height: 900}, {width: 390, height: 844}]) {
           const cv = document.createElement('canvas'); cv.width = cv.height = 1; const cx = cv.getContext('2d', {willReadFrequently: true});
           const norm = c => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = c; cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return d[3] ? `rgb(${d[0]}, ${d[1]}, ${d[2]})` : 'rgba(0, 0, 0, 0)'; };
           const skyBlue = c0 => { const c = c0.includes('rgb(') || c0.includes('rgba(') ? c0 : norm(c0); const m = c.match(/rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/); if (!m || (m[4] !== undefined && +m[4] === 0)) return false; const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255]; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn; if (!d || l > 0.45) return false; const sat = d / (1 - Math.abs(2 * l - 1)); const h = mx === r ? ((g - b) / d + 6) % 6 * 60 : mx === g ? ((b - r) / d + 2) * 60 : ((r - g) / d + 4) * 60; return sat > 0.5 && h >= 185 && h <= 215; };
-          const bad = ['color', 'backgroundColor', 'borderTopColor'].filter(k => cs[k] === 'rgb(3, 105, 161)' || skyBlue(cs[k]));
+          const legacySky = ['rgb(3, 105, 161)', 'rgb(2, 132, 199)', 'rgb(7, 89, 133)']; // water theme (2026-11-23) is blue by design; only the old Tailwind sky tokens are off-palette
+          const bad = ['color', 'backgroundColor', 'borderTopColor'].filter(k => legacySky.includes(cs[k]));
           if (bad.length) offPalette.push((el.id || el.className || el.tagName) + ' ' + bad.join());
         });
         return {flush, offPalette};

@@ -503,8 +503,8 @@ function manageMarkerIcon(system){ var r=manageRecord(system), keep=mapState.col
 // Compact manage popup (spec decision 4): name, village · district, status badge, then the existing actions; short enough for the 260px mobile map.
 function managePopupHtml(system,actions){
   var r=manageRecord(system), id=esc(r.id), tone=r.ops==='WORKING'?['#e8f5e9','#1b5e20']:r.ops==='NOT_WORKING'?['#fdecea','#b71c1c']:['#eef2f7','#37474f'];
-  return '<div class="manage-popup" style="font-family:\'Sarabun\',sans-serif;width:210px;font-size:13px;"><b style="color:#1c1b4b;font-size:14px;">'+esc(r.nm||'ระบบประปา')+'</b>'
-   +'<div style="color:#4a4a7a;font-size:12px;margin-top:2px;">'+esc(r.vn||'–')+(r.vno?' ม.'+esc(r.vno):'')+' · '+esc(r.d||'–')+'</div>'
+  return '<div class="manage-popup" style="font-family:\'Sarabun\',sans-serif;width:210px;font-size:13px;"><b style="color:#0b2545;font-size:14px;">'+esc(r.nm||'ระบบประปา')+'</b>'
+   +'<div style="color:#3e5468;font-size:12px;margin-top:2px;">'+esc(r.vn||'–')+(r.vno?' ม.'+esc(r.vno):'')+' · '+esc(r.d||'–')+'</div>'
    +'<span class="manage-popup-status" style="display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background:'+tone[0]+';color:'+tone[1]+';font-size:12px;font-weight:700;">สถานะ: '+esc(L_OPS[r.ops]||'ไม่ทราบ')+'</span>'
    +'<div class="manage-popup-actions"><button type="button" class="popup-nav-btn popup-detail-btn" data-manage-action="detail" data-id="'+id+'">📋 รายละเอียด</button>'+(actions&&actions.canEdit===true?'<button type="button" class="popup-nav-btn popup-detail-btn manage-popup-edit" data-manage-action="edit" data-id="'+id+'">✏️ แก้ไข</button>':'')+'</div></div>';
 }
